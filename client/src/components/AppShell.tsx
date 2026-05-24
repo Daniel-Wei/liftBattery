@@ -25,7 +25,7 @@ export function AppShell({ navItems, currentPage, onNavigate, children }: AppShe
           className="brand-card"
         >
           <p className="brand-title">LiftOps</p>
-          <p className="brand-subtitle">Training operations dashboard</p>
+          <p className="brand-subtitle">Training science log</p>
         </button>
 
         <nav className="side-nav">

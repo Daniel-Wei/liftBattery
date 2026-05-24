@@ -7,7 +7,7 @@ export function SettingsPage() {
     <div className="page page--narrow page-stack">
       <header className="page-header">
         <p className="eyebrow">Settings / 设置</p>
-        <h1 className="page-title">Static setup preview.</h1>
+        <h1 className="page-title">Define the training context behind the formulas.</h1>
       </header>
 
       <SectionCard title="Training setup" titleZh="训练设置" eyebrow="Mock settings">
@@ -41,8 +41,8 @@ export function SettingsPage() {
       </EvidenceNote>
 
       <EvidenceNote title="Heuristic metric disclaimer / 启发式指标说明" evidenceType="heuristic">
-        <p>Efficiency, Productivity, Capacity, and Forecast are proxy, trend, watch, or heuristic labels.</p>
-        <p>Efficiency、Productivity、Capacity 和 Forecast 是 proxy、trend、watch 或 heuristic 标签。</p>
+        <p>Volume landmarks such as MV, MEV, MAV, and MRV are used as personal heuristics, not universal equations.</p>
+        <p>MV、MEV、MAV、MRV 等 volume landmarks 作为个人启发式框架使用，不是统一方程。</p>
       </EvidenceNote>
     </div>
   );

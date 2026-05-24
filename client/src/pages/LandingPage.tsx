@@ -1,31 +1,31 @@
 type LandingPageProps = {
-  onOpenDashboard: () => void;
+  onOpenOverview: () => void;
 };
 
-export function LandingPage({ onOpenDashboard }: LandingPageProps) {
+export function LandingPage({ onOpenOverview }: LandingPageProps) {
   return (
     <main className="landing-page">
       <section className="landing-layout">
         <div>
           <p className="landing-eyebrow">LiftOps</p>
           <h1 className="landing-title">
-            SaaS-style training operations dashboard.
+            Training science log for serious lifters.
           </h1>
           <p className="landing-copy">
-            For serious lifters who want to manage Core / Non-Core work, Plan, Forecast, Utilisation,
-            Capacity, Efficiency, Productivity, and Risk without pretending proxy metrics are exact physiology.
+            Record session load, RIR/RPE, hard sets, volume load, wellness, bodyweight trend,
+            and nutrition pressure without pretending every proxy is exact physiology.
           </p>
           <p className="landing-copy-muted">
-            面向认真训练者的 SaaS 风格训练运营 Dashboard。先看清训练状态，再决定是否推进。
+            面向认真训练者的训练科学记录与状态视图。先记录关键输入，再看哪些输出发生变化。
           </p>
 
           <div className="landing-actions">
             <button
               type="button"
-              onClick={onOpenDashboard}
+              onClick={onOpenOverview}
               className="button-primary"
             >
-              Open dashboard
+              Open overview
             </button>
             <span className="button-secondary">
               Phase 1 static UI
@@ -33,29 +33,29 @@ export function LandingPage({ onOpenDashboard }: LandingPageProps) {
           </div>
         </div>
 
-        <div className="dashboard-preview-shell">
-          <div className="dashboard-preview">
+        <div className="product-preview-shell">
+          <div className="product-preview">
             <div className="preview-header">
               <div>
-                <p className="preview-eyebrow">Executive view</p>
+              <p className="preview-eyebrow">Training view</p>
                 <h2 className="preview-title">Cut Block 03</h2>
               </div>
               <span className="status-badge status-badge--good">Maintain</span>
             </div>
 
             <div className="preview-grid">
-              {["Core Utilisation", "Capacity Proxy", "Forecast Risk", "Efficiency Proxy"].map((label) => (
+              {["Session Load", "Hard Sets", "Top Set RPE", "Wellness"].map((label) => (
                 <div key={label} className="preview-metric">
                   <p className="preview-eyebrow">{label}</p>
-                  <p className="preview-value">{label === "Forecast Risk" ? "Medium" : "91%"}</p>
+                  <p className="preview-value">{label === "Top Set RPE" ? "9" : label === "Session Load" ? "610" : "68"}</p>
                 </div>
               ))}
             </div>
 
             <div className="preview-risk">
-              <p className="preview-eyebrow">Risk watch</p>
-              <p className="preview-risk-title">Support load is drifting above plan.</p>
-              <p className="preview-risk-copy">Watch state, not diagnosis. Review recovery before adding extra work.</p>
+              <p className="preview-eyebrow">Watch state</p>
+              <p className="preview-risk-title">Load is rising while wellness is drifting down.</p>
+              <p className="preview-risk-copy">A training-monitoring signal, not a diagnosis or automatic deload command.</p>
             </div>
           </div>
         </div>

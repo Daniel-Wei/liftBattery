@@ -1,11 +1,12 @@
 export type PageKey =
   | "landing"
-  | "dashboard"
-  | "planForecast"
-  | "coreNonCore"
-  | "capacity"
-  | "efficiency"
-  | "dailyCheckIn"
+  | "overview"
+  | "dailyLog"
+  | "trainingLoad"
+  | "effortRir"
+  | "volume"
+  | "recovery"
+  | "nutrition"
   | "trends"
   | "weeklyReview"
   | "settings";
@@ -83,6 +84,17 @@ export type CheckInItem = {
   label: string;
   labelZh: string;
   value: number;
+  output: string;
+  outputZh: string;
+};
+
+export type RecordOutputItem = {
+  input: string;
+  inputZh: string;
+  output: string;
+  outputZh: string;
+  basis: string;
+  basisZh: string;
 };
 
 export type SettingsMock = {
@@ -91,4 +103,21 @@ export type SettingsMock = {
   trainingGoal: string;
   targetMuscles: string[];
   units: string;
+};
+
+export type FormulaReference = {
+  label: string;
+  url: string;
+};
+
+export type FormulaNoteData = {
+  pageKey: PageKey;
+  title: string;
+  titleZh: string;
+  formula: string;
+  formulaZh: string;
+  concept: string;
+  conceptZh: string;
+  evidenceType: EvidenceType;
+  references: FormulaReference[];
 };

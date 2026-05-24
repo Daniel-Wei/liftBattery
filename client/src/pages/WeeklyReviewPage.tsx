@@ -16,16 +16,16 @@ export function WeeklyReviewPage() {
 
         <div className="three-column">
           <div className="info-card">
-            <p className="info-label">Core utilisation</p>
-            <p className="review-value">{weeklyReview.coreUtilisation}</p>
+            <p className="info-label">Weekly load</p>
+            <p className="review-value">{weeklyReview.weeklyLoad}</p>
           </div>
           <div className="info-card">
-            <p className="info-label">Support load ratio</p>
-            <p className="review-value">{weeklyReview.supportLoadRatio}</p>
+            <p className="info-label">Monotony</p>
+            <p className="review-value">{weeklyReview.monotony}</p>
           </div>
           <div className="info-card">
-            <p className="info-label">Capacity change</p>
-            <p className="review-value">{weeklyReview.capacityChange}</p>
+            <p className="info-label">Bodyweight rate</p>
+            <p className="review-value">{weeklyReview.bodyweightRate}</p>
           </div>
         </div>
       </SectionCard>
