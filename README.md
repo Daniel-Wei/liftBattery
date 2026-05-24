@@ -16,9 +16,10 @@ The final intended architecture is:
 
 - React + TypeScript frontend
 - .NET 8 Azure Functions backend API
+- Azure Service Bus for future asynchronous training events, reminders, and watch-state processing
 - Docker for reproducible local development and containerized builds
 
-Phase 1 remains frontend-only and mock-data-only. Azure Functions, persistence, and backend integration belong to later phases.
+Phase 1 remains frontend-only and mock-data-only. Azure Functions, Azure Service Bus, persistence, and backend integration belong to later phases.
 
 ## 中文
 
@@ -36,9 +37,10 @@ LiftOps 不是医疗 App，不是诊断工具，也不是教练替代品。
 
 - React + TypeScript 前端
 - .NET 8 Azure Functions 后端 API
+- Azure Service Bus 用于后续异步训练事件、提醒和观察状态处理
 - Docker 用于可复现本地开发和容器化构建
 
-Phase 1 仍然只做前端和 mock 数据。Azure Functions、持久化和前后端集成都属于后续阶段。
+Phase 1 仍然只做前端和 mock 数据。Azure Functions、Azure Service Bus、持久化和前后端集成都属于后续阶段。
 
 ---
 

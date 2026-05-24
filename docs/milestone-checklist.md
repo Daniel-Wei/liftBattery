@@ -37,7 +37,7 @@ Checklist:
 * [x] Create empty `api/` folder / 创建空的 `api/` 文件夹
 * [x] Confirm bilingual documentation / 确认文档为中英文双语
 * [x] Confirm evidence-informed metric mapping / 确认基于证据启发的指标映射
-* [x] Confirm final architecture: React + Azure Functions + Docker / 确认最终架构：React + Azure Functions + Docker
+* [x] Confirm final architecture: React + Azure Functions + Azure Service Bus + Docker / 确认最终架构：React + Azure Functions + Azure Service Bus + Docker
 * [x] Confirm MVP boundaries / 确认 MVP 边界
 
 Definition of done:
@@ -47,7 +47,7 @@ Definition of done:
 * Repo structure exists / 项目结构已存在
 * Three bilingual markdown files exist / 三个中英文双语 Markdown 文件已存在
 * Client and API folders exist / client 和 api 文件夹已存在
-* Final architecture is documented as React + Azure Functions + Docker / 最终架构已记录为 React + Azure Functions + Docker
+* Final architecture is documented as React + Azure Functions + Azure Service Bus + Docker / 最终架构已记录为 React + Azure Functions + Azure Service Bus + Docker
 
 ---
 
@@ -120,7 +120,7 @@ Definition of done:
 * Dashboard includes Efficiency/Productivity proxy labels / Dashboard 包含 Efficiency/Productivity proxy 标签
 * Dashboard includes Gantt-style timeline / Dashboard 包含 Gantt 风格时间线
 * Trends page includes curve charts / 趋势页面包含曲线图
-* Final architecture direction is React + Azure Functions + Docker / 最终架构方向为 React + Azure Functions + Docker
+* Final architecture direction is React + Azure Functions + Azure Service Bus + Docker / 最终架构方向为 React + Azure Functions + Azure Service Bus + Docker
 * No localStorage yet / 暂时没有 localStorage
 * No backend yet / 暂时没有后端
 * No authentication yet / 暂时没有登录认证
@@ -225,6 +225,7 @@ Checklist:
 * [ ] Create .NET 8 Azure Functions project / 创建 .NET 8 Azure Functions 项目
 * [ ] Add Azure Functions Dockerfile / 添加 Azure Functions Dockerfile
 * [ ] Add API service to Docker Compose / 将 API 服务加入 Docker Compose
+* [ ] Document Azure Service Bus message boundaries / 记录 Azure Service Bus 消息边界
 * [ ] Create models / 创建模型
 * [ ] Create endpoints for check-ins / 创建 check-in API
 * [ ] Create endpoints for plans / 创建计划 API
@@ -240,6 +241,7 @@ Definition of done:
 
 * Backend runs locally / 后端可本地运行
 * Azure Functions API runs in Docker locally / Azure Functions API 可在 Docker 中本地运行
+* Azure Service Bus integration remains documented or implemented only when the phase explicitly includes it / Azure Service Bus 集成仅在对应阶段明确包含时才实现或记录
 * Frontend can load and save data through backend / 前端可通过后端读取和保存数据
 
 ---
@@ -264,7 +266,9 @@ Checklist:
 * [ ] Add weekly review reminder / 添加每周复盘提醒
 * [ ] Add deload watch reminder / 添加 deload watch 提醒
 * [ ] Add forecast risk reminder / 添加 forecast risk 提醒
-* [ ] Optional Azure Timer Trigger / 可选 Azure Timer Trigger
+* [ ] Plan Azure Service Bus queues or topics for reminder events / 规划用于提醒事件的 Azure Service Bus 队列或主题
+* [ ] Add Azure Service Bus message flow for reminder processing / 添加用于提醒处理的 Azure Service Bus 消息流程
+* [ ] Optional Azure Timer Trigger as a message producer / 可选使用 Azure Timer Trigger 作为消息生产者
 
 Definition of done:
 
@@ -272,6 +276,7 @@ Definition of done:
 
 * User can see reminder states / 用户可以看到提醒状态
 * Reminder logic is separate from UI / 提醒逻辑与 UI 分离
+* Reminder events can be processed asynchronously through Azure Service Bus when implemented / 实现后提醒事件可通过 Azure Service Bus 异步处理
 
 ---
 

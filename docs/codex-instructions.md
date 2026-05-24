@@ -103,11 +103,12 @@ The final intended architecture for LiftOps is:
 
 * React + TypeScript frontend
 * .NET 8 Azure Functions backend API
+* Azure Service Bus for future asynchronous events, reminders, and queue-based watch-state processing
 * Docker for local development, reproducible builds, and deployment packaging
 
 Phase 1 must still remain static frontend UI with mock data only.
 
-Docker scaffolding may be added in Phase 1, but it must not introduce real backend endpoints, persistence, authentication, or AI logic.
+Docker scaffolding may be added in Phase 1, but it must not introduce real backend endpoints, Azure Service Bus queues/topics/subscriptions, persistence, authentication, or AI logic.
 
 ### 中文
 
@@ -115,11 +116,12 @@ LiftOps 的最终目标架构是：
 
 * React + TypeScript 前端
 * .NET 8 Azure Functions 后端 API
+* Azure Service Bus 用于后续异步事件、提醒和基于队列的观察状态处理
 * Docker 用于本地开发、可复现构建和部署打包
 
 Phase 1 仍必须保持为静态前端 UI，只使用 mock 数据。
 
-Phase 1 可以添加 Docker 脚手架，但不能引入真实后端 endpoint、持久化、登录认证或 AI 逻辑。
+Phase 1 可以添加 Docker 脚手架，但不能引入真实后端 endpoint、Azure Service Bus 队列/主题/订阅、持久化、登录认证或 AI 逻辑。
 
 ---
 
