@@ -1,20 +1,12 @@
 import { useState } from "react";
 import { EvidenceNote } from "../components/EvidenceNote";
 import { SectionCard } from "../components/SectionCard";
-import { advancedLogItems, optionalLogItems, quickLogItems, recordOutputItems } from "../data/mockData";
-import type { CheckInItem } from "../types/appTypes";
+import { getLevelData } from "../data/mockData";
+import type { CheckInItem, UserLevel } from "../types/appTypes";
 
 function getMaxValue(label: string) {
-  if (label === "Session Duration" || label === "Bodyweight" || label === "HRV") {
+  if (label === "Session Duration" || label === "Bodyweight") {
     return "100";
-  }
-
-  if (label === "Rep Velocity") {
-    return "100";
-  }
-
-  if (label === "CMJ Height") {
-    return "60";
   }
 
   if (label === "Session RPE" || label === "Hard Sets") {
@@ -24,8 +16,13 @@ function getMaxValue(label: string) {
   return "5";
 }
 
-export function DailyLogPage() {
-  const [quickValues, setQuickValues] = useState<CheckInItem[]>(quickLogItems);
+type TodayPageProps = {
+  selectedLevel: UserLevel;
+};
+
+export function TodayPage({ selectedLevel }: TodayPageProps) {
+  const data = getLevelData(selectedLevel);
+  const [quickValues, setQuickValues] = useState<CheckInItem[]>(data.quickLogItems);
   const sessionRpe = quickValues.find((item) => item.label === "Session RPE")?.value ?? 0;
   const sessionDuration = quickValues.find((item) => item.label === "Session Duration")?.value ?? 0;
   const fatigue = quickValues.find((item) => item.label === "Fatigue")?.value ?? 0;
@@ -44,20 +41,22 @@ export function DailyLogPage() {
     <div className="page page-stack">
       <header className="log-hero">
         <div>
-          <p className="eyebrow">Daily Log / 每日记录</p>
-          <h1 className="page-title">Start with a 60-second quick log.</h1>
-          <p className="page-subtitle">Four inputs are enough for a useful first read. More detail can unlock later.</p>
+          <p className="eyebrow">Today / 今天</p>
+          <h1 className="page-title">Log the few signals that actually change the recommendation.</h1>
+          <p className="page-subtitle">
+            For most users, four inputs are enough: how hard the session felt, how long it took, fatigue, and sleep.
+          </p>
         </div>
         <div className="log-output-stack">
           <div className="log-output-card log-output-card--dark">
+            <p className="log-output-label">Today output</p>
+            <p className="log-output-value">{data.trainingBlock.trainingMode}</p>
+            <p className="log-output-detail">{data.userCase.currentDay}</p>
+          </div>
+          <div className="log-output-card">
             <p className="log-output-label">Session load</p>
             <p className="log-output-value">{sessionLoad} AU</p>
             <p className="log-output-detail">RPE {sessionRpe} x {sessionDuration} min</p>
-          </div>
-          <div className="log-output-card">
-            <p className="log-output-label">Readiness inputs</p>
-            <p className="log-output-value">{fatigue}/5 · {sleepQuality}/5</p>
-            <p className="log-output-detail">Fatigue · Sleep</p>
           </div>
         </div>
       </header>
@@ -81,7 +80,7 @@ export function DailyLogPage() {
                 </div>
                 <span className="quick-value-pill">{item.value}</span>
               </div>
-              <p className="quick-output">Output: {item.output}</p>
+              <p className="quick-output">Changes: {item.output}</p>
               <input
                 type="range"
                 min="1"
@@ -96,9 +95,9 @@ export function DailyLogPage() {
       </section>
 
       <div className="two-column">
-        <SectionCard title="Optional when ready" titleZh="准备好了再加" eyebrow="More signal, more friction">
+        <SectionCard title="Optional when useful" titleZh="有需要时再记录" eyebrow="More detail, more friction">
           <div className="compact-card-list">
-            {optionalLogItems.map((item) => (
+            {data.optionalLogItems.map((item) => (
               <article key={item.label} className="compact-signal-card">
                 <div>
                   <p className="work-title">{item.label}</p>
@@ -110,24 +109,29 @@ export function DailyLogPage() {
           </div>
         </SectionCard>
 
-        <SectionCard title="Advanced later" titleZh="高级版后续再开" eyebrow="Device or coach data">
+        <SectionCard title="What changed today" titleZh="今天哪些输出变化了" eyebrow="Plain-language result">
           <div className="compact-card-list">
-            {advancedLogItems.map((item) => (
-              <article key={item.label} className="compact-signal-card">
-                <div>
-                  <p className="work-title">{item.label}</p>
-                  <p className="info-subtitle">{item.labelZh}</p>
-                </div>
-                <span className="signal-chip signal-chip--muted">{item.output}</span>
-              </article>
-            ))}
+            <article className="compact-signal-card">
+              <div>
+                <p className="work-title">Training pressure rose</p>
+                <p className="info-subtitle">训练压力上升</p>
+              </div>
+              <span className="signal-chip">675 AU</span>
+            </article>
+            <article className="compact-signal-card">
+              <div>
+                <p className="work-title">Recovery is worth watching</p>
+                <p className="info-subtitle">恢复值得观察</p>
+              </div>
+              <span className="signal-chip signal-chip--muted">{fatigue}/5 · {sleepQuality}/5</span>
+            </article>
           </div>
         </SectionCard>
       </div>
 
-      <SectionCard title="Input to output map" titleZh="输入到输出映射" eyebrow="What changes what">
+      <SectionCard title="Why these inputs matter" titleZh="为什么记录这些" eyebrow="Simple cause and effect">
         <div className="output-map-grid">
-          {recordOutputItems.map((item) => (
+          {data.recordOutputItems.slice(0, 3).map((item) => (
             <article key={item.input} className="output-map-card">
               <p className="work-title">{item.input}</p>
               <p className="info-subtitle">{item.inputZh}</p>
@@ -137,9 +141,9 @@ export function DailyLogPage() {
         </div>
       </SectionCard>
 
-      <EvidenceNote title="Daily log boundary / 每日记录边界" evidenceType="watch">
-        <p>The daily log should feel like a quick training receipt, not homework. More inputs should unlock only when the user wants more precision.</p>
-        <p>每日记录应该像快速训练小票，而不是作业。更多输入只在用户想要更高精度时再解锁。</p>
+      <EvidenceNote title="Keep the daily habit light / 保持每日记录轻量" evidenceType="watch">
+        <p>LiftOps should feel like a quick training receipt. Advanced metrics stay optional.</p>
+        <p>LiftOps 应该像训练小票一样快速。高级指标保持可选，不强迫普通用户学习公式。</p>
       </EvidenceNote>
     </div>
   );

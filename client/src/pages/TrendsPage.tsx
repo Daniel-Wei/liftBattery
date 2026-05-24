@@ -1,20 +1,30 @@
 import { ChartMock } from "../components/ChartMock";
-import { bodyweightTrend, loadTrend, nutritionTrend, recoveryTrend, volumeTrend } from "../data/mockData";
+import { getLevelData } from "../data/mockData";
+import type { UserLevel } from "../types/appTypes";
 
-export function TrendsPage() {
+type TrendsPageProps = {
+  selectedLevel: UserLevel;
+};
+
+export function TrendsPage({ selectedLevel }: TrendsPageProps) {
+  const data = getLevelData(selectedLevel);
+
   return (
     <div className="page page-stack">
       <header className="page-header">
         <p className="eyebrow">Trends / 趋势</p>
-        <h1 className="page-title">Compare load, recovery, volume, and nutrition trends.</h1>
+        <h1 className="page-title">Find the pattern before it becomes obvious in the gym.</h1>
+        <p className="page-subtitle">
+          The goal is not more charts. It is noticing when training pressure, recovery, and bodyweight start pulling in different directions.
+        </p>
       </header>
 
       <div className="two-column">
-        <ChartMock title="Training load" titleZh="训练负荷" data={loadTrend} variant="dark" />
-        <ChartMock title="Fatigue / recovery proxy" titleZh="疲劳 / 恢复 Proxy" data={recoveryTrend} variant="green" />
-        <ChartMock title="Hard sets" titleZh="Hard sets" data={volumeTrend} variant="amber" />
-        <ChartMock title="Bodyweight trend" titleZh="体重趋势" data={bodyweightTrend} variant="blue" />
-        <ChartMock title="Calories / carbs proxy panel" titleZh="热量 / 碳水趋势面板" data={nutritionTrend} variant="purple" />
+        <ChartMock title="Training pressure" titleZh="训练压力" data={data.loadTrend} variant="dark" />
+        <ChartMock title="Recovery" titleZh="恢复" data={data.recoveryTrend} variant="green" />
+        <ChartMock title="Training volume" titleZh="训练量" data={data.volumeTrend} variant="amber" />
+        <ChartMock title="Bodyweight trend" titleZh="体重趋势" data={data.bodyweightTrend} variant="blue" />
+        <ChartMock title="Calories context" titleZh="热量语境" data={data.nutritionTrend} variant="purple" />
       </div>
     </div>
   );

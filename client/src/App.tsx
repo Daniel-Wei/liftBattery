@@ -2,56 +2,59 @@ import { useState } from "react";
 import { AppShell } from "./components/AppShell";
 import { FormulaNote } from "./components/FormulaNote";
 import { formulaNotes, navItems } from "./data/mockData";
-import type { PageKey } from "./types/appTypes";
-import { DailyLogPage } from "./pages/DailyLogPage";
-import { EffortRirPage } from "./pages/EffortRirPage";
+import type { PageKey, UserLevel } from "./types/appTypes";
+import { BodyweightPage } from "./pages/BodyweightPage";
 import { LandingPage } from "./pages/LandingPage";
-import { NutritionPage } from "./pages/NutritionPage";
 import { OverviewPage } from "./pages/OverviewPage";
 import { RecoveryPage } from "./pages/RecoveryPage";
 import { SettingsPage } from "./pages/SettingsPage";
-import { TrainingLoadPage } from "./pages/TrainingLoadPage";
+import { TodayPage } from "./pages/TodayPage";
+import { TrainingPage } from "./pages/TrainingPage";
 import { TrendsPage } from "./pages/TrendsPage";
-import { VolumePage } from "./pages/VolumePage";
 import { WeeklyReviewPage } from "./pages/WeeklyReviewPage";
 
 export default function App() {
   const [currentPage, setCurrentPage] = useState<PageKey>("landing");
+  const [selectedLevel, setSelectedLevel] = useState<UserLevel>("level1");
   const currentFormula = formulaNotes.find((note) => note.pageKey === currentPage);
 
   function renderPage() {
     switch (currentPage) {
       case "landing":
-        return <LandingPage onOpenOverview={() => setCurrentPage("overview")} />;
+        return (
+          <LandingPage
+            selectedLevel={selectedLevel}
+            onSelectLevel={(level) => {
+              setSelectedLevel(level);
+              setCurrentPage("overview");
+            }}
+          />
+        );
       case "overview":
-        return <OverviewPage />;
-      case "dailyLog":
-        return <DailyLogPage />;
-      case "trainingLoad":
-        return <TrainingLoadPage />;
-      case "effortRir":
-        return <EffortRirPage />;
-      case "volume":
-        return <VolumePage />;
+        return <OverviewPage selectedLevel={selectedLevel} />;
+      case "today":
+        return <TodayPage selectedLevel={selectedLevel} />;
+      case "training":
+        return <TrainingPage selectedLevel={selectedLevel} />;
       case "recovery":
-        return <RecoveryPage />;
-      case "nutrition":
-        return <NutritionPage />;
+        return <RecoveryPage selectedLevel={selectedLevel} />;
+      case "bodyweight":
+        return <BodyweightPage selectedLevel={selectedLevel} />;
       case "trends":
-        return <TrendsPage />;
+        return <TrendsPage selectedLevel={selectedLevel} />;
       case "weeklyReview":
-        return <WeeklyReviewPage />;
+        return <WeeklyReviewPage selectedLevel={selectedLevel} />;
       case "settings":
-        return <SettingsPage />;
+        return <SettingsPage selectedLevel={selectedLevel} />;
       default:
-        return <OverviewPage />;
+        return <OverviewPage selectedLevel={selectedLevel} />;
     }
   }
 
   return (
     <AppShell navItems={navItems} currentPage={currentPage} onNavigate={setCurrentPage}>
-      {currentFormula ? <FormulaNote note={currentFormula} /> : null}
       {renderPage()}
+      {currentFormula && currentPage !== "landing" ? <FormulaNote note={currentFormula} /> : null}
     </AppShell>
   );
 }

@@ -391,6 +391,58 @@ button {
   margin-top: 1.25rem;
 }
 
+.level-picker {
+  display: grid;
+  gap: 0.75rem;
+  margin-top: 1.5rem;
+}
+
+.level-card {
+  display: grid;
+  gap: 0.35rem;
+  width: 100%;
+  border: 1px solid var(--color-dark-border);
+  border-radius: var(--radius-lg);
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--color-inverse);
+  padding: 1rem;
+  text-align: left;
+  transition: border-color 160ms ease, background 160ms ease, transform 160ms ease;
+}
+
+.level-card:hover,
+.level-card--active {
+  border-color: rgba(134, 239, 172, 0.55);
+  background: rgba(134, 239, 172, 0.12);
+  transform: translateY(-1px);
+}
+
+.level-card-kicker {
+  color: var(--color-inverse-muted);
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.level-card-title {
+  color: white;
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.level-card-title-zh,
+.level-card-copy {
+  color: var(--color-inverse-muted);
+  font-size: 0.86rem;
+  line-height: 1.55;
+}
+
+@media (min-width: 900px) {
+  .level-picker {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
 .metric-grid,
 .card-grid,
 .two-column,

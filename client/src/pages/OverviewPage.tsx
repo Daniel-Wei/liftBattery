@@ -4,40 +4,48 @@ import { GanttTimeline } from "../components/GanttTimeline";
 import { MetricCard } from "../components/MetricCard";
 import { SectionCard } from "../components/SectionCard";
 import { StatusBadge } from "../components/StatusBadge";
-import {
-  loadTrend,
-  overviewMetrics,
-  recoveryTrend,
-  riskWatches,
-  timelinePhases,
-  trainingBlock,
-} from "../data/mockData";
+import { getLevelData } from "../data/mockData";
+import type { UserLevel } from "../types/appTypes";
 
-export function OverviewPage() {
+type OverviewPageProps = {
+  selectedLevel: UserLevel;
+};
+
+export function OverviewPage({ selectedLevel }: OverviewPageProps) {
+  const data = getLevelData(selectedLevel);
+
   return (
     <div className="page page-stack">
       <header className="hero-panel">
         <p className="landing-eyebrow">Training science overview / 训练科学总览</p>
-        <h1 className="page-title">{trainingBlock.name}</h1>
-        <p className="page-subtitle">{trainingBlock.subtitle}</p>
+        <h1 className="page-title">{data.trainingBlock.name}</h1>
+        <p className="page-subtitle">{data.trainingBlock.subtitle}</p>
+        <div className="preview-risk">
+          <p className="preview-eyebrow">
+            User case: {data.userCase.name}, {data.userCase.age} · {data.userCase.trainingAge}
+          </p>
+          <p className="preview-risk-title">{data.userCase.currentDay}</p>
+          <p className="body-text">{data.userCase.shortStory}</p>
+          <p className="body-text">{data.userCase.shortStoryZh}</p>
+        </div>
         <div className="hero-badge-row">
-          <StatusBadge status="neutral" label={`Week ${trainingBlock.currentWeek} / ${trainingBlock.totalWeeks}`} />
-          <StatusBadge status="good" label={`Today: ${trainingBlock.trainingMode}`} />
-          <StatusBadge status="watch" label={trainingBlock.mode} />
+          <StatusBadge status="neutral" label={`Week ${data.trainingBlock.currentWeek} / ${data.trainingBlock.totalWeeks}`} />
+          <StatusBadge status={selectedLevel === "level1" ? "good" : "watch"} label={`Today: ${data.trainingBlock.trainingMode}`} />
+          <StatusBadge status="watch" label={data.trainingBlock.mode} />
         </div>
       </header>
 
       <section className="metric-grid">
-        {overviewMetrics.map((metric) => (
+        {data.overviewMetrics.map((metric) => (
           <MetricCard key={metric.label} metric={metric} />
         ))}
       </section>
 
       <div className="two-column">
-        <GanttTimeline phases={timelinePhases} currentWeek={trainingBlock.currentWeek} />
+        <GanttTimeline phases={data.timelinePhases} currentWeek={data.trainingBlock.currentWeek} />
         <SectionCard title="Watch states" titleZh="观察状态" eyebrow="Pattern-based, not diagnostic">
           <div className="card-list">
-            {riskWatches.map((risk) => (
+            {data.riskWatches.map((risk) => (
               <article key={risk.title} className="risk-card">
                 <div className="info-row">
                   <div>
@@ -54,8 +62,8 @@ export function OverviewPage() {
       </div>
 
       <div className="two-column">
-        <ChartMock title="Session load trend" titleZh="训练课负荷趋势" data={loadTrend} variant="dark" />
-        <ChartMock title="Wellness readiness proxy" titleZh="Wellness readiness proxy" data={recoveryTrend} variant="green" />
+        <ChartMock title="Training pressure trend" titleZh="训练压力趋势" data={data.loadTrend} variant="dark" />
+        <ChartMock title="Recovery trend" titleZh="恢复趋势" data={data.recoveryTrend} variant="green" />
       </div>
 
       <EvidenceNote title="Boundary / 边界" evidenceType="proxy">

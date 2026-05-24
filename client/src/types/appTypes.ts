@@ -1,12 +1,10 @@
 export type PageKey =
   | "landing"
   | "overview"
-  | "dailyLog"
-  | "trainingLoad"
-  | "effortRir"
-  | "volume"
+  | "today"
+  | "training"
   | "recovery"
-  | "nutrition"
+  | "bodyweight"
   | "trends"
   | "weeklyReview"
   | "settings";
@@ -15,6 +13,18 @@ export type NavItem = {
   key: PageKey;
   label: string;
   labelZh: string;
+};
+
+export type UserLevel = "level1" | "level2" | "level3";
+
+export type LevelProfile = {
+  level: UserLevel;
+  label: string;
+  labelZh: string;
+  title: string;
+  titleZh: string;
+  description: string;
+  descriptionZh: string;
 };
 
 export type MetricStatus = "good" | "watch" | "risk" | "neutral";
@@ -72,6 +82,17 @@ export type TrainingBlock = {
   trainingMode: string;
 };
 
+export type UserCase = {
+  name: string;
+  age: number;
+  trainingAge: string;
+  scenario: string;
+  scenarioZh: string;
+  currentDay: string;
+  shortStory: string;
+  shortStoryZh: string;
+};
+
 export type TimelinePhase = {
   name: string;
   nameZh: string;
@@ -103,6 +124,45 @@ export type SettingsMock = {
   trainingGoal: string;
   targetMuscles: string[];
   units: string;
+};
+
+export type WeeklyReviewMock = {
+  summary: string;
+  summaryZh: string;
+  weeklyLoad: string;
+  monotony: string;
+  strain: string;
+  bodyweightRate: string;
+  riskChanges: string[];
+  nextWeek: string;
+  nextWeekZh: string;
+};
+
+export type LevelMockData = {
+  level: UserLevel;
+  userCase: UserCase;
+  trainingBlock: TrainingBlock;
+  overviewMetrics: Metric[];
+  loadMetrics: Metric[];
+  effortMetrics: Metric[];
+  volumeMetrics: Metric[];
+  recoveryMetrics: Metric[];
+  nutritionMetrics: Metric[];
+  primaryStimulusItems: WorkItem[];
+  supportWorkItems: WorkItem[];
+  riskWatches: RiskWatch[];
+  timelinePhases: TimelinePhase[];
+  loadTrend: TrendPoint[];
+  recoveryTrend: TrendPoint[];
+  volumeTrend: TrendPoint[];
+  bodyweightTrend: TrendPoint[];
+  nutritionTrend: TrendPoint[];
+  quickLogItems: CheckInItem[];
+  optionalLogItems: CheckInItem[];
+  advancedLogItems: CheckInItem[];
+  recordOutputItems: RecordOutputItem[];
+  weeklyReview: WeeklyReviewMock;
+  settingsMock: SettingsMock;
 };
 
 export type FormulaReference = {

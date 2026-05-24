@@ -10,6 +10,7 @@ type AppShellProps = {
 
 export function AppShell({ navItems, currentPage, onNavigate, children }: AppShellProps) {
   if (currentPage === "landing") {
+    // The landing page uses its own full-screen layout, so it skips the dashboard shell.
     return <>{children}</>;
   }
 

@@ -1,9 +1,16 @@
 import { ChartMock } from "../components/ChartMock";
 import { EvidenceNote } from "../components/EvidenceNote";
 import { MetricCard } from "../components/MetricCard";
-import { recoveryMetrics, recoveryTrend } from "../data/mockData";
+import { getLevelData } from "../data/mockData";
+import type { UserLevel } from "../types/appTypes";
 
-export function RecoveryPage() {
+type RecoveryPageProps = {
+  selectedLevel: UserLevel;
+};
+
+export function RecoveryPage({ selectedLevel }: RecoveryPageProps) {
+  const data = getLevelData(selectedLevel);
+
   return (
     <div className="page page-stack">
       <header className="page-header">
@@ -12,12 +19,12 @@ export function RecoveryPage() {
       </header>
 
       <section className="metric-grid">
-        {recoveryMetrics.map((metric) => (
+        {data.recoveryMetrics.map((metric) => (
           <MetricCard key={metric.label} metric={metric} showExplanation />
         ))}
       </section>
 
-      <ChartMock title="Wellness readiness trend" titleZh="Wellness readiness 趋势" data={recoveryTrend} variant="green" />
+      <ChartMock title="Recovery trend" titleZh="恢复趋势" data={data.recoveryTrend} variant="green" />
 
       <EvidenceNote title="Recovery boundary / 恢复边界" evidenceType="proxy">
         <p>Fatigue, sleep, soreness, stress, and mood are subjective monitoring inputs, not diagnostic markers.</p>
