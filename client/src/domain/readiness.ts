@@ -4,6 +4,10 @@ function clampScore(score: number) {
   return Math.min(100, Math.max(0, Math.round(score)));
 }
 
+function getPreviousSessionLoad(input: TrainingInput) {
+  return input.previousSessionRpe * input.previousSessionDurationMinutes;
+}
+
 function getSleepAdjustment(sleepHours: number) {
   if (sleepHours < 5) {
     return -30;
@@ -26,30 +30,30 @@ function getSleepAdjustment(sleepHours: number) {
 
 function getRestingHeartRateAdjustment(restingHeartRateDelta: number) {
   if (restingHeartRateDelta <= 0) {
-    return 3;
+    return 1;
   }
 
   if (restingHeartRateDelta <= 5) {
-    return -4;
+    return -2;
   }
 
   if (restingHeartRateDelta <= 10) {
-    return -12;
+    return -6;
   }
 
-  return -22;
+  return -10;
 }
 
-function getPreviousSessionAdjustment(previousSessionRpe: number) {
-  if (previousSessionRpe >= 9) {
+function getPreviousSessionLoadAdjustment(previousSessionLoad: number) {
+  if (previousSessionLoad >= 800) {
     return -16;
   }
 
-  if (previousSessionRpe >= 8) {
+  if (previousSessionLoad >= 600) {
     return -10;
   }
 
-  if (previousSessionRpe <= 6) {
+  if (previousSessionLoad <= 300) {
     return 4;
   }
 
@@ -58,46 +62,53 @@ function getPreviousSessionAdjustment(previousSessionRpe: number) {
 
 function getMainDrivers(input: TrainingInput) {
   const drivers: MainDriver[] = [];
+  const previousSessionLoad = getPreviousSessionLoad(input);
 
   if (input.sleepHours < 7) {
     drivers.push({
+      id: "shortSleep",
       message: "Short sleep",
-      reason: "sleep hours < 7"
+      reason: "sleep hours < 7",
     });
   }
 
   if (input.soreness >= 4) {
     drivers.push({
+      id: "highSoreness",
       message: "High soreness",
-      reason: "soreness >= 4"
+      reason: "soreness >= 4",
     });
   }
 
   if (input.motivation <= 2) {
     drivers.push({
+      id: "lowMotivation",
       message: "Low motivation",
-      reason: "motivation <= 2"
+      reason: "motivation <= 2",
     });
   }
 
   if (input.restingHeartRateDelta > 5) {
     drivers.push({
+      id: "restingHeartRateAboveBaseline",
       message: "Resting HR above baseline",
-      reason: "resting heart rate delta > 5"
+      reason: "resting heart rate delta > 5",
     });
   }
 
-  if (input.previousSessionRpe >= 8) {
+  if (previousSessionLoad >= 600) {
     drivers.push({
-      message: "Hard previous session",
-      reason: "previous session RPE >= 8"
+      id: "hardPreviousSessionLoad",
+      message: "Hard previous session load",
+      reason: "previous session load >= 600 AU",
     });
   }
 
   if (drivers.length === 0) {
     drivers.push({
+      id: "noMajorIssues",
       message: "No major issues",
-      reason: "none"
+      reason: "none",
     });
   }
 
@@ -107,12 +118,13 @@ function getMainDrivers(input: TrainingInput) {
 export function calculateReadiness(input: TrainingInput): ReadinessResult {
   const sorenessPenalty = (input.soreness - 1) * 8;
   const motivationAdjustment = (input.motivation - 3) * 6;
+  const previousSessionLoad = getPreviousSessionLoad(input);
 
   const score = clampScore(
     76
       + getSleepAdjustment(input.sleepHours)
       + getRestingHeartRateAdjustment(input.restingHeartRateDelta)
-      + getPreviousSessionAdjustment(input.previousSessionRpe)
+      + getPreviousSessionLoadAdjustment(previousSessionLoad)
       + motivationAdjustment
       - sorenessPenalty,
   );

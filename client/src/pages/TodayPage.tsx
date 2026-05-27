@@ -15,7 +15,8 @@ type TrainingInputField =
   | "soreness"
   | "motivation"
   | "restingHeartRateDelta"
-  | "previousSessionRpe";
+  | "previousSessionRpe"
+  | "previousSessionDurationMinutes";
 
 type ReadinessControl = {
   field: TrainingInputField;
@@ -79,6 +80,16 @@ const readinessControls: ReadinessControl[] = [
     unit: "/10",
     output: "Changes: fatigue cost",
   },
+  {
+    field: "previousSessionDurationMinutes",
+    label: "Previous Session Duration",
+    labelZh: "上次训练时长",
+    min: 20,
+    max: 120,
+    step: 5,
+    unit: "min",
+    output: "Feeds: previous session load",
+  },
 ];
 
 const initialTrainingInput: TrainingInput = {
@@ -87,6 +98,7 @@ const initialTrainingInput: TrainingInput = {
   motivation: 3,
   restingHeartRateDelta: 4,
   previousSessionRpe: 8,
+  previousSessionDurationMinutes: 75,
 };
 
 function getRangeProgress(value: number, min: number, max: number) {
@@ -188,10 +200,10 @@ export function TodayPage(_props: TodayPageProps) {
 
       {/* TODO: Add your own status-specific explanation section here.
          You can use readiness.status, readiness.score, and trainingInput to explain why the output changed. */}
-      <SectionCard title="Main drivers" titleZh="主要驱动因素" eyebrow={readiness.statusLabel}>
+      <SectionCard title="Main drivers" titleZh="主要驱动因素" >
         <div className="compact-card-list">
           {readiness.mainDrivers.map((md) => (
-            <article key={md.message} className="compact-signal-card">
+            <article key={md.id} className="compact-signal-card">
               <div>
                 <p className="work-title">{md.message}</p>
               </div>
@@ -204,6 +216,7 @@ export function TodayPage(_props: TodayPageProps) {
                 <p className="work-title">{readiness.recommendation}</p>
                 <p className="info-subtitle">{readiness.recommendationZh}</p>
               </div>
+              <span className="signal-chip">{readiness.statusLabel}</span>
             </article>
         </div>
       </SectionCard>

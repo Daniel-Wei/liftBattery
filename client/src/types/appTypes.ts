@@ -29,17 +29,27 @@ export type TrainingInput = {
   motivation: number;
   restingHeartRateDelta: number;
   previousSessionRpe: number;
+  previousSessionDurationMinutes: number;
 };
 
-export type MainDriverMessage = "Short sleep" | "High soreness" | "Low motivation" 
-                                | "Resting HR above baseline" | "Hard previous session" | "No major issues";
+export type MainDriverId =
+  | "shortSleep"
+  | "highSoreness"
+  | "lowMotivation"
+  | "restingHeartRateAboveBaseline"
+  | "hardPreviousSessionLoad"
+  | "noMajorIssues";
 
-export type MainDriverReason = "sleep hours < 7" | "soreness >= 4" | "motivation <= 2" | "resting heart rate delta > 5" | "previous session RPE >= 8" | "none";
+export type MainDriverMessage = "Short sleep" | "High soreness" | "Low motivation" 
+                                | "Resting HR above baseline" | "Hard previous session load" | "No major issues";
+
+export type MainDriverReason = "sleep hours < 7" | "soreness >= 4" | "motivation <= 2" | "resting heart rate delta > 5" | "previous session load >= 600 AU" | "none";
 
 export type MainDriver = {
+  id: MainDriverId;
   message: MainDriverMessage;
   reason: MainDriverReason;
-}
+};
 
 export type ReadinessResult = {
   score: number;
