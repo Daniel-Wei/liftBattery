@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useReducer } from "react";
 import type { CSSProperties } from "react";
 import { EvidenceNote } from "../components/EvidenceNote";
 import { StatusBadge } from "../components/StatusBadge";
@@ -22,6 +22,17 @@ type ReadinessControl = {
   unit: string;
   output: string;
 };
+
+// These actions describe the only ways TodayPage can change the editable training draft.
+type TodayDraftAction =
+  | {
+      type: "updateTodayDraft";
+      field: TrainingInputField;
+      value: number;
+    }
+  | {
+      type: "resetTodayDraft";
+    };
 
 const readinessControls = [
   {
@@ -140,6 +151,21 @@ function loadTrainingInput() {
   }
 }
 
+// The reducer receives the current draft and an action, then returns the next draft.
+// Keep reducers pure: no localStorage, no API calls, and no direct UI changes here.
+function todayDraftReducer(todayDraft: TrainingInput, action: TodayDraftAction): TrainingInput {
+  switch (action.type) {
+    case "updateTodayDraft":
+      return {
+        ...todayDraft,
+        [action.field]: action.value,
+      };
+
+    case "resetTodayDraft":
+      return initialTrainingInput;
+  }
+}
+
 function getRangeProgress(value: number, min: number, max: number) {
   return `${Math.min(100, Math.max(0, ((value - min) / (max - min)) * 100))}%`;
 }
@@ -153,29 +179,33 @@ function formatInputValue(value: number, unit: string) {
 }
 
 export function TodayPage(_props: TodayPageProps) {
-  const [trainingInput, setTrainingInput] = useState<TrainingInput>(() => loadTrainingInput());
-  const readiness = calculateReadiness(trainingInput);
+  // useReducer returns the current state and a dispatch function.
+  // const [state, dispatch] = useReducer(reducer, initialArg, init);
+  // The third argument runs once on first render, so saved localStorage input can restore the draft.
+  const [todayDraft, dispatch] = useReducer(
+    todayDraftReducer,
+    initialTrainingInput,
+    () => loadTrainingInput(),
+  );
+  const readiness = calculateReadiness(todayDraft);
 
   useEffect(() => {
     // useEffect runs after React updates state, which makes it the right place to persist UI changes.
-    // therefore, if later other places need to update trainingInput, they can just call setTrainingInput 
+    // therefore, if later other places need to update todayDraft, they can just dispatch an action
     // and this effect will take care of persistence in localStorage.
     try {
-      localStorage.setItem(TODAY_TRAINING_INPUT_STORAGE_KEY, JSON.stringify(trainingInput));
+      localStorage.setItem(TODAY_TRAINING_INPUT_STORAGE_KEY, JSON.stringify(todayDraft));
     } catch {
       // If browser storage is unavailable, keep the app usable and just skip persistence.
     }
-  }, [trainingInput]);
+  }, [todayDraft]);
 
   function updateTrainingInput(field: TrainingInputField, value: number) {
-    setTrainingInput((currentInput) => ({
-      ...currentInput,
-      [field]: value,
-    }));
+    dispatch({ type: "updateTodayDraft", field, value });
   }
 
   function resetTrainingInput() {
-    setTrainingInput(initialTrainingInput);
+    dispatch({ type: "resetTodayDraft" });
   }
 
   return (
@@ -224,7 +254,7 @@ export function TodayPage(_props: TodayPageProps) {
 
         <div className="quick-control-grid">
           {readinessControls.map((control) => {
-            const value = trainingInput[control.field];
+            const value = todayDraft[control.field];
             const progress = getRangeProgress(value, control.min, control.max);
 
             return (
