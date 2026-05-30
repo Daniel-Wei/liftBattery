@@ -135,6 +135,17 @@ export function TodayPage(_props: TodayPageProps) {
         </div>
 
         <div className="battery-focus-panel">
+          <div className="battery-panel-badges">
+            <StatusBadge
+              status={readiness.badgeStatus}
+              label={`${readiness.statusLabel} / ${readiness.statusLabelZh}`}
+            />
+            <StatusBadge
+              status={todayDraftUpdated ? MetricStatus.Watch : MetricStatus.Good}
+              label={todayDraftUpdated ? "Draft updated" : "Draft saved"}
+            />
+          </div>
+
           <div className="battery-ring" style={batteryRingStyle}>
             <div className="battery-ring-core">
               <span className="battery-score">{readiness.score}</span>
@@ -149,17 +160,6 @@ export function TodayPage(_props: TodayPageProps) {
             <p className="battery-focus-eyebrow">Today output / 今日输出</p>
             <h2 className="battery-focus-title">{readiness.recommendation}</h2>
             <p className="battery-focus-detail">{readiness.recommendationZh}</p>
-          </div>
-
-          <div className="battery-focus-copy">
-             <StatusBadge
-              status={readiness.badgeStatus}
-              label={`${readiness.statusLabel} / ${readiness.statusLabelZh}`}
-            />
-            <StatusBadge
-              status={todayDraftUpdated ? MetricStatus.Watch : MetricStatus.Good}
-              label={todayDraftUpdated ? "Draft updated" : "No draft changes"}
-            />
           </div>
 
         </div>
