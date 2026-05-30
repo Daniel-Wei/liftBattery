@@ -6,6 +6,7 @@ import { MetricCard } from "../components/MetricCard";
 import { SectionCard } from "../components/SectionCard";
 import { StatusBadge } from "../components/StatusBadge";
 import { getLevelData } from "../data/mockData";
+import { getDerivedOverviewMetrics } from "../domain/overviewMetrics";
 import { useTrainingLog } from "../state/TrainingLogContext";
 import { EvidenceType, MetricStatus, RiskSeverity, UserLevel } from "../types/appTypes";
 
@@ -15,7 +16,24 @@ type OverviewPageProps = {
 
 export function OverviewPage({ selectedLevel }: OverviewPageProps) {
   const data = getLevelData(selectedLevel);
-  const { currentReadiness, latestLog } = useTrainingLog();
+
+  const {
+    currentReadiness,
+    latestLog,
+    trainingSessions,
+    bodyweightEntries,
+    nutritionEntries,
+    programSettings,
+  } = useTrainingLog();
+
+  const derivedOverviewMetrics = getDerivedOverviewMetrics({
+    trainingSessions,
+    bodyweightEntries,
+    nutritionEntries,
+    programSettings,
+    currentReadiness,
+  });
+  
   const batteryRingStyle = {
     "--battery-score": `${currentReadiness.score}%`,
   } as CSSProperties;
@@ -76,10 +94,17 @@ export function OverviewPage({ selectedLevel }: OverviewPageProps) {
       </header>
 
       <section className="metric-grid">
-        {data.overviewMetrics.map((metric) => (
+        {derivedOverviewMetrics.map((metric) => (
           <MetricCard key={metric.label} metric={metric} />
         ))}
       </section>
+
+      <div className="demo-section-note">
+        <StatusBadge status={MetricStatus.Neutral} label="Demo preview" />
+        <p>
+          Preview sections below still use demo data until their data sources are connected.
+        </p>
+      </div>
 
       <div className="two-column">
         <GanttTimeline phases={data.timelinePhases} currentWeek={data.trainingBlock.currentWeek} />
