@@ -1155,7 +1155,21 @@ textarea:focus-visible {
 }
 
 .quick-log-header {
+  flex-wrap: wrap;
   margin-bottom: 1rem;
+}
+
+.quick-log-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.6rem;
+}
+
+.quick-log-actions .button-dark {
+  padding: 0.55rem 0.85rem;
+  font-size: 0.8rem;
 }
 
 .quick-control-grid {

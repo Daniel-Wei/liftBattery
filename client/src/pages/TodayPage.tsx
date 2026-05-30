@@ -174,6 +174,10 @@ export function TodayPage(_props: TodayPageProps) {
     }));
   }
 
+  function resetTrainingInput() {
+    setTrainingInput(initialTrainingInput);
+  }
+
   return (
     <div className="page page-stack">
       <header className="log-hero">
@@ -210,7 +214,12 @@ export function TodayPage(_props: TodayPageProps) {
             <p className="section-eyebrow">Controlled inputs</p>
             <h2 className="section-title">Readiness log / 状态记录</h2>
           </div>
-          <span className="status-badge status-badge--good">Live calculation</span>
+          <div className="quick-log-actions">
+            <span className="status-badge status-badge--good">Live calculation</span>
+            <button type="button" className="button-dark" onClick={resetTrainingInput}>
+              Reset inputs
+            </button>
+          </div>
         </div>
 
         <div className="quick-control-grid">
