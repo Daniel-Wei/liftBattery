@@ -149,6 +149,14 @@ export type TrainingLogState = {
   todayDraftUpdated: boolean;
   // logs are saved history records that other pages can analyze later.
   logs: DailyTrainingLog[];
+  // trainingSessions are real post-workout lifting logs.
+  trainingSessions: TrainingSession[];
+  // bodyweightEntries are saved weight records for trend calculations.
+  bodyweightEntries: BodyweightEntry[];
+  // nutritionEntries provide optional cut-pressure context.
+  nutritionEntries: NutritionEntry[];
+  // programSettings provide targets for derived dashboard metrics.
+  programSettings: ProgramSettings;
 };
 
 export enum TrainingLogActionType {
@@ -156,6 +164,13 @@ export enum TrainingLogActionType {
   ResetTodayDraft = "resetTodayDraft",
   SaveTodayLog = "saveTodayLog",
   DeleteLog = "deleteLog",
+  SaveTrainingSession = "saveTrainingSession",
+  DeleteTrainingSession = "deleteTrainingSession",
+  SaveBodyweightEntry = "saveBodyweightEntry",
+  DeleteBodyweightEntry = "deleteBodyweightEntry",
+  SaveNutritionEntry = "saveNutritionEntry",
+  DeleteNutritionEntry = "deleteNutritionEntry",
+  UpdateProgramSettings = "updateProgramSettings",
 }
 
 // Future pages should consume derived results from logs instead of treating TodayPage as the data owner.
@@ -174,6 +189,34 @@ export type TrainingLogAction =
   | {
       type: TrainingLogActionType.DeleteLog;
       id: string;
+    }
+  | {
+      type: TrainingLogActionType.SaveTrainingSession;
+      session: TrainingSession;
+    }
+  | {
+      type: TrainingLogActionType.DeleteTrainingSession;
+      id: string;
+    }
+  | {
+      type: TrainingLogActionType.SaveBodyweightEntry;
+      entry: BodyweightEntry;
+    }
+  | {
+      type: TrainingLogActionType.DeleteBodyweightEntry;
+      id: string;
+    }
+  | {
+      type: TrainingLogActionType.SaveNutritionEntry;
+      entry: NutritionEntry;
+    }
+  | {
+      type: TrainingLogActionType.DeleteNutritionEntry;
+      id: string;
+    }
+  | {
+      type: TrainingLogActionType.UpdateProgramSettings;
+      settings: ProgramSettings;
     };
 
 export type LevelProfile = {
