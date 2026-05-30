@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { CSSProperties } from "react";
 import { EvidenceNote } from "../components/EvidenceNote";
 import { StatusBadge } from "../components/StatusBadge";
@@ -10,13 +10,7 @@ type TodayPageProps = {
   selectedLevel: UserLevel;
 };
 
-type TrainingInputField =
-  | "sleepHours"
-  | "soreness"
-  | "motivation"
-  | "restingHeartRateDelta"
-  | "previousSessionRpe"
-  | "previousSessionDurationMinutes";
+type TrainingInputField = keyof TrainingInput;
 
 type ReadinessControl = {
   field: TrainingInputField;
@@ -29,7 +23,7 @@ type ReadinessControl = {
   output: string;
 };
 
-const readinessControls: ReadinessControl[] = [
+const readinessControls = [
   {
     field: "sleepHours",
     label: "Sleep Hours",
@@ -90,7 +84,7 @@ const readinessControls: ReadinessControl[] = [
     unit: "min",
     output: "Feeds: previous session load",
   },
-];
+] satisfies ReadinessControl[];
 
 const initialTrainingInput: TrainingInput = {
   sleepHours: 6.5,
@@ -100,6 +94,51 @@ const initialTrainingInput: TrainingInput = {
   previousSessionRpe: 8,
   previousSessionDurationMinutes: 75,
 };
+
+const TODAY_TRAINING_INPUT_STORAGE_KEY = "liftops.todayTrainingInput";
+
+function isNumber(value: unknown) {
+  return typeof value === "number" && Number.isFinite(value);
+}
+
+// localStorage gives us untyped JSON, so this guard proves the parsed value matches TrainingInput.
+function isTrainingInput(value: unknown): value is TrainingInput {
+  if (typeof value !== "object" || value === null) {
+    return false;
+  }
+
+  const input = value as Record<string, unknown>;
+
+  return (
+    isNumber(input.sleepHours)
+    && isNumber(input.soreness)
+    && isNumber(input.motivation)
+    && isNumber(input.restingHeartRateDelta)
+    && isNumber(input.previousSessionRpe)
+    && isNumber(input.previousSessionDurationMinutes)
+  );
+}
+
+function loadTrainingInput() {
+  try {
+    const savedValue = localStorage.getItem(TODAY_TRAINING_INPUT_STORAGE_KEY);
+
+    if (savedValue === null) {
+      return initialTrainingInput;
+    }
+
+    // JSON.parse is unsafe because it can throw and because the parsed value has unknown shape.
+    const parsedValue: unknown = JSON.parse(savedValue);
+
+    if (isTrainingInput(parsedValue)) {
+      return parsedValue;
+    }
+
+    return initialTrainingInput;
+  } catch {
+    return initialTrainingInput;
+  }
+}
 
 function getRangeProgress(value: number, min: number, max: number) {
   return `${Math.min(100, Math.max(0, ((value - min) / (max - min)) * 100))}%`;
@@ -114,14 +153,25 @@ function formatInputValue(value: number, unit: string) {
 }
 
 export function TodayPage(_props: TodayPageProps) {
-  const [trainingInput, setTrainingInput] = useState<TrainingInput>(initialTrainingInput);
+  const [trainingInput, setTrainingInput] = useState<TrainingInput>(() => loadTrainingInput());
   const readiness = calculateReadiness(trainingInput);
 
+  useEffect(() => {
+    // useEffect runs after React updates state, which makes it the right place to persist UI changes.
+    // therefore, if later other places need to update trainingInput, they can just call setTrainingInput 
+    // and this effect will take care of persistence in localStorage.
+    try {
+      localStorage.setItem(TODAY_TRAINING_INPUT_STORAGE_KEY, JSON.stringify(trainingInput));
+    } catch {
+      // If browser storage is unavailable, keep the app usable and just skip persistence.
+    }
+  }, [trainingInput]);
+
   function updateTrainingInput(field: TrainingInputField, value: number) {
-    setTrainingInput({
-      ...trainingInput,
+    setTrainingInput((currentInput) => ({
+      ...currentInput,
       [field]: value,
-    });
+    }));
   }
 
   return (
@@ -129,7 +179,7 @@ export function TodayPage(_props: TodayPageProps) {
       <header className="log-hero">
         <div className="page-header">
           <p className="eyebrow">Today / 今天</p>
-          <h1 className="page-title">Log five signals and see today&apos;s readiness.</h1>
+          <h1 className="page-title">Log daily signals and see today&apos;s readiness.</h1>
           <p className="page-subtitle">
             This prototype calculates a simple readiness score from sleep, soreness, motivation,
             resting heart rate change, and the previous session&apos;s RPE.
@@ -198,8 +248,6 @@ export function TodayPage(_props: TodayPageProps) {
         </div>
       </section>
 
-      {/* TODO: Add your own status-specific explanation section here.
-         You can use readiness.status, readiness.score, and trainingInput to explain why the output changed. */}
       <SectionCard title="Main drivers" titleZh="主要驱动因素" >
         <div className="compact-card-list">
           {readiness.mainDrivers.map((md) => (
