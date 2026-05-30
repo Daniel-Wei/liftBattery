@@ -125,10 +125,10 @@ export function TodayPage(_props: TodayPageProps) {
         <div className="dashboard-title-row">
           <div>
             <p className="landing-eyebrow">Today / 今天</p>
-            <h1 className="page-title">Daily signals, one readiness view.</h1>
+            <h1 className="page-title">Pre-workout readiness check-in.</h1>
             <p className="page-subtitle">
-              Log the inputs that actually move the recommendation: sleep, soreness,
-              motivation, resting heart rate change, and previous session effort.
+              Before training, log the few signals that shape today&apos;s recommendation:
+              sleep, soreness, motivation, resting heart rate change, and previous session effort.
             </p>
           </div>
           
@@ -157,7 +157,7 @@ export function TodayPage(_props: TodayPageProps) {
 
           <div className="battery-focus-copy">
            
-            <p className="battery-focus-eyebrow">Today output / 今日输出</p>
+            <p className="battery-focus-eyebrow">Pre-workout output / 训练前输出</p>
             <h2 className="battery-focus-title">{readiness.recommendation}</h2>
             <p className="battery-focus-detail">{readiness.recommendationZh}</p>
           </div>
@@ -169,12 +169,12 @@ export function TodayPage(_props: TodayPageProps) {
         <div className="quick-log-header">
           <div>
             <p className="section-eyebrow">Controlled inputs</p>
-            <h2 className="section-title">Readiness log / 状态记录</h2>
+            <h2 className="section-title">Pre-workout readiness / 训练前状态</h2>
           </div>
           <div className="quick-log-actions">
             <StatusBadge status={MetricStatus.Good} label="Live calculation" />
             <button type="button" className="button-dark" onClick={saveTodayLog}>
-              Save today log
+              Save readiness check-in
             </button>
             <button type="button" className="button-dark" onClick={resetTrainingInput}>
               Reset inputs
@@ -238,14 +238,14 @@ export function TodayPage(_props: TodayPageProps) {
         </div>
       </SectionCard>
 
-      <EvidenceNote title="Readiness is a coaching proxy / 状态分数是训练 proxy" evidenceType={EvidenceType.Proxy}>
+      <EvidenceNote title="Pre-workout readiness is a coaching proxy / 训练前状态分数是 proxy" evidenceType={EvidenceType.Proxy}>
         <p>
-          This score is a simple training-readiness estimate, not a diagnosis. It combines common
-          self-report signals with resting heart rate change and previous session effort.
+          This score is a simple pre-workout readiness estimate, not a diagnosis or a full
+          post-workout training log. Real session details belong on the Training page.
         </p>
         <p>
-          这个分数只是训练状态估计，不是医学诊断。它结合了常见主观状态、
-          静息心率变化和上次训练难度。
+          这个分数只是训练前状态估计，不是医学诊断，也不是完整训练日志。
+          真正的训练内容记录之后应该放在 Training 页面。
         </p>
       </EvidenceNote>
     </div>
