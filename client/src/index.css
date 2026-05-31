@@ -574,6 +574,59 @@ textarea:focus-visible {
   font-weight: var(--weight-semibold);
 }
 
+.training-load-panel {
+  min-height: 13rem;
+  align-items: end;
+}
+
+.training-load-summary {
+  display: grid;
+  gap: 0.8rem;
+  align-self: center;
+}
+
+.training-load-detail-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.65rem 1.05rem;
+}
+
+.training-load-exercise {
+  margin: 0;
+  color: #dff3ff;
+  font-family: var(--font-display);
+  font-size: clamp(1.9rem, 4vw, 3.2rem);
+  font-weight: var(--weight-semibold);
+  line-height: 1;
+}
+
+.training-load-value {
+  margin: 0;
+  color: #9bd7f2;
+  font-family: var(--font-display);
+  font-size: clamp(2.2rem, 4.8vw, 3.9rem);
+  font-weight: var(--weight-semibold);
+  line-height: 1;
+}
+
+.training-load-copy {
+  display: grid;
+  gap: 0.45rem;
+  min-width: min(100%, 18rem);
+  padding-bottom: 0.22rem;
+}
+
+.training-load-panel .battery-focus-meta > div {
+  background: rgba(246, 251, 255, 0.07);
+}
+
+.training-load-panel .status-badge {
+  border-color: rgba(223, 243, 255, 0.32);
+  background: rgba(223, 243, 255, 0.12);
+  color: #dff3ff;
+}
+
 .live-metrics-header,
 .demo-section-note {
   display: flex;
@@ -1475,6 +1528,95 @@ textarea:focus-visible {
     0 8px 18px rgba(45, 104, 140, 0.07);
 }
 
+.training-session-intro {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.85rem;
+  margin-bottom: 1rem;
+}
+
+.training-session-intro .body-text {
+  max-width: 46rem;
+}
+
+.training-session-form {
+  display: grid;
+  gap: 0.85rem;
+}
+
+.training-form-field {
+  display: grid;
+  gap: 0.4rem;
+}
+
+.training-form-label {
+  color: var(--color-ink-muted);
+  font-size: 0.78rem;
+  font-weight: var(--weight-semibold);
+}
+
+.training-input {
+  width: 100%;
+  border: 1px solid rgba(31, 72, 98, 0.22);
+  border-radius: var(--radius-md);
+  background: linear-gradient(145deg, #f8fdff, #eef7fb);
+  color: var(--color-ink);
+  padding: 0.72rem 0.8rem;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.72),
+    0 8px 18px rgba(45, 104, 140, 0.06);
+}
+
+.training-input:focus {
+  border-color: var(--color-accent-strong);
+}
+
+.training-form-actions,
+.saved-session-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.training-form-actions {
+  margin-top: 1rem;
+}
+
+.form-error {
+  margin: 0;
+  color: var(--color-risk-text);
+  font-size: 0.88rem;
+  font-weight: var(--weight-semibold);
+}
+
+.saved-session-block {
+  display: grid;
+  gap: 0.75rem;
+  margin-top: 1.25rem;
+}
+
+.saved-session-card {
+  align-items: flex-start;
+}
+
+.text-button {
+  border: 0;
+  border-radius: 999px;
+  background: var(--color-neutral-bg);
+  color: var(--color-neutral-text);
+  padding: 0.35rem 0.7rem;
+  font-size: 0.78rem;
+  font-weight: var(--weight-semibold);
+}
+
+.text-button:hover {
+  background: var(--color-blue-soft);
+  color: #476f87;
+}
+
 .signal-chip {
   background: var(--color-accent-wash);
   color: #2f7465;
@@ -1654,6 +1796,10 @@ textarea:focus-visible {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  .training-session-form {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .output-map-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -1694,6 +1840,15 @@ textarea:focus-visible {
     grid-template-columns: 1fr;
   }
 
+  .training-load-panel {
+    grid-template-columns: 1fr;
+  }
+
+  .training-load-panel .battery-focus-meta {
+    grid-column: 1 / -1;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
   .landing-layout {
     grid-template-columns: minmax(0, 1fr) minmax(24rem, 0.9fr);
     padding-inline: 2rem;
@@ -1702,5 +1857,9 @@ textarea:focus-visible {
   .log-hero {
     grid-template-columns: minmax(0, 1fr) minmax(20rem, 0.45fr);
     align-items: end;
+  }
+
+  .training-session-form {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
   }
 }

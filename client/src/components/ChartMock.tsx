@@ -8,7 +8,7 @@ type ChartMockProps = {
 };
 
 export function ChartMock({ title, titleZh, data, variant = "blue" }: ChartMockProps) {
-  const maxValue = Math.max(...data.map((point) => point.value));
+  const maxValue = Math.max(1, ...data.map((point) => point.value));
   const barClassName = `chart-bar chart-bar--${variant}`;
 
   return (
