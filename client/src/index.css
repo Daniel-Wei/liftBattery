@@ -1034,70 +1034,105 @@ textarea:focus-visible {
   line-height: 1.6;
 }
 
-.chart-bars {
-  display: flex;
-  height: 10rem;
-  align-items: end;
-  gap: 0.55rem;
-  margin-top: 1rem;
+.chart-line-frame {
+  margin-top: 0.75rem;
+  min-height: 10.5rem;
+  padding: 0.35rem 0.6rem 0.2rem;
 }
 
-.chart-column {
-  display: flex;
-  flex: 1;
-  flex-direction: column;
-  align-items: center;
-  gap: 0.5rem;
+.chart-line-frame--empty {
+  display: grid;
+  place-items: center;
 }
 
-.chart-track {
-  display: flex;
+.chart-line-svg {
+  display: block;
   width: 100%;
-  height: 8.5rem;
-  align-items: end;
-  border: 1px solid rgba(70, 97, 116, 0.14);
-  border-radius: var(--radius-sm);
-  background: linear-gradient(180deg, #f1f6f8, #e8f0f4);
-  padding: 0.25rem;
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.72),
-    inset 0 -10px 18px rgba(54, 78, 96, 0.035);
+  height: auto;
+  min-height: 10rem;
+  overflow: visible;
 }
 
-.chart-bar {
-  width: 100%;
-  border: 1px solid rgba(255, 255, 255, 0.42);
-  border-radius: 0.35rem;
-  background: #8faabd;
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.34),
-    0 10px 18px rgba(50, 72, 88, 0.1);
+.chart-y-tick line {
+  stroke: rgba(70, 97, 116, 0.11);
+  stroke-width: 1;
 }
 
-.chart-bar--dark {
-  background: linear-gradient(180deg, #718595, #465d70);
-}
-
-.chart-bar--green {
-  background: linear-gradient(180deg, #9fc7b4, #78a995);
-}
-
-.chart-bar--blue {
-  background: linear-gradient(180deg, #9bbfd4, #719eb9);
-}
-
-.chart-bar--purple {
-  background: linear-gradient(180deg, #aaa0c7, #847aa5);
-}
-
-.chart-bar--amber {
-  background: linear-gradient(180deg, #d4bb82, #b99a5e);
-}
-
-.chart-label {
-  color: var(--card-muted);
-  font-size: 0.75rem;
+.chart-y-tick text,
+.chart-x-label {
+  fill: var(--card-muted);
+  font-size: 10px;
   font-weight: var(--weight-medium);
+}
+
+.chart-y-tick text {
+  text-anchor: end;
+}
+
+.chart-x-label {
+  text-anchor: middle;
+}
+
+.chart-y-axis {
+  stroke: rgba(70, 97, 116, 0.22);
+  stroke-width: 1;
+}
+
+.chart-line {
+  fill: none;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 2;
+}
+
+.chart-point {
+  stroke: #fff;
+  stroke-width: 1.4;
+}
+
+.chart-line--dark,
+.chart-point--dark {
+  stroke: #465d70;
+}
+
+.chart-point--dark {
+  fill: #465d70;
+}
+
+.chart-line--green,
+.chart-point--green {
+  stroke: #7eaa99;
+}
+
+.chart-point--green {
+  fill: #7eaa99;
+}
+
+.chart-line--blue,
+.chart-point--blue {
+  stroke: #719eb9;
+}
+
+.chart-point--blue {
+  fill: #719eb9;
+}
+
+.chart-line--purple,
+.chart-point--purple {
+  stroke: #847aa5;
+}
+
+.chart-point--purple {
+  fill: #847aa5;
+}
+
+.chart-line--amber,
+.chart-point--amber {
+  stroke: #b99a5e;
+}
+
+.chart-point--amber {
+  fill: #b99a5e;
 }
 
 .gantt-body {
@@ -1557,6 +1592,10 @@ textarea:focus-visible {
   font-weight: var(--weight-semibold);
 }
 
+.training-form-field--compact {
+  min-width: 8.5rem;
+}
+
 .training-input {
   width: 100%;
   border: 1px solid rgba(31, 72, 98, 0.22);
@@ -1571,6 +1610,11 @@ textarea:focus-visible {
 
 .training-input:focus {
   border-color: var(--color-accent-strong);
+}
+
+.training-input--compact {
+  min-height: 2.45rem;
+  padding: 0.55rem 0.7rem;
 }
 
 .training-form-actions,
@@ -1598,6 +1642,33 @@ textarea:focus-visible {
   margin-top: 1.25rem;
 }
 
+.saved-session-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.saved-session-controls,
+.saved-session-pagination {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.saved-session-pagination {
+  justify-content: flex-end;
+  padding-top: 0.25rem;
+}
+
+.pagination-label {
+  color: var(--color-ink-muted);
+  font-size: 0.84rem;
+  font-weight: var(--weight-semibold);
+}
+
 .saved-session-card {
   align-items: flex-start;
 }
@@ -1610,6 +1681,11 @@ textarea:focus-visible {
   padding: 0.35rem 0.7rem;
   font-size: 0.78rem;
   font-weight: var(--weight-semibold);
+}
+
+.text-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
 }
 
 .text-button:hover {
@@ -1828,7 +1904,7 @@ textarea:focus-visible {
   }
 
   .two-column {
-    grid-template-columns: minmax(0, 1fr) minmax(0, 0.9fr);
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .battery-focus-panel {

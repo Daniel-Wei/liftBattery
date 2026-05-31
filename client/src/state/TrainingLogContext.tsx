@@ -9,7 +9,6 @@ import { calculateReadiness } from "../domain/readiness";
 import type {
   BodyweightEntry,
   DailyTrainingLog,
-  ExerciseEntry,
   MainDriver,
   MuscleGroup,
   NutritionEntry,
@@ -88,6 +87,13 @@ type TrainingLogContextValue = {
 
 type TrainingLogProviderProps = {
   children: ReactNode;
+};
+
+type LegacyExerciseEntry = {
+  id: string;
+  exerciseName: string;
+  primaryMuscleGroups: MuscleGroup[];
+  sets: SetEntry[];
 };
 
 const TrainingLogContext = createContext<TrainingLogContextValue | null>(null);
@@ -231,7 +237,7 @@ function isSetEntry(value: unknown): value is SetEntry {
   );
 }
 
-function isExerciseEntry(value: unknown): value is ExerciseEntry {
+function isLegacyExerciseEntry(value: unknown): value is LegacyExerciseEntry {
   if (!isStringKeyValuePairObjectRecord(value)) {
     return false;
   }
@@ -256,15 +262,76 @@ export function isTrainingSession(value: unknown): value is TrainingSession {
     && isString(value.date)
     && isNumber(value.durationMinutes)
     && isNumber(value.sessionRpe)
-    && Array.isArray(value.exercises)
-    && value.exercises.every(isExerciseEntry)
+    && isString(value.exerciseName)
+    && isMuscleGroup(value.primaryMuscleGroup)
+    && Array.isArray(value.sets)
+    && value.sets.every(isSetEntry)
     && isString(value.createdAt)
     && isString(value.updatedAt)
   );
 }
 
-export function isTrainingSessionArray(value: unknown): value is TrainingSession[] {
-  return Array.isArray(value) && value.every(isTrainingSession);
+function getTrainingSessionFromStorage(value: unknown): TrainingSession | null {
+  if (isTrainingSession(value)) {
+    return value;
+  }
+
+  if (!isStringKeyValuePairObjectRecord(value)) {
+    return null;
+  }
+
+  if (
+    !isString(value.id)
+    || !isString(value.date)
+    || !isNumber(value.durationMinutes)
+    || !isNumber(value.sessionRpe)
+    || !Array.isArray(value.exercises)
+    || value.exercises.length === 0
+    || !isLegacyExerciseEntry(value.exercises[0])
+    || !isString(value.createdAt)
+    || !isString(value.updatedAt)
+  ) {
+    return null;
+  }
+
+  const legacyExercise = value.exercises[0];
+  const primaryMuscleGroup = legacyExercise.primaryMuscleGroups[0];
+
+  if (!isMuscleGroup(primaryMuscleGroup)) {
+    return null;
+  }
+
+  return {
+    id: value.id,
+    date: value.date,
+    durationMinutes: value.durationMinutes,
+    sessionRpe: value.sessionRpe,
+    exerciseName: legacyExercise.exerciseName,
+    primaryMuscleGroup,
+    sets: legacyExercise.sets,
+    createdAt: value.createdAt,
+    updatedAt: value.updatedAt,
+  };
+}
+
+export function getTrainingSessionArrayFromStorage(value: unknown): TrainingSession[] | null {
+  if (!Array.isArray(value)) {
+    return null;
+  }
+
+  const trainingSessions: TrainingSession[] = [];
+
+  for (const storedSession of value) {
+    const trainingSession = getTrainingSessionFromStorage(storedSession);
+
+    if (trainingSession === null) {
+      return null;
+    }
+
+    trainingSessions.push(trainingSession);
+  }
+
+  return trainingSessions;
 }
 
 export function isBodyweightEntry(value: unknown): value is BodyweightEntry {
@@ -372,8 +439,10 @@ function loadTrainingSessions() {
 
     const parsedValue: unknown = JSON.parse(savedValue);
 
-    if (isTrainingSessionArray(parsedValue)) {
-      return parsedValue;
+    const trainingSessions = getTrainingSessionArrayFromStorage(parsedValue);
+
+    if (trainingSessions !== null) {
+      return trainingSessions;
     }
 
     return [];

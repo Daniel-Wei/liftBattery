@@ -5,7 +5,6 @@ export enum PageKey {
   Training = "training",
   Recovery = "recovery",
   Bodyweight = "bodyweight",
-  Trends = "trends",
   WeeklyReview = "weeklyReview",
   Settings = "settings",
 }
@@ -95,20 +94,15 @@ export type SetEntry = {
   isWarmup: boolean;
 };
 
-export type ExerciseEntry = {
-  id: string;
-  exerciseName: string;
-  primaryMuscleGroups: MuscleGroup[];
-  sets: SetEntry[];
-};
-
-// TrainingSession stores real post-workout lifting data, separate from readiness check-ins.
+// TrainingSession stores one quick-saved post-workout exercise, separate from readiness check-ins.
 export type TrainingSession = {
   id: string;
   date: string;
   durationMinutes: number;
   sessionRpe: number;
-  exercises: ExerciseEntry[];
+  exerciseName: string;
+  primaryMuscleGroup: MuscleGroup;
+  sets: SetEntry[];
   createdAt: string;
   updatedAt: string;
 };

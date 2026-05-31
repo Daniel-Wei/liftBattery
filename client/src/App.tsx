@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
 import { AppShell } from "./components/AppShell";
-import { FormulaNote } from "./components/FormulaNote";
-import { formulaNotes, navItems } from "./data/mockData";
+import { navItems } from "./data/mockData";
 import { PageKey, UserLevel } from "./types/appTypes";
 import { BodyweightPage } from "./pages/BodyweightPage";
 import { LandingPage } from "./pages/LandingPage";
@@ -10,14 +9,12 @@ import { RecoveryPage } from "./pages/RecoveryPage";
 import { SettingsPage } from "./pages/SettingsPage";
 import { TodayPage } from "./pages/TodayPage";
 import { TrainingPage } from "./pages/TrainingPage";
-import { TrendsPage } from "./pages/TrendsPage";
 import { WeeklyReviewPage } from "./pages/WeeklyReviewPage";
 import { TrainingLogProvider } from "./state/TrainingLogContext";
 
 export default function App() {
   const [currentPage, setCurrentPage] = useState<PageKey>(PageKey.Landing);
   const [selectedLevel, setSelectedLevel] = useState<UserLevel>(UserLevel.Level1);
-  const currentFormula = formulaNotes.find((note) => note.pageKey === currentPage);
 
   useEffect(() => {
     window.scrollTo({ top: 0, behavior: "auto" });
@@ -45,8 +42,6 @@ export default function App() {
         return <RecoveryPage selectedLevel={selectedLevel} />;
       case PageKey.Bodyweight:
         return <BodyweightPage selectedLevel={selectedLevel} />;
-      case PageKey.Trends:
-        return <TrendsPage selectedLevel={selectedLevel} />;
       case PageKey.WeeklyReview:
         return <WeeklyReviewPage selectedLevel={selectedLevel} />;
       case PageKey.Settings:
@@ -63,7 +58,6 @@ export default function App() {
       ) : (
         <TrainingLogProvider>
           {renderPage()}
-          {currentFormula ? <FormulaNote note={currentFormula} /> : null}
         </TrainingLogProvider>
       )}
     </AppShell>

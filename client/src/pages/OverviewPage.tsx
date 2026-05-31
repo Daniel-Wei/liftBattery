@@ -1,14 +1,17 @@
 import type { CSSProperties } from "react";
 import { ChartMock } from "../components/ChartMock";
-import { EvidenceNote } from "../components/EvidenceNote";
 import { GanttTimeline } from "../components/GanttTimeline";
 import { MetricCard } from "../components/MetricCard";
 import { SectionCard } from "../components/SectionCard";
 import { StatusBadge } from "../components/StatusBadge";
 import { getLevelData } from "../data/mockData";
 import { getDerivedOverviewMetrics } from "../domain/overviewMetrics";
+import {
+  getWeeklySessionLoadTrend,
+  getWeeklyVolumeLoadTrend,
+} from "../domain/trainingTrendCharts";
 import { useTrainingLog } from "../state/TrainingLogContext";
-import { EvidenceType, MetricStatus, RiskSeverity, UserLevel } from "../types/appTypes";
+import { MetricStatus, RiskSeverity, UserLevel } from "../types/appTypes";
 
 type OverviewPageProps = {
   selectedLevel: UserLevel;
@@ -33,6 +36,8 @@ export function OverviewPage({ selectedLevel }: OverviewPageProps) {
     programSettings,
     currentReadiness,
   });
+  const weeklySessionLoadTrend = getWeeklySessionLoadTrend(trainingSessions);
+  const weeklyVolumeLoadTrend = getWeeklyVolumeLoadTrend(trainingSessions);
   
   const batteryRingStyle = {
     "--battery-score": `${currentReadiness.score}%`,
@@ -130,29 +135,48 @@ export function OverviewPage({ selectedLevel }: OverviewPageProps) {
       </div>
 
       <div className="two-column">
-        <ChartMock
-          title="Training pressure trend"
-          titleZh="训练压力趋势"
-          data={data.loadTrend}
-          variant="dark"
-        />
-        <ChartMock
-          title="Recovery trend"
-          titleZh="恢复趋势"
-          data={data.recoveryTrend}
-          variant="green"
-        />
-      </div>
+      <ChartMock
+        title="Training pressure trend"
+        titleZh="训练压力趋势"
+        data={data.loadTrend}
+        variant="dark"
+      />
 
-      <EvidenceNote title="Boundary / 边界" evidenceType={EvidenceType.Proxy}>
-        <p>
-          Lift Battery shows interpretable training signals. It does not diagnose recovery,
-          overtraining, or medical risk.
-        </p>
-        <p>
-          Lift Battery 展示可解释训练信号，不诊断恢复、过度训练或医学风险。
-        </p>
-      </EvidenceNote>
+      <ChartMock
+        title="Recovery trend"
+        titleZh="恢复趋势"
+        data={data.recoveryTrend}
+        variant="green"
+      />
+
+      <ChartMock
+        title="Training session load"
+        titleZh={"\u8bad\u7ec3\u8bfe\u8d1f\u8377"}
+        data={weeklySessionLoadTrend}
+        variant="dark"
+      />
+
+      <ChartMock
+        title="Training volume load"
+        titleZh={"\u8bad\u7ec3\u91cf\u8d1f\u8377"}
+        data={weeklyVolumeLoadTrend}
+        variant="amber"
+      />
+
+      <ChartMock
+        title="Bodyweight trend"
+        titleZh="体重趋势"
+        data={data.bodyweightTrend}
+        variant="blue"
+      />
+
+      <ChartMock
+        title="Calories context"
+        titleZh="热量语境"
+        data={data.nutritionTrend}
+        variant="purple"
+      />
+      </div>
     </div>
   );
 }

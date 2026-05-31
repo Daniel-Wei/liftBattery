@@ -41,7 +41,6 @@ export const navItems: NavItem[] = [
   { key: PageKey.Training, label: "Training", labelZh: "训练" },
   { key: PageKey.Recovery, label: "Recovery", labelZh: "恢复" },
   { key: PageKey.Bodyweight, label: "Bodyweight", labelZh: "体重" },
-  { key: PageKey.Trends, label: "Trends", labelZh: "趋势" },
   { key: PageKey.WeeklyReview, label: "Weekly Review", labelZh: "每周复盘" },
   { key: PageKey.Settings, label: "Settings", labelZh: "设置" },
 ];
@@ -944,20 +943,6 @@ export const formulaNotes: FormulaNoteData[] = [
     references: [
       { label: "Natural bodybuilding prep", url: referenceLinks.naturalBodybuilding },
       { label: "Self-report review", url: referenceLinks.wellness },
-    ],
-  },
-  {
-    pageKey: PageKey.Trends,
-    title: "Trends compare load, effort, recovery, volume, and nutrition.",
-    titleZh: "趋势页对比负荷、努力、恢复、训练量和饮食。",
-    formula: "Trend review = load trend + wellness trend + volume trend + bodyweight trend",
-    formulaZh: "趋势复盘 = 负荷趋势 + wellness 趋势 + 训练量趋势 + 体重趋势",
-    concept: "A trend page should help users connect changes across systems instead of staring at isolated charts.",
-    conceptZh: "趋势页应帮助用户连接不同系统的变化，而不是看孤立图表。",
-    evidenceType: EvidenceType.Watch,
-    references: [
-      { label: "Training load fatigue", url: referenceLinks.loadFatigue },
-      { label: "Athlete self-report", url: referenceLinks.wellness },
     ],
   },
   {

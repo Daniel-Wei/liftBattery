@@ -1,7 +1,6 @@
-import { EvidenceNote } from "../components/EvidenceNote";
 import { SectionCard } from "../components/SectionCard";
 import { getLevelData, levelProfiles } from "../data/mockData";
-import { EvidenceType, type UserLevel } from "../types/appTypes";
+import type { UserLevel } from "../types/appTypes";
 
 type SettingsPageProps = {
   selectedLevel: UserLevel;
@@ -45,15 +44,6 @@ export function SettingsPage({ selectedLevel }: SettingsPageProps) {
         </div>
       </SectionCard>
 
-      <EvidenceNote title="Evidence disclaimer / 证据说明" evidenceType={EvidenceType.Watch}>
-        <p>Lift Battery is not a medical app, diagnosis tool, or coach replacement.</p>
-        <p>Lift Battery 不是医疗 App、诊断工具或教练替代品。</p>
-      </EvidenceNote>
-
-      <EvidenceNote title="Heuristic metric disclaimer / 启发式指标说明" evidenceType={EvidenceType.Heuristic}>
-        <p>Volume landmarks such as MV, MEV, MAV, and MRV are used as personal heuristics, not universal equations.</p>
-        <p>MV、MEV、MAV、MRV 等 volume landmarks 作为个人启发式框架使用，不是统一方程。</p>
-      </EvidenceNote>
     </div>
   );
 }

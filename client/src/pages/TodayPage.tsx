@@ -1,9 +1,8 @@
 import type { CSSProperties } from "react";
-import { EvidenceNote } from "../components/EvidenceNote";
 import { SectionCard } from "../components/SectionCard";
 import { StatusBadge } from "../components/StatusBadge";
 import { useTrainingLog } from "../state/TrainingLogContext";
-import { EvidenceType, MetricStatus, type TrainingInput, type UserLevel } from "../types/appTypes";
+import { MetricStatus, type TrainingInput, type UserLevel } from "../types/appTypes";
 
 type TodayPageProps = {
   selectedLevel: UserLevel;
@@ -238,16 +237,6 @@ export function TodayPage(_props: TodayPageProps) {
         </div>
       </SectionCard>
 
-      <EvidenceNote title="Pre-workout readiness is a coaching proxy / 训练前状态分数是 proxy" evidenceType={EvidenceType.Proxy}>
-        <p>
-          This score is a simple pre-workout readiness estimate, not a diagnosis or a full
-          post-workout training log. Real session details belong on the Training page.
-        </p>
-        <p>
-          这个分数只是训练前状态估计，不是医学诊断，也不是完整训练日志。
-          真正的训练内容记录之后应该放在 Training 页面。
-        </p>
-      </EvidenceNote>
     </div>
   );
 }

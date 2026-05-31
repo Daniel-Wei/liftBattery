@@ -1,7 +1,6 @@
-import { EvidenceNote } from "../components/EvidenceNote";
 import { SectionCard } from "../components/SectionCard";
 import { getLevelData } from "../data/mockData";
-import { EvidenceType, type UserLevel } from "../types/appTypes";
+import type { UserLevel } from "../types/appTypes";
 
 type WeeklyReviewPageProps = {
   selectedLevel: UserLevel;
@@ -48,10 +47,6 @@ export function WeeklyReviewPage({ selectedLevel }: WeeklyReviewPageProps) {
         </ul>
       </SectionCard>
 
-      <EvidenceNote title="Next week review / 下周复盘重点" evidenceType={EvidenceType.Watch}>
-        <p>{review.nextWeek}</p>
-        <p>{review.nextWeekZh}</p>
-      </EvidenceNote>
     </div>
   );
 }

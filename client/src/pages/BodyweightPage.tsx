@@ -1,9 +1,8 @@
 import { ChartMock } from "../components/ChartMock";
-import { EvidenceNote } from "../components/EvidenceNote";
 import { MetricCard } from "../components/MetricCard";
 import { SectionCard } from "../components/SectionCard";
 import { getLevelData } from "../data/mockData";
-import { EvidenceType, type UserLevel } from "../types/appTypes";
+import type { UserLevel } from "../types/appTypes";
 
 type BodyweightPageProps = {
   selectedLevel: UserLevel;
@@ -30,8 +29,9 @@ export function BodyweightPage({ selectedLevel }: BodyweightPageProps) {
       </section>
 
       <div className="two-column">
-        <ChartMock title="Bodyweight trend" titleZh="体重趋势" data={data.bodyweightTrend} variant="blue" />
-        <ChartMock title="Calories trend" titleZh="热量趋势" data={data.nutritionTrend} variant="purple" />
+      <ChartMock title="Bodyweight trend" titleZh="体重趋势" data={data.bodyweightTrend} variant="blue" />
+
+      <ChartMock title="Calories trend" titleZh="热量趋势" data={data.nutritionTrend} variant="purple" />
       </div>
 
       <SectionCard title="Plain-language read" titleZh="直白解读" eyebrow={`${data.userCase.name}'s current week`}>
@@ -53,10 +53,6 @@ export function BodyweightPage({ selectedLevel }: BodyweightPageProps) {
         </div>
       </SectionCard>
 
-      <EvidenceNote title="Boundary / 边界" evidenceType={EvidenceType.Watch}>
-        <p>Bodyweight trend helps explain training state during a cut. It is not a dieting command.</p>
-        <p>体重趋势用于解释减脂期训练状态，不是节食命令。</p>
-      </EvidenceNote>
     </div>
   );
 }

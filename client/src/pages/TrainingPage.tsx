@@ -1,9 +1,12 @@
 import { useState } from "react";
 import { ChartMock } from "../components/ChartMock";
-import { EvidenceNote } from "../components/EvidenceNote";
 import { MetricCard } from "../components/MetricCard";
 import { SectionCard } from "../components/SectionCard";
 import { StatusBadge } from "../components/StatusBadge";
+import {
+  getWeeklySessionLoadTrend,
+  getWeeklyVolumeLoadTrend,
+} from "../domain/trainingTrendCharts";
 import { useTrainingLog } from "../state/TrainingLogContext";
 import {
   EvidenceType,
@@ -13,7 +16,6 @@ import {
   type MuscleGroup,
   type SetEntry,
   type TrainingSession,
-  type TrendPoint,
   type UserLevel,
 } from "../types/appTypes";
 
@@ -61,6 +63,18 @@ type MuscleSummary = {
   volumeLoad: number;
 };
 
+type MuscleGroupFilter = "All" | MuscleGroup;
+
+// Saved sessions, summary cards, and trend charts all share this range.
+// Keeping it as one object makes it harder for the three views to drift apart.
+type SavedSessionDateRange = {
+  startDate: string;
+  endDate: string;
+};
+
+// Product requirement: saved-session pagination is intentionally limited to 5 or 10 rows.
+const savedSessionPageSizeOptions = [5, 10];
+
 const muscleGroupOptions: MuscleGroup[] = [
   "Chest",
   "Back",
@@ -76,6 +90,20 @@ const muscleGroupOptions: MuscleGroup[] = [
 
 function getLocalDateString() {
   return new Date().toISOString().slice(0, 10);
+}
+
+function getPastSevenDaysStartDateString() {
+  const startDate = new Date();
+  // Inclusive seven-day default: today plus the previous six calendar days.
+  startDate.setDate(startDate.getDate() - 6);
+  return startDate.toISOString().slice(0, 10);
+}
+
+function createDefaultSavedSessionDateRange(): SavedSessionDateRange {
+  return {
+    startDate: getPastSevenDaysStartDateString(),
+    endDate: getLocalDateString(),
+  };
 }
 
 function createId(prefix: string) {
@@ -166,19 +194,58 @@ function sortTrainingSessionsNewestFirst(trainingSessions: TrainingSession[]) {
   ));
 }
 
+function isSessionInDateRange(session: TrainingSession, dateRange: SavedSessionDateRange) {
+  // Empty start/end values are allowed so a user can create an open-ended range.
+  if (dateRange.startDate && session.date < dateRange.startDate) {
+    return false;
+  }
+
+  if (dateRange.endDate && session.date > dateRange.endDate) {
+    return false;
+  }
+
+  return true;
+}
+
+function formatDateRangeLabel(dateRange: SavedSessionDateRange) {
+  // The same label is reused in the top badge and trend titles.
+  if (dateRange.startDate && dateRange.endDate) {
+    return `${dateRange.startDate} to ${dateRange.endDate}`;
+  }
+
+  if (dateRange.startDate) {
+    return `From ${dateRange.startDate}`;
+  }
+
+  if (dateRange.endDate) {
+    return `Until ${dateRange.endDate}`;
+  }
+
+  return "All dates";
+}
+
+function doesSessionMatchMuscleGroup(
+  session: TrainingSession,
+  selectedMuscleGroup: MuscleGroupFilter,
+) {
+  if (selectedMuscleGroup === "All") {
+    return true;
+  }
+
+  return session.primaryMuscleGroup === selectedMuscleGroup;
+}
+
 // Session load follows the common session-RPE method: session RPE x duration minutes.
 function getSessionLoad(session: TrainingSession) {
   return session.durationMinutes * session.sessionRpe;
 }
 
 function getSessionExerciseName(session: TrainingSession) {
-  return session.exercises[0]?.exerciseName ?? "Training session";
+  return session.exerciseName;
 }
 
 function getWorkingSets(session: TrainingSession) {
-  return session.exercises.flatMap((exercise) => (
-    exercise.sets.filter((set) => !set.isWarmup)
-  ));
+  return session.sets.filter((set) => !set.isWarmup);
 }
 
 // Hard set is a product rule for display, not a medical or physiological diagnosis.
@@ -350,29 +417,27 @@ function getExerciseSummaries(trainingSessions: TrainingSession[]) {
   const summaryMap = new Map<string, ExerciseSummary>();
 
   trainingSessions.forEach((session) => {
-    session.exercises.forEach((exercise) => {
-      const key = `${exercise.exerciseName}-${exercise.primaryMuscleGroups.join("-")}`;
-      const existingSummary = summaryMap.get(key);
-      const workingSets = exercise.sets.filter((set) => !set.isWarmup);
-      const volumeLoad = workingSets.reduce((totalVolume, set) => (
-        totalVolume + (set.reps * set.weightKg)
-      ), 0);
+    const key = `${session.exerciseName}-${session.primaryMuscleGroup}`;
+    const existingSummary = summaryMap.get(key);
+    const workingSets = getWorkingSets(session);
+    const volumeLoad = workingSets.reduce((totalVolume, set) => (
+      totalVolume + (set.reps * set.weightKg)
+    ), 0);
 
-      if (existingSummary) {
-        existingSummary.sessions += 1;
-        existingSummary.sets += workingSets.length;
-        existingSummary.volumeLoad += volumeLoad;
-        return;
-      }
+    if (existingSummary) {
+      existingSummary.sessions += 1;
+      existingSummary.sets += workingSets.length;
+      existingSummary.volumeLoad += volumeLoad;
+      return;
+    }
 
-      summaryMap.set(key, {
-        key,
-        exerciseName: exercise.exerciseName,
-        muscleGroups: exercise.primaryMuscleGroups.join(", "),
-        sessions: 1,
-        sets: workingSets.length,
-        volumeLoad,
-      });
+    summaryMap.set(key, {
+      key,
+      exerciseName: session.exerciseName,
+      muscleGroups: session.primaryMuscleGroup,
+      sessions: 1,
+      sets: workingSets.length,
+      volumeLoad,
     });
   });
 
@@ -388,17 +453,15 @@ function getPriorityMuscleSummaries(
 ) {
   return priorityMuscles.map((muscleGroup) => {
     const summary = trainingSessions.reduce<MuscleSummary>((currentSummary, session) => {
-      session.exercises.forEach((exercise) => {
-        if (!exercise.primaryMuscleGroups.includes(muscleGroup)) {
-          return;
-        }
+      if (session.primaryMuscleGroup !== muscleGroup) {
+        return currentSummary;
+      }
 
-        const workingSets = exercise.sets.filter((set) => !set.isWarmup);
-        currentSummary.hardSets += workingSets.filter(isHardSet).length;
-        currentSummary.volumeLoad += workingSets.reduce((totalVolume, set) => (
-          totalVolume + (set.reps * set.weightKg)
-        ), 0);
-      });
+      const workingSets = getWorkingSets(session);
+      currentSummary.hardSets += workingSets.filter(isHardSet).length;
+      currentSummary.volumeLoad += workingSets.reduce((totalVolume, set) => (
+        totalVolume + (set.reps * set.weightKg)
+      ), 0);
 
       return currentSummary;
     }, {
@@ -411,66 +474,144 @@ function getPriorityMuscleSummaries(
   });
 }
 
-// Groups multiple sessions on the same date into one chart point.
-function getDateGroupedTrainingTrend(
-  trainingSessions: TrainingSession[],
-  getSessionValue: (session: TrainingSession) => number,
-): TrendPoint[] {
-  const valueByDate: { [date: string]: number } = {};
-
-  sortTrainingSessionsNewestFirst(trainingSessions).forEach((session) => {
-    const sessionValue = getSessionValue(session);
-    const currentDateValue = valueByDate[session.date] ?? 0;
-    valueByDate[session.date] = currentDateValue + sessionValue;
-  });
-
-  return Object.entries(valueByDate)
-    .sort(([dateA], [dateB]) => dateA.localeCompare(dateB))
-    .slice(-7)
-    .map(([date, value]) => ({
-      label: date.slice(5),
-      value,
-    }));
-}
-
-// Charts should only use saved training sessions, not mock trend data.
-function getSessionLoadTrend(trainingSessions: TrainingSession[]): TrendPoint[] {
-  return getDateGroupedTrainingTrend(trainingSessions, getSessionLoad);
-}
-
-// Volume load trend is reps x weight, grouped by saved session date.
-function getVolumeLoadTrend(trainingSessions: TrainingSession[]): TrendPoint[] {
-  return getDateGroupedTrainingTrend(trainingSessions, getSessionVolumeLoad);
-}
-
 export function TrainingPage(_props: TrainingPageProps) {
   // TrainingLogContext is the real data source for this page.
+  // This component should not read mock training data for any card, list, or chart below.
+  // If a value appears on this page, it should be derived from these saved sessions.
   const {
     trainingSessions,
     saveTrainingSession,
     deleteTrainingSession,
     programSettings,
   } = useTrainingLog();
+
+  // The save form defaults to the user's first priority muscle so newly entered sessions
+  // immediately line up with the priority-muscle summaries shown lower on the page.
   const defaultPrimaryMuscleGroup = programSettings.priorityMuscles[0] ?? "Back";
+
+  // Form state stays as strings because number inputs can temporarily hold partial values
+  // while a user is typing. Validation converts these strings into numbers before saving.
   const [trainingForm, setTrainingForm] = useState<TrainingSessionForm>(() => (
     createDefaultTrainingSessionForm(defaultPrimaryMuscleGroup)
   ));
   const [formError, setFormError] = useState("");
-  // Everything below is derived from saved sessions so the page does not mix mock analysis with real logs.
+
+  // Saved-session filters are UI state only. They do not mutate the stored sessions;
+  // they decide which saved sessions feed the visible list, summaries, metric cards, and charts.
+  const [selectedMuscleGroupFilter, setSelectedMuscleGroupFilter] = useState<MuscleGroupFilter>("All");
+  const [savedSessionDateRange, setSavedSessionDateRange] = useState<SavedSessionDateRange>(
+    createDefaultSavedSessionDateRange,
+  );
+
+  // Pagination is intentionally scoped to the saved-session list. The summary cards and trend charts
+  // still use the full filtered range so changing page size does not change analysis results.
+  const [savedSessionPageSize, setSavedSessionPageSize] = useState(5);
+  const [savedSessionPage, setSavedSessionPage] = useState(1);
+
+  // Everything below is derived from the same filtered session list.
+  // The saved-session table, metric cards, summaries, and both trends should agree.
+  // Order matters: first normalize newest-first ordering, then apply date range, then muscle filter.
   const sortedTrainingSessions = sortTrainingSessionsNewestFirst(trainingSessions);
-  const latestSession = sortedTrainingSessions[0] ?? null;
-  const latestTrainingSessions = sortedTrainingSessions.slice(0, 5);
-  const realTrainingMetrics = buildRealTrainingMetrics(sortedTrainingSessions);
+
+  // Date range is applied before muscle group so the top badge and charts describe the same period.
+  // Both start and end are inclusive because saved sessions are stored as YYYY-MM-DD calendar dates.
+  const dateRangeTrainingSessions = sortedTrainingSessions.filter((session) => (
+    isSessionInDateRange(session, savedSessionDateRange)
+  ));
+
+  // Muscle filtering is a direct field comparison because a saved session now has one exercise
+  // and one primary muscle group.
+  const filteredTrainingSessions = dateRangeTrainingSessions.filter((session) => (
+    doesSessionMatchMuscleGroup(session, selectedMuscleGroupFilter)
+  ));
+
+  // The label is computed once so the hero badge and both trend titles stay consistent.
+  const dateRangeLabel = formatDateRangeLabel(savedSessionDateRange);
+
+  // "Latest" always means latest within the active filters, not latest across all saved history.
+  const latestSession = filteredTrainingSessions[0] ?? null;
+
+  // Keep at least one page even when the filtered list is empty. This keeps the pagination label
+  // stable and avoids rendering "Page 1 / 0".
+  const totalSavedSessionPages = Math.max(
+    1,
+    Math.ceil(filteredTrainingSessions.length / savedSessionPageSize),
+  );
+
+  // Filter and page-size changes reset to page one, but deletes or loaded storage data can still
+  // shrink the result set. Clamp the rendered page so it never points past the last valid page.
+  const visibleSavedSessionPage = Math.min(savedSessionPage, totalSavedSessionPages);
+  const savedSessionStartIndex = (visibleSavedSessionPage - 1) * savedSessionPageSize;
+
+  // Only the list is paginated. Downstream analysis still uses filteredTrainingSessions.
+  const latestTrainingSessions = filteredTrainingSessions.slice(
+    savedSessionStartIndex,
+    savedSessionStartIndex + savedSessionPageSize,
+  );
+
+  // Metric cards summarize the complete filtered range. The first metric is promoted into
+  // the hero panel, while the remaining metrics render in the secondary grid.
+  const realTrainingMetrics = buildRealTrainingMetrics(filteredTrainingSessions);
   const mainSessionLoadMetric = realTrainingMetrics[0];
   const secondaryTrainingMetrics = realTrainingMetrics.slice(1);
-  const exerciseSummaries = getExerciseSummaries(sortedTrainingSessions);
+
+  // Exercise and priority-muscle summaries use the same filtered range as the metric cards.
+  // This prevents the user from seeing one date range in the list and another in the analysis.
+  const exerciseSummaries = getExerciseSummaries(filteredTrainingSessions);
   const priorityMuscleSummaries = getPriorityMuscleSummaries(
-    sortedTrainingSessions,
+    filteredTrainingSessions,
     programSettings.priorityMuscles,
   );
-  const sessionLoadTrend = getSessionLoadTrend(sortedTrainingSessions);
-  const volumeLoadTrend = getVolumeLoadTrend(sortedTrainingSessions);
 
+  // Both trend charts are generated from saved sessions only. They are grouped into preset
+  // training weeks for now; later the week date ranges should come from user settings.
+  const sessionLoadTrend = getWeeklySessionLoadTrend(filteredTrainingSessions);
+  const volumeLoadTrend = getWeeklyVolumeLoadTrend(filteredTrainingSessions);
+
+  // Muscle changes can alter the filtered list length, so reset pagination to the first page.
+  function handleMuscleGroupFilterChange(value: string) {
+    if (value === "All") {
+      setSelectedMuscleGroupFilter("All");
+      setSavedSessionPage(1);
+      return;
+    }
+
+    const selectedMuscleGroup = muscleGroupOptions.find((muscleGroup) => (
+      muscleGroup === value
+    ));
+
+    if (selectedMuscleGroup) {
+      setSelectedMuscleGroupFilter(selectedMuscleGroup);
+      setSavedSessionPage(1);
+    }
+  }
+
+  // Page-size options are guarded against arbitrary values because the select is a UI boundary,
+  // but browser/devtool edits could still send an unexpected value.
+  function handleSavedSessionPageSizeChange(value: string) {
+    const nextPageSize = Number(value);
+
+    if (savedSessionPageSizeOptions.includes(nextPageSize)) {
+      setSavedSessionPageSize(nextPageSize);
+      setSavedSessionPage(1);
+    }
+  }
+
+  // Date edits are applied immediately. We do not auto-correct reversed ranges here; the filter
+  // naturally returns no sessions until the user chooses a valid start/end combination.
+  function handleSavedSessionDateRangeChange(
+    field: keyof SavedSessionDateRange,
+    value: string,
+  ) {
+    // Any filter change can shrink the result set, so restart pagination at page one.
+    setSavedSessionDateRange((currentDateRange) => ({
+      ...currentDateRange,
+      [field]: value,
+    }));
+    setSavedSessionPage(1);
+  }
+
+  // Generic text-field updater keeps the long form JSX from needing one handler per input.
   function updateTrainingFormTextField(field: TrainingSessionTextField, value: string) {
     setTrainingForm((currentForm) => ({
       ...currentForm,
@@ -478,6 +619,8 @@ export function TrainingPage(_props: TrainingPageProps) {
     }));
   }
 
+  // Primary muscle is typed separately from generic text fields so only known muscle groups
+  // can be written into the draft session.
   function updatePrimaryMuscleGroup(value: MuscleGroup) {
     setTrainingForm((currentForm) => ({
       ...currentForm,
@@ -485,6 +628,7 @@ export function TrainingPage(_props: TrainingPageProps) {
     }));
   }
 
+  // Convert the select's string value back into the MuscleGroup union before updating state.
   function handlePrimaryMuscleGroupChange(value: string) {
     const selectedMuscleGroup = muscleGroupOptions.find((muscleGroup) => (
       muscleGroup === value
@@ -495,6 +639,8 @@ export function TrainingPage(_props: TrainingPageProps) {
     }
   }
 
+  // Save turns the simple post-workout form into the app's tightened TrainingSession shape:
+  // one exercise name, one primary muscle, repeated working sets, timestamps, and optional effort fields.
   function handleSaveTrainingSession() {
     const nextError = getTrainingFormError(trainingForm);
 
@@ -525,14 +671,9 @@ export function TrainingPage(_props: TrainingPageProps) {
       date: trainingForm.date,
       durationMinutes,
       sessionRpe,
-      exercises: [
-        {
-          id: createId("exercise"),
-          exerciseName: trainingForm.exerciseName.trim(),
-          primaryMuscleGroups: [trainingForm.primaryMuscleGroup],
-          sets,
-        },
-      ],
+      exerciseName: trainingForm.exerciseName.trim(),
+      primaryMuscleGroup: trainingForm.primaryMuscleGroup,
+      sets,
       createdAt: now,
       updatedAt: now,
     };
@@ -558,7 +699,8 @@ export function TrainingPage(_props: TrainingPageProps) {
         <div className="battery-focus-panel training-load-panel">
           <div className="battery-panel-badges">
             <StatusBadge status={mainSessionLoadMetric.status} label={mainSessionLoadMetric.evidenceType} />
-            <StatusBadge status={MetricStatus.Neutral} label={`${trainingSessions.length} saved sessions`} />
+            <StatusBadge status={MetricStatus.Neutral} label={dateRangeLabel} />
+            <StatusBadge status={MetricStatus.Neutral} label={`${filteredTrainingSessions.length} saved sessions`} />
           </div>
 
           <div className="training-load-summary">
@@ -750,10 +892,67 @@ export function TrainingPage(_props: TrainingPageProps) {
         </div>
 
         <div className="saved-session-block">
-          <p className="section-eyebrow">Latest saved sessions</p>
+          <div className="saved-session-header">
+            <div>
+              <p className="section-eyebrow">Saved sessions</p>
+              <p className="muted-text">
+                Filtered by date range and muscle group so the page does not grow forever.
+              </p>
+            </div>
+
+            <div className="saved-session-controls">
+              <label className="training-form-field training-form-field--compact">
+                <span className="training-form-label">Start date</span>
+                <input
+                  className="training-input training-input--compact"
+                  type="date"
+                  value={savedSessionDateRange.startDate}
+                  onChange={(event) => handleSavedSessionDateRangeChange("startDate", event.target.value)}
+                />
+              </label>
+
+              <label className="training-form-field training-form-field--compact">
+                <span className="training-form-label">End date</span>
+                <input
+                  className="training-input training-input--compact"
+                  type="date"
+                  value={savedSessionDateRange.endDate}
+                  onChange={(event) => handleSavedSessionDateRangeChange("endDate", event.target.value)}
+                />
+              </label>
+
+              <label className="training-form-field training-form-field--compact">
+                <span className="training-form-label">Muscle</span>
+                <select
+                  className="training-input training-input--compact"
+                  value={selectedMuscleGroupFilter}
+                  onChange={(event) => handleMuscleGroupFilterChange(event.target.value)}
+                >
+                  <option value="All">All</option>
+                  {muscleGroupOptions.map((muscleGroup) => (
+                    <option key={muscleGroup} value={muscleGroup}>{muscleGroup}</option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="training-form-field training-form-field--compact">
+                <span className="training-form-label">Page size</span>
+                <select
+                  className="training-input training-input--compact"
+                  value={savedSessionPageSize}
+                  onChange={(event) => handleSavedSessionPageSizeChange(event.target.value)}
+                >
+                  {savedSessionPageSizeOptions.map((pageSize) => (
+                    <option key={pageSize} value={pageSize}>{pageSize}</option>
+                  ))}
+                </select>
+              </label>
+            </div>
+          </div>
+
           <div className="compact-card-list">
             {latestTrainingSessions.length === 0 ? (
-              <p className="muted-text">No saved training sessions yet.</p>
+              <p className="muted-text">No matching saved training sessions in this date range.</p>
             ) : latestTrainingSessions.map((session) => (
               <article key={session.id} className="compact-signal-card saved-session-card">
                 <div>
@@ -778,11 +977,33 @@ export function TrainingPage(_props: TrainingPageProps) {
               </article>
             ))}
           </div>
+
+          <div className="saved-session-pagination">
+            <button
+              type="button"
+              className="text-button"
+              disabled={visibleSavedSessionPage === 1}
+              onClick={() => setSavedSessionPage(visibleSavedSessionPage - 1)}
+            >
+              Previous
+            </button>
+            <span className="pagination-label">
+              Page {visibleSavedSessionPage} / {totalSavedSessionPages}
+            </span>
+            <button
+              type="button"
+              className="text-button"
+              disabled={visibleSavedSessionPage === totalSavedSessionPages}
+              onClick={() => setSavedSessionPage(visibleSavedSessionPage + 1)}
+            >
+              Next
+            </button>
+          </div>
         </div>
       </SectionCard>
 
       {/* Analysis sections only appear after saved training data exists. */}
-      {trainingSessions.length > 0 ? (
+      {filteredTrainingSessions.length > 0 ? (
         <div className="two-column">
           <SectionCard title="Saved exercise summary" titleZh="已保存动作总结" eyebrow="Real session data">
             <div className="compact-card-list">
@@ -835,13 +1056,13 @@ export function TrainingPage(_props: TrainingPageProps) {
       {sessionLoadTrend.length > 0 ? (
         <div className="two-column">
           <ChartMock
-            title="Saved session load trend"
+            title={`Saved session load trend (${dateRangeLabel})`}
             titleZh="已保存训练负荷趋势"
             data={sessionLoadTrend}
             variant="dark"
           />
           <ChartMock
-            title="Saved volume load trend"
+            title={`Saved volume load trend (${dateRangeLabel})`}
             titleZh="已保存训练量趋势"
             data={volumeLoadTrend}
             variant="amber"
@@ -849,15 +1070,6 @@ export function TrainingPage(_props: TrainingPageProps) {
         </div>
       ) : null}
 
-      <EvidenceNote title="Training page data boundary / 训练页数据边界" evidenceType={EvidenceType.Established}>
-        <p>
-          Every card on this page now comes from saved training sessions. Session load uses
-          session RPE x duration, hard sets use saved RPE/RIR, and volume load uses reps x weight.
-        </p>
-        <p>
-          本页所有卡片都来自已保存训练记录。训练负荷使用 session RPE x 时长，hard sets 使用已保存 RPE/RIR，训练量使用次数 x 重量。
-        </p>
-      </EvidenceNote>
     </div>
   );
 }

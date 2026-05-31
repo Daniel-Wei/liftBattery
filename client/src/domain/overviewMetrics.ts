@@ -116,14 +116,6 @@ export function getSessionLoad(session: TrainingSession) {
   return session.sessionRpe * session.durationMinutes;
 }
 
-// A set only counts for priority work if the exercise targets at least one priority muscle.
-function isPriorityMuscleGroup(
-  exerciseMuscles: MuscleGroup[],
-  priorityMuscles: MuscleGroup[],
-) {
-  return exerciseMuscles.some((muscleGroup) => priorityMuscles.includes(muscleGroup));
-}
-
 // Hard-set rule:
 // 1. exclude warmups
 // 2. use RIR <= 3 when RIR exists
@@ -151,24 +143,18 @@ export function getPriorityHardSetCount(
   priorityMuscles: MuscleGroup[],
 ) {
   return trainingSessions.reduce((sessionTotal, session) => {
-    const sessionHardSets = session.exercises.reduce((exerciseTotal, exercise) => {
-      if (!isPriorityMuscleGroup(exercise.primaryMuscleGroups, priorityMuscles)) {
-        return exerciseTotal;
-      }
+    if (!priorityMuscles.includes(session.primaryMuscleGroup)) {
+      return sessionTotal;
+    }
 
-      return exerciseTotal + exercise.sets.filter(isHardSet).length;
-    }, 0);
-
-    return sessionTotal + sessionHardSets;
+    return sessionTotal + session.sets.filter(isHardSet).length;
   }, 0);
 }
 
 // Top-set effort prefers RPE because it is easier to display directly.
 // If no set RPE exists, it falls back to the lowest RIR as the best available effort signal.
 export function getTopSetEffort(trainingSessions: TrainingSession[]) {
-  const allSets = trainingSessions.flatMap((session) => (
-    session.exercises.flatMap((exercise) => exercise.sets)
-  ));
+  const allSets = trainingSessions.flatMap((session) => session.sets);
   const rpeValues = allSets
     .filter((set) => !set.isWarmup && set.rpe !== undefined)
     .map((set) => set.rpe ?? 0);

@@ -1,8 +1,7 @@
 import { ChartMock } from "../components/ChartMock";
-import { EvidenceNote } from "../components/EvidenceNote";
 import { MetricCard } from "../components/MetricCard";
 import { getLevelData } from "../data/mockData";
-import { EvidenceType, type UserLevel } from "../types/appTypes";
+import type { UserLevel } from "../types/appTypes";
 
 type RecoveryPageProps = {
   selectedLevel: UserLevel;
@@ -24,12 +23,11 @@ export function RecoveryPage({ selectedLevel }: RecoveryPageProps) {
         ))}
       </section>
 
-      <ChartMock title="Recovery trend" titleZh="恢复趋势" data={data.recoveryTrend} variant="green" />
+      <div className="two-column">
+        <ChartMock title="Recovery trend" titleZh="恢复趋势" data={data.recoveryTrend} variant="green" />
+        <ChartMock title="Training pressure trend" titleZh="训练压力趋势" data={data.loadTrend} variant="dark" />
+      </div>
 
-      <EvidenceNote title="Recovery boundary / 恢复边界" evidenceType={EvidenceType.Proxy}>
-        <p>Fatigue, sleep, soreness, stress, and mood are subjective monitoring inputs, not diagnostic markers.</p>
-        <p>疲劳、睡眠、酸痛、压力和情绪是主观监控输入，不是诊断标志。</p>
-      </EvidenceNote>
     </div>
   );
 }
