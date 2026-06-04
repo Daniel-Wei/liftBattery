@@ -16,98 +16,158 @@ function getPreviousSessionLoad(input: TrainingInput) {
 }
 
 function getSleepAdjustment(sleepHours: number) {
+  if (sleepHours < 4) {
+    return -36;
+  }
+
   if (sleepHours < 5) {
-    return -30;
+    return -28;
   }
 
   if (sleepHours < 6) {
-    return -22;
+    return -20;
   }
 
   if (sleepHours < 7) {
-    return -12;
+    return -10;
   }
 
-  if (sleepHours > 8.5) {
+  if (sleepHours <= 9) {
     return 4;
+  }
+
+  if (sleepHours <= 10) {
+    return 2;
   }
 
   return 0;
 }
 
 function getRestingHeartRateAdjustment(restingHeartRateDelta: number) {
-  if (restingHeartRateDelta <= 0) {
-    return 1;
+  if (restingHeartRateDelta <= -3) {
+    return 3;
   }
 
-  if (restingHeartRateDelta <= 5) {
-    return -2;
+  if (restingHeartRateDelta <= 2) {
+    return 0;
+  }
+
+  if (restingHeartRateDelta <= 6) {
+    return -5;
   }
 
   if (restingHeartRateDelta <= 10) {
-    return -6;
-  }
-
-  return -10;
-}
-
-function getPreviousSessionLoadAdjustment(previousSessionLoad: number) {
-  if (previousSessionLoad >= 800) {
-    return -16;
-  }
-
-  if (previousSessionLoad >= 600) {
     return -10;
   }
 
-  if (previousSessionLoad <= 300) {
-    return 4;
+  if (restingHeartRateDelta <= 15) {
+    return -16;
+  }
+
+  return -22;
+}
+
+function getPreviousSessionLoadAdjustment(previousSessionLoad: number) {
+  if (previousSessionLoad >= 900) {
+    return -18;
+  }
+
+  if (previousSessionLoad >= 700) {
+    return -12;
+  }
+
+  if (previousSessionLoad >= 500) {
+    return -6;
+  }
+
+  if (previousSessionLoad <= 250) {
+    return 3;
   }
 
   return 0;
+}
+
+function getSorenessAdjustment(soreness: number) {
+  if (soreness <= 2) {
+    return 4;
+  }
+
+  if (soreness <= 4) {
+    return 0;
+  }
+
+  if (soreness <= 6) {
+    return -8;
+  }
+
+  if (soreness <= 8) {
+    return -16;
+  }
+
+  return -24;
+}
+
+function getMotivationAdjustment(motivation: number) {
+  if (motivation <= 2) {
+    return -18;
+  }
+
+  if (motivation <= 4) {
+    return -10;
+  }
+
+  if (motivation <= 6) {
+    return 0;
+  }
+
+  if (motivation <= 8) {
+    return 6;
+  }
+
+  return 10;
 }
 
 function getMainDrivers(input: TrainingInput) {
   const drivers: MainDriver[] = [];
   const previousSessionLoad = getPreviousSessionLoad(input);
 
-  if (input.sleepHours < 7) {
+  if (input.sleepHours < 6) {
     drivers.push({
       id: MainDriverId.ShortSleep,
       message: "Short sleep",
-      reason: "sleep hours < 7",
+      reason: "sleep hours < 6",
     });
   }
 
-  if (input.soreness >= 4) {
+  if (input.soreness >= 7) {
     drivers.push({
       id: MainDriverId.HighSoreness,
       message: "High soreness",
-      reason: "soreness >= 4",
+      reason: "soreness >= 7 / 10",
     });
   }
 
-  if (input.motivation <= 2) {
+  if (input.motivation <= 4) {
     drivers.push({
       id: MainDriverId.LowMotivation,
       message: "Low motivation",
-      reason: "motivation <= 2",
+      reason: "motivation <= 4 / 10",
     });
   }
 
-  if (input.restingHeartRateDelta > 5) {
+  if (input.restingHeartRateDelta > 6) {
     drivers.push({
       id: MainDriverId.RestingHeartRateAboveBaseline,
       message: "Resting HR above baseline",
-      reason: "resting heart rate delta > 5",
+      reason: "resting heart rate delta > 6 bpm",
     });
   }
 
-  if (previousSessionLoad >= 600) {
+  if (previousSessionLoad >= 700) {
     drivers.push({
       id: MainDriverId.HardPreviousSessionLoad,
       message: "Hard previous session load",
-      reason: "previous session load >= 600 AU",
+      reason: "previous session load >= 700 AU",
     });
   }
 
@@ -123,17 +183,15 @@ function getMainDrivers(input: TrainingInput) {
 }
 
 export function calculateReadiness(input: TrainingInput): ReadinessResult {
-  const sorenessPenalty = (input.soreness - 1) * 8;
-  const motivationAdjustment = (input.motivation - 3) * 6;
   const previousSessionLoad = getPreviousSessionLoad(input);
 
   const score = clampScore(
-    76
+    78
       + getSleepAdjustment(input.sleepHours)
       + getRestingHeartRateAdjustment(input.restingHeartRateDelta)
       + getPreviousSessionLoadAdjustment(previousSessionLoad)
-      + motivationAdjustment
-      - sorenessPenalty,
+      + getMotivationAdjustment(input.motivation)
+      + getSorenessAdjustment(input.soreness),
   );
 
   if (score >= 80) {

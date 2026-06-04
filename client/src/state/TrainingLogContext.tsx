@@ -31,12 +31,12 @@ const TRAINING_SESSIONS_STORAGE_KEY = "liftops.trainingSessions";
 const PROGRAM_SETTINGS_STORAGE_KEY = "liftops.programSettings";
 
 const initialTrainingInput: TrainingInput = {
-  sleepHours: 6.5,
+  sleepHours: 7.5,
   soreness: 3,
-  motivation: 3,
-  restingHeartRateDelta: 4,
-  previousSessionRpe: 8,
-  previousSessionDurationMinutes: 75,
+  motivation: 7,
+  restingHeartRateDelta: 1,
+  previousSessionRpe: 7,
+  previousSessionDurationMinutes: 60,
 };
 
 const defaultProgramSettings: ProgramSettings = {
