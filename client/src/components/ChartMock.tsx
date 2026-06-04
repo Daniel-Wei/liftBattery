@@ -45,12 +45,18 @@ function getChartDomain(data: TrendPoint[]) {
   };
 }
 
+function isReadableSubtitle(titleZh: string | undefined) {
+  return titleZh !== undefined && !/[ÃÂæèåçé]/.test(titleZh);
+}
+
 export function ChartMock({ title, titleZh, data, variant = "blue" }: ChartMockProps) {
+  const shouldShowSubtitle = isReadableSubtitle(titleZh);
+
   if (data.length === 0) {
     return (
       <div className="chart-card">
         <p className="chart-title">{title}</p>
-        {titleZh ? <h2 className="chart-subtitle">{titleZh}</h2> : null}
+        {shouldShowSubtitle ? <h2 className="chart-subtitle">{titleZh}</h2> : null}
         <div className="chart-line-frame chart-line-frame--empty">
           <p className="muted-text">No trend data yet.</p>
         </div>
@@ -84,9 +90,9 @@ export function ChartMock({ title, titleZh, data, variant = "blue" }: ChartMockP
   )).join(" ");
 
   return (
-    <div className="chart-card">
+      <div className="chart-card">
       <p className="chart-title">{title}</p>
-      {titleZh ? <h2 className="chart-subtitle">{titleZh}</h2> : null}
+      {shouldShowSubtitle ? <h2 className="chart-subtitle">{titleZh}</h2> : null}
 
       <div className="chart-line-frame">
         <svg

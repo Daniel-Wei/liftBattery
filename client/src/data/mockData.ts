@@ -35,14 +35,10 @@ const referenceLinks = {
 };
 
 export const navItems: NavItem[] = [
-  { key: PageKey.Landing, label: "Home", labelZh: "首页" },
   { key: PageKey.Overview, label: "Overview", labelZh: "总览" },
-  { key: PageKey.Today, label: "Today", labelZh: "今天" },
-  { key: PageKey.Training, label: "Training", labelZh: "训练" },
-  { key: PageKey.Recovery, label: "Recovery", labelZh: "恢复" },
-  { key: PageKey.Bodyweight, label: "Bodyweight", labelZh: "体重" },
-  { key: PageKey.WeeklyReview, label: "Weekly Review", labelZh: "每周复盘" },
-  { key: PageKey.Settings, label: "Settings", labelZh: "设置" },
+  { key: PageKey.Today, label: "Pre-check", labelZh: "练前检查" },
+  { key: PageKey.Training, label: "Training", labelZh: "训练记录" },
+  { key: PageKey.Trends, label: "Trends", labelZh: "趋势" },
 ];
 
 export const levelProfiles: LevelProfile[] = [
@@ -333,7 +329,7 @@ export const supportWorkItems: WorkItem[] = [
 
 export const riskWatches: RiskWatch[] = [
   {
-    title: "Recovery Watch",
+    title: "Readiness Watch",
     titleZh: "恢复观察",
     severity: RiskSeverity.Medium,
     signals: ["Daily load 675 AU", "Sleep 2.8 / 5", "Soreness 4 / 5"],
@@ -342,12 +338,12 @@ export const riskWatches: RiskWatch[] = [
     recommendationZh: "除非热身表现明显很好，否则明天保持轻一点。",
   },
   {
-    title: "Cut Pressure Watch",
+    title: "Load Drift Watch",
     titleZh: "减脂压力观察",
     severity: RiskSeverity.Medium,
-    signals: ["Bodyweight -0.9% / wk", "Hunger 4.2 / 5", "Cardio 130% of plan"],
+    signals: ["Session load rising", "Hard sets near target", "Optional work above plan"],
     signalsZh: ["体重 -0.9% / 周", "饥饿 4.2 / 5", "有氧完成计划 130%"],
-    recommendation: "Review whether extra cardio is necessary before reducing food further.",
+    recommendation: "Keep useful work first and avoid adding optional work before the next check.",
     recommendationZh: "继续减少食物前，先 review 额外有氧是否必要。",
   },
   {
@@ -827,8 +823,8 @@ export const levelMockData: LevelMockData[] = [
   },
 ];
 
-export function getLevelData(selectedLevel: UserLevel) {
-  return levelMockData.find((data) => data.level === selectedLevel) ?? levelMockData[0];
+export function getLevelData(level: UserLevel) {
+  return levelMockData.find((data) => data.level === level) ?? levelMockData[0];
 }
 
 export const formulaNotes: FormulaNoteData[] = [
@@ -918,7 +914,7 @@ export const formulaNotes: FormulaNoteData[] = [
     ],
   },
   {
-    pageKey: PageKey.Recovery,
+    pageKey: PageKey.Trends,
     title: "Recovery is tracked through subjective wellness signals.",
     titleZh: "恢复通过主观 wellness 信号观察。",
     formula: "Readiness proxy = trend(fatigue, sleep, soreness, stress, mood)",
@@ -932,7 +928,7 @@ export const formulaNotes: FormulaNoteData[] = [
     ],
   },
   {
-    pageKey: PageKey.Bodyweight,
+    pageKey: PageKey.Trends,
     title: "Bodyweight context explains cut pressure.",
     titleZh: "体重语境解释减脂压力。",
     formula: "Bodyweight rate = change in 7-day average / previous 7-day average",
@@ -946,7 +942,7 @@ export const formulaNotes: FormulaNoteData[] = [
     ],
   },
   {
-    pageKey: PageKey.WeeklyReview,
+    pageKey: PageKey.Training,
     title: "Weekly review summarizes training stress and response.",
     titleZh: "每周复盘总结训练压力和反应。",
     formula: "Weekly load = sum(daily sRPE loads); monotony = mean / SD; strain = load x monotony",
@@ -960,7 +956,7 @@ export const formulaNotes: FormulaNoteData[] = [
     ],
   },
   {
-    pageKey: PageKey.Settings,
+    pageKey: PageKey.Landing,
     title: "Settings define the training context.",
     titleZh: "设置定义训练语境。",
     formula: "Context = goal + block length + target muscles + units + volume landmark language",

@@ -9,12 +9,11 @@ type AppShellProps = {
 };
 
 export function AppShell({ navItems, currentPage, onNavigate, children }: AppShellProps) {
+  // Landing is a standalone first screen, so it skips the dashboard sidebar and topbar.
   if (currentPage === PageKey.Landing) {
-    // The landing page uses its own full-screen layout, so it skips the dashboard shell.
     return <>{children}</>;
   }
 
-  const appNavItems = navItems.filter((item) => item.key !== PageKey.Landing);
   const activeItem = navItems.find((item) => item.key === currentPage);
 
   return (
@@ -30,7 +29,7 @@ export function AppShell({ navItems, currentPage, onNavigate, children }: AppShe
         </button>
 
         <nav className="side-nav">
-          {appNavItems.map((item) => {
+          {navItems.map((item) => {
             const isActive = item.key === currentPage;
 
             return (
@@ -72,7 +71,7 @@ export function AppShell({ navItems, currentPage, onNavigate, children }: AppShe
       <main className="app-main">{children}</main>
 
       <nav className="mobile-nav">
-        {appNavItems.map((item) => {
+        {navItems.map((item) => {
           const isActive = item.key === currentPage;
 
           return (

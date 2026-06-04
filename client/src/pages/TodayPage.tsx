@@ -2,11 +2,7 @@ import type { CSSProperties } from "react";
 import { SectionCard } from "../components/SectionCard";
 import { StatusBadge } from "../components/StatusBadge";
 import { useTrainingLog } from "../state/TrainingLogContext";
-import { MetricStatus, type TrainingInput, type UserLevel } from "../types/appTypes";
-
-type TodayPageProps = {
-  selectedLevel: UserLevel;
-};
+import { MetricStatus, type TrainingInput } from "../types/appTypes";
 
 type TrainingInputField = keyof TrainingInput;
 
@@ -96,7 +92,7 @@ function formatInputValue(value: number, unit: string) {
   return `${value} ${unit}`;
 }
 
-export function TodayPage(_props: TodayPageProps) {
+export function TodayPage() {
   const {
     todayDraft,
     currentReadiness,

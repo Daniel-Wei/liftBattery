@@ -3,10 +3,7 @@ export enum PageKey {
   Overview = "overview",
   Today = "today",
   Training = "training",
-  Recovery = "recovery",
-  Bodyweight = "bodyweight",
-  WeeklyReview = "weeklyReview",
-  Settings = "settings",
+  Trends = "trends",
 }
 
 export type NavItem = {
@@ -145,10 +142,6 @@ export type TrainingLogState = {
   logs: DailyTrainingLog[];
   // trainingSessions are real post-workout lifting logs.
   trainingSessions: TrainingSession[];
-  // bodyweightEntries are saved weight records for trend calculations.
-  bodyweightEntries: BodyweightEntry[];
-  // nutritionEntries provide optional cut-pressure context.
-  nutritionEntries: NutritionEntry[];
   // programSettings provide targets for derived dashboard metrics.
   programSettings: ProgramSettings;
 };
@@ -160,10 +153,6 @@ export enum TrainingLogActionType {
   DeleteLog = "deleteLog",
   SaveTrainingSession = "saveTrainingSession",
   DeleteTrainingSession = "deleteTrainingSession",
-  SaveBodyweightEntry = "saveBodyweightEntry",
-  DeleteBodyweightEntry = "deleteBodyweightEntry",
-  SaveNutritionEntry = "saveNutritionEntry",
-  DeleteNutritionEntry = "deleteNutritionEntry",
   UpdateProgramSettings = "updateProgramSettings",
 }
 
@@ -190,22 +179,6 @@ export type TrainingLogAction =
     }
   | {
       type: TrainingLogActionType.DeleteTrainingSession;
-      id: string;
-    }
-  | {
-      type: TrainingLogActionType.SaveBodyweightEntry;
-      entry: BodyweightEntry;
-    }
-  | {
-      type: TrainingLogActionType.DeleteBodyweightEntry;
-      id: string;
-    }
-  | {
-      type: TrainingLogActionType.SaveNutritionEntry;
-      entry: NutritionEntry;
-    }
-  | {
-      type: TrainingLogActionType.DeleteNutritionEntry;
       id: string;
     }
   | {

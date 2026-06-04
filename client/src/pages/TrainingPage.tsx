@@ -4,8 +4,12 @@ import { MetricCard } from "../components/MetricCard";
 import { SectionCard } from "../components/SectionCard";
 import { StatusBadge } from "../components/StatusBadge";
 import {
-  getWeeklySessionLoadTrend,
+  formatTrainingTrendWeekLabel,
+  getCurrentTrainingTrendWeek,
+  getTrainingTrendWeeks,
+  getWeeklyEstimatedPrTrend,
   getWeeklyVolumeLoadTrend,
+  isSessionInTrainingTrendWeek,
 } from "../domain/trainingTrendCharts";
 import { useTrainingLog } from "../state/TrainingLogContext";
 import {
@@ -16,12 +20,7 @@ import {
   type MuscleGroup,
   type SetEntry,
   type TrainingSession,
-  type UserLevel,
 } from "../types/appTypes";
-
-type TrainingPageProps = {
-  selectedLevel: UserLevel;
-};
 
 // The form keeps input values as strings so users can freely edit number fields before saving.
 type TrainingSessionForm = {
@@ -65,13 +64,6 @@ type MuscleSummary = {
 
 type MuscleGroupFilter = "All" | MuscleGroup;
 
-// Saved sessions, summary cards, and trend charts all share this range.
-// Keeping it as one object makes it harder for the three views to drift apart.
-type SavedSessionDateRange = {
-  startDate: string;
-  endDate: string;
-};
-
 // Product requirement: saved-session pagination is intentionally limited to 5 or 10 rows.
 const savedSessionPageSizeOptions = [5, 10];
 
@@ -90,20 +82,6 @@ const muscleGroupOptions: MuscleGroup[] = [
 
 function getLocalDateString() {
   return new Date().toISOString().slice(0, 10);
-}
-
-function getPastSevenDaysStartDateString() {
-  const startDate = new Date();
-  // Inclusive seven-day default: today plus the previous six calendar days.
-  startDate.setDate(startDate.getDate() - 6);
-  return startDate.toISOString().slice(0, 10);
-}
-
-function createDefaultSavedSessionDateRange(): SavedSessionDateRange {
-  return {
-    startDate: getPastSevenDaysStartDateString(),
-    endDate: getLocalDateString(),
-  };
 }
 
 function createId(prefix: string) {
@@ -192,36 +170,6 @@ function sortTrainingSessionsNewestFirst(trainingSessions: TrainingSession[]) {
     secondSession.date.localeCompare(firstSession.date)
     || secondSession.updatedAt.localeCompare(firstSession.updatedAt)
   ));
-}
-
-function isSessionInDateRange(session: TrainingSession, dateRange: SavedSessionDateRange) {
-  // Empty start/end values are allowed so a user can create an open-ended range.
-  if (dateRange.startDate && session.date < dateRange.startDate) {
-    return false;
-  }
-
-  if (dateRange.endDate && session.date > dateRange.endDate) {
-    return false;
-  }
-
-  return true;
-}
-
-function formatDateRangeLabel(dateRange: SavedSessionDateRange) {
-  // The same label is reused in the top badge and trend titles.
-  if (dateRange.startDate && dateRange.endDate) {
-    return `${dateRange.startDate} to ${dateRange.endDate}`;
-  }
-
-  if (dateRange.startDate) {
-    return `From ${dateRange.startDate}`;
-  }
-
-  if (dateRange.endDate) {
-    return `Until ${dateRange.endDate}`;
-  }
-
-  return "All dates";
 }
 
 function doesSessionMatchMuscleGroup(
@@ -474,7 +422,7 @@ function getPriorityMuscleSummaries(
   });
 }
 
-export function TrainingPage(_props: TrainingPageProps) {
+export function TrainingPage() {
   // TrainingLogContext is the real data source for this page.
   // This component should not read mock training data for any card, list, or chart below.
   // If a value appears on this page, it should be derived from these saved sessions.
@@ -499,9 +447,12 @@ export function TrainingPage(_props: TrainingPageProps) {
   // Saved-session filters are UI state only. They do not mutate the stored sessions;
   // they decide which saved sessions feed the visible list, summaries, metric cards, and charts.
   const [selectedMuscleGroupFilter, setSelectedMuscleGroupFilter] = useState<MuscleGroupFilter>("All");
-  const [savedSessionDateRange, setSavedSessionDateRange] = useState<SavedSessionDateRange>(
-    createDefaultSavedSessionDateRange,
-  );
+  const trainingTrendWeeks = getTrainingTrendWeeks();
+  const [selectedWeekLabel, setSelectedWeekLabel] = useState(() => (
+    getCurrentTrainingTrendWeek().label
+  ));
+  const selectedWeek = trainingTrendWeeks.find((week) => week.label === selectedWeekLabel)
+    ?? getCurrentTrainingTrendWeek();
 
   // Pagination is intentionally scoped to the saved-session list. The summary cards and trend charts
   // still use the full filtered range so changing page size does not change analysis results.
@@ -510,23 +461,22 @@ export function TrainingPage(_props: TrainingPageProps) {
 
   // Everything below is derived from the same filtered session list.
   // The saved-session table, metric cards, summaries, and both trends should agree.
-  // Order matters: first normalize newest-first ordering, then apply date range, then muscle filter.
+  // Order matters: first normalize newest-first ordering, then apply week, then muscle filter.
   const sortedTrainingSessions = sortTrainingSessionsNewestFirst(trainingSessions);
 
-  // Date range is applied before muscle group so the top badge and charts describe the same period.
-  // Both start and end are inclusive because saved sessions are stored as YYYY-MM-DD calendar dates.
-  const dateRangeTrainingSessions = sortedTrainingSessions.filter((session) => (
-    isSessionInDateRange(session, savedSessionDateRange)
+  // Week range is applied before muscle group so the top badge and charts describe the same period.
+  const weekTrainingSessions = sortedTrainingSessions.filter((session) => (
+    isSessionInTrainingTrendWeek(session, selectedWeek)
   ));
 
   // Muscle filtering is a direct field comparison because a saved session now has one exercise
   // and one primary muscle group.
-  const filteredTrainingSessions = dateRangeTrainingSessions.filter((session) => (
+  const filteredTrainingSessions = weekTrainingSessions.filter((session) => (
     doesSessionMatchMuscleGroup(session, selectedMuscleGroupFilter)
   ));
 
   // The label is computed once so the hero badge and both trend titles stay consistent.
-  const dateRangeLabel = formatDateRangeLabel(savedSessionDateRange);
+  const selectedWeekDisplayLabel = formatTrainingTrendWeekLabel(selectedWeek);
 
   // "Latest" always means latest within the active filters, not latest across all saved history.
   const latestSession = filteredTrainingSessions[0] ?? null;
@@ -563,10 +513,19 @@ export function TrainingPage(_props: TrainingPageProps) {
     programSettings.priorityMuscles,
   );
 
-  // Both trend charts are generated from saved sessions only. They are grouped into preset
-  // training weeks for now; later the week date ranges should come from user settings.
-  const sessionLoadTrend = getWeeklySessionLoadTrend(filteredTrainingSessions);
+  // Both trend charts are generated from saved sessions only.
+  // Volume shows total work, while estimated PR uses an e1RM proxy from saved sets.
   const volumeLoadTrend = getWeeklyVolumeLoadTrend(filteredTrainingSessions);
+  const estimatedPrTrend = getWeeklyEstimatedPrTrend(filteredTrainingSessions);
+
+  function handleTrainingWeekChange(value: string) {
+    const selectedWeekOption = trainingTrendWeeks.find((week) => week.label === value);
+
+    if (selectedWeekOption) {
+      setSelectedWeekLabel(selectedWeekOption.label);
+      setSavedSessionPage(1);
+    }
+  }
 
   // Muscle changes can alter the filtered list length, so reset pagination to the first page.
   function handleMuscleGroupFilterChange(value: string) {
@@ -595,20 +554,6 @@ export function TrainingPage(_props: TrainingPageProps) {
       setSavedSessionPageSize(nextPageSize);
       setSavedSessionPage(1);
     }
-  }
-
-  // Date edits are applied immediately. We do not auto-correct reversed ranges here; the filter
-  // naturally returns no sessions until the user chooses a valid start/end combination.
-  function handleSavedSessionDateRangeChange(
-    field: keyof SavedSessionDateRange,
-    value: string,
-  ) {
-    // Any filter change can shrink the result set, so restart pagination at page one.
-    setSavedSessionDateRange((currentDateRange) => ({
-      ...currentDateRange,
-      [field]: value,
-    }));
-    setSavedSessionPage(1);
   }
 
   // Generic text-field updater keeps the long form JSX from needing one handler per input.
@@ -699,7 +644,7 @@ export function TrainingPage(_props: TrainingPageProps) {
         <div className="battery-focus-panel training-load-panel">
           <div className="battery-panel-badges">
             <StatusBadge status={mainSessionLoadMetric.status} label={mainSessionLoadMetric.evidenceType} />
-            <StatusBadge status={MetricStatus.Neutral} label={dateRangeLabel} />
+            <StatusBadge status={MetricStatus.Neutral} label={selectedWeekDisplayLabel} />
             <StatusBadge status={MetricStatus.Neutral} label={`${filteredTrainingSessions.length} saved sessions`} />
           </div>
 
@@ -896,29 +841,24 @@ export function TrainingPage(_props: TrainingPageProps) {
             <div>
               <p className="section-eyebrow">Saved sessions</p>
               <p className="muted-text">
-                Filtered by date range and muscle group so the page does not grow forever.
+                Filtered by training week and muscle group so the page does not grow forever.
               </p>
             </div>
 
             <div className="saved-session-controls">
               <label className="training-form-field training-form-field--compact">
-                <span className="training-form-label">Start date</span>
-                <input
+                <span className="training-form-label">Training week</span>
+                <select
                   className="training-input training-input--compact"
-                  type="date"
-                  value={savedSessionDateRange.startDate}
-                  onChange={(event) => handleSavedSessionDateRangeChange("startDate", event.target.value)}
-                />
-              </label>
-
-              <label className="training-form-field training-form-field--compact">
-                <span className="training-form-label">End date</span>
-                <input
-                  className="training-input training-input--compact"
-                  type="date"
-                  value={savedSessionDateRange.endDate}
-                  onChange={(event) => handleSavedSessionDateRangeChange("endDate", event.target.value)}
-                />
+                  value={selectedWeekLabel}
+                  onChange={(event) => handleTrainingWeekChange(event.target.value)}
+                >
+                  {trainingTrendWeeks.map((week) => (
+                    <option key={week.label} value={week.label}>
+                      {formatTrainingTrendWeekLabel(week)}
+                    </option>
+                  ))}
+                </select>
               </label>
 
               <label className="training-form-field training-form-field--compact">
@@ -952,7 +892,7 @@ export function TrainingPage(_props: TrainingPageProps) {
 
           <div className="compact-card-list">
             {latestTrainingSessions.length === 0 ? (
-              <p className="muted-text">No matching saved training sessions in this date range.</p>
+              <p className="muted-text">No matching saved training sessions in this week.</p>
             ) : latestTrainingSessions.map((session) => (
               <article key={session.id} className="compact-signal-card saved-session-card">
                 <div>
@@ -1053,19 +993,19 @@ export function TrainingPage(_props: TrainingPageProps) {
       )}
 
       {/* Trend charts are hidden until there is at least one saved session. */}
-      {sessionLoadTrend.length > 0 ? (
+      {volumeLoadTrend.length > 0 ? (
         <div className="two-column">
           <ChartMock
-            title={`Saved session load trend (${dateRangeLabel})`}
-            titleZh="已保存训练负荷趋势"
-            data={sessionLoadTrend}
-            variant="dark"
-          />
-          <ChartMock
-            title={`Saved volume load trend (${dateRangeLabel})`}
-            titleZh="已保存训练量趋势"
+            title={`Training volume / 训练量 (${selectedWeek.label})`}
+            titleZh="本周训练课负荷"
             data={volumeLoadTrend}
             variant="amber"
+          />
+          <ChartMock
+            title={`Estimated PR / PR 推测 (${selectedWeek.label})`}
+            titleZh="本周训练量"
+            data={estimatedPrTrend}
+            variant="purple"
           />
         </div>
       ) : null}

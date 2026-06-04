@@ -7,11 +7,9 @@ import {
 } from "react";
 import { calculateReadiness } from "../domain/readiness";
 import type {
-  BodyweightEntry,
   DailyTrainingLog,
   MainDriver,
   MuscleGroup,
-  NutritionEntry,
   ProgramSettings,
   ReadinessResult,
   SetEntry,
@@ -30,8 +28,6 @@ import {
 const TODAY_DRAFT_STORAGE_KEY = "liftops.todayDraft";
 const TRAINING_LOGS_STORAGE_KEY = "liftops.trainingLogs";
 const TRAINING_SESSIONS_STORAGE_KEY = "liftops.trainingSessions";
-const BODYWEIGHT_ENTRIES_STORAGE_KEY = "liftops.bodyweightEntries";
-const NUTRITION_ENTRIES_STORAGE_KEY = "liftops.nutritionEntries";
 const PROGRAM_SETTINGS_STORAGE_KEY = "liftops.programSettings";
 
 const initialTrainingInput: TrainingInput = {
@@ -56,8 +52,6 @@ const defaultTrainingLogState: TrainingLogState = {
   todayDraftUpdated: true,
   logs: [],
   trainingSessions: [],
-  bodyweightEntries: [],
-  nutritionEntries: [],
   programSettings: defaultProgramSettings,
 };
 
@@ -69,8 +63,6 @@ type TrainingLogContextValue = {
   latestLog: DailyTrainingLog | null;
   last7Logs: DailyTrainingLog[];
   trainingSessions: TrainingSession[];
-  bodyweightEntries: BodyweightEntry[];
-  nutritionEntries: NutritionEntry[];
   programSettings: ProgramSettings;
   updateTodayDraft: (field: keyof TrainingInput, value: number) => void;
   resetTodayDraft: () => void;
@@ -78,10 +70,6 @@ type TrainingLogContextValue = {
   deleteLog: (id: string) => void;
   saveTrainingSession: (session: TrainingSession) => void;
   deleteTrainingSession: (id: string) => void;
-  saveBodyweightEntry: (entry: BodyweightEntry) => void;
-  deleteBodyweightEntry: (id: string) => void;
-  saveNutritionEntry: (entry: NutritionEntry) => void;
-  deleteNutritionEntry: (id: string) => void;
   updateProgramSettings: (settings: ProgramSettings) => void;
 };
 
@@ -334,44 +322,6 @@ export function getTrainingSessionArrayFromStorage(value: unknown): TrainingSess
   return trainingSessions;
 }
 
-export function isBodyweightEntry(value: unknown): value is BodyweightEntry {
-  if (!isStringKeyValuePairObjectRecord(value)) {
-    return false;
-  }
-
-  return (
-    isString(value.id)
-    && isString(value.date)
-    && isNumber(value.weightKg)
-    && isString(value.createdAt)
-    && isString(value.updatedAt)
-  );
-}
-
-export function isBodyweightEntryArray(value: unknown): value is BodyweightEntry[] {
-  return Array.isArray(value) && value.every(isBodyweightEntry);
-}
-
-export function isNutritionEntry(value: unknown): value is NutritionEntry {
-  if (!isStringKeyValuePairObjectRecord(value)) {
-    return false;
-  }
-
-  return (
-    isString(value.id)
-    && isString(value.date)
-    && (value.calories === undefined || isNumber(value.calories))
-    && (value.carbsGrams === undefined || isNumber(value.carbsGrams))
-    && (value.hunger === undefined || isNumber(value.hunger))
-    && isString(value.createdAt)
-    && isString(value.updatedAt)
-  );
-}
-
-export function isNutritionEntryArray(value: unknown): value is NutritionEntry[] {
-  return Array.isArray(value) && value.every(isNutritionEntry);
-}
-
 export function isProgramSettings(value: unknown): value is ProgramSettings {
   if (!isStringKeyValuePairObjectRecord(value)) {
     return false;
@@ -451,46 +401,6 @@ function loadTrainingSessions() {
   }
 }
 
-function loadBodyweightEntries() {
-  try {
-    const savedValue = localStorage.getItem(BODYWEIGHT_ENTRIES_STORAGE_KEY);
-
-    if (savedValue === null) {
-      return [];
-    }
-
-    const parsedValue: unknown = JSON.parse(savedValue);
-
-    if (isBodyweightEntryArray(parsedValue)) {
-      return parsedValue;
-    }
-
-    return [];
-  } catch {
-    return [];
-  }
-}
-
-function loadNutritionEntries() {
-  try {
-    const savedValue = localStorage.getItem(NUTRITION_ENTRIES_STORAGE_KEY);
-
-    if (savedValue === null) {
-      return [];
-    }
-
-    const parsedValue: unknown = JSON.parse(savedValue);
-
-    if (isNutritionEntryArray(parsedValue)) {
-      return parsedValue;
-    }
-
-    return [];
-  } catch {
-    return [];
-  }
-}
-
 function loadProgramSettings() {
   try {
     const savedValue = localStorage.getItem(PROGRAM_SETTINGS_STORAGE_KEY);
@@ -521,8 +431,6 @@ function loadInitialTrainingLogState(): TrainingLogState {
     todayDraftUpdated: getTodayDraftUpdated(todayDraft, logs),
     logs,
     trainingSessions: loadTrainingSessions(),
-    bodyweightEntries: loadBodyweightEntries(),
-    nutritionEntries: loadNutritionEntries(),
     programSettings: loadProgramSettings(),
   };
 }
@@ -671,58 +579,6 @@ function trainingLogReducer(
         trainingSessions: state.trainingSessions.filter((session) => session.id !== action.id),
       };
 
-    case TrainingLogActionType.SaveBodyweightEntry: {
-      const entryExistsForDate = state.bodyweightEntries.some((entry) => (
-        entry.date === action.entry.date
-      ));
-
-      if (entryExistsForDate) {
-        return {
-          ...state,
-          bodyweightEntries: state.bodyweightEntries.map((entry) => (
-            entry.date === action.entry.date ? action.entry : entry
-          )),
-        };
-      }
-
-      return {
-        ...state,
-        bodyweightEntries: [action.entry, ...state.bodyweightEntries],
-      };
-    }
-
-    case TrainingLogActionType.DeleteBodyweightEntry:
-      return {
-        ...state,
-        bodyweightEntries: state.bodyweightEntries.filter((entry) => entry.id !== action.id),
-      };
-
-    case TrainingLogActionType.SaveNutritionEntry: {
-      const entryExistsForDate = state.nutritionEntries.some((entry) => (
-        entry.date === action.entry.date
-      ));
-
-      if (entryExistsForDate) {
-        return {
-          ...state,
-          nutritionEntries: state.nutritionEntries.map((entry) => (
-            entry.date === action.entry.date ? action.entry : entry
-          )),
-        };
-      }
-
-      return {
-        ...state,
-        nutritionEntries: [action.entry, ...state.nutritionEntries],
-      };
-    }
-
-    case TrainingLogActionType.DeleteNutritionEntry:
-      return {
-        ...state,
-        nutritionEntries: state.nutritionEntries.filter((entry) => entry.id !== action.id),
-      };
-
     case TrainingLogActionType.UpdateProgramSettings:
       return {
         ...state,
@@ -772,28 +628,6 @@ export function TrainingLogProvider({ children }: TrainingLogProviderProps) {
 
   useEffect(() => {
     try {
-      localStorage.setItem(
-        BODYWEIGHT_ENTRIES_STORAGE_KEY,
-        JSON.stringify(state.bodyweightEntries),
-      );
-    } catch {
-      // Keep the UI usable if browser storage is unavailable.
-    }
-  }, [state.bodyweightEntries]);
-
-  useEffect(() => {
-    try {
-      localStorage.setItem(
-        NUTRITION_ENTRIES_STORAGE_KEY,
-        JSON.stringify(state.nutritionEntries),
-      );
-    } catch {
-      // Keep the UI usable if browser storage is unavailable.
-    }
-  }, [state.nutritionEntries]);
-
-  useEffect(() => {
-    try {
       localStorage.setItem(PROGRAM_SETTINGS_STORAGE_KEY, JSON.stringify(state.programSettings));
     } catch {
       // Keep the UI usable if browser storage is unavailable.
@@ -830,26 +664,6 @@ export function TrainingLogProvider({ children }: TrainingLogProviderProps) {
     dispatch({ type: TrainingLogActionType.DeleteTrainingSession, id });
   }
 
-  // Saves or updates the bodyweight entry for one date.
-  function saveBodyweightEntry(entry: BodyweightEntry) {
-    dispatch({ type: TrainingLogActionType.SaveBodyweightEntry, entry });
-  }
-
-  // Removes one bodyweight entry by id.
-  function deleteBodyweightEntry(id: string) {
-    dispatch({ type: TrainingLogActionType.DeleteBodyweightEntry, id });
-  }
-
-  // Saves or updates optional nutrition context for one date.
-  function saveNutritionEntry(entry: NutritionEntry) {
-    dispatch({ type: TrainingLogActionType.SaveNutritionEntry, entry });
-  }
-
-  // Removes one nutrition entry by id.
-  function deleteNutritionEntry(id: string) {
-    dispatch({ type: TrainingLogActionType.DeleteNutritionEntry, id });
-  }
-
   // Updates the target context used by derived dashboard metrics.
   function updateProgramSettings(settings: ProgramSettings) {
     dispatch({ type: TrainingLogActionType.UpdateProgramSettings, settings });
@@ -863,8 +677,6 @@ export function TrainingLogProvider({ children }: TrainingLogProviderProps) {
     latestLog,
     last7Logs,
     trainingSessions: state.trainingSessions,
-    bodyweightEntries: state.bodyweightEntries,
-    nutritionEntries: state.nutritionEntries,
     programSettings: state.programSettings,
     updateTodayDraft,
     resetTodayDraft,
@@ -872,10 +684,6 @@ export function TrainingLogProvider({ children }: TrainingLogProviderProps) {
     deleteLog,
     saveTrainingSession,
     deleteTrainingSession,
-    saveBodyweightEntry,
-    deleteBodyweightEntry,
-    saveNutritionEntry,
-    deleteNutritionEntry,
     updateProgramSettings,
   };
 
