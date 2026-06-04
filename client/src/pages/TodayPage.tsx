@@ -222,14 +222,6 @@ export function TodayPage() {
               <span className="signal-chip">{mainDriver.reason}</span>
             </article>
           ))}
-
-          <article key={readiness.recommendation} className="compact-signal-card">
-            <div>
-              <p className="work-title">{readiness.recommendation}</p>
-              <p className="info-subtitle">{readiness.recommendationZh}</p>
-            </div>
-            <span className="signal-chip">{readiness.statusLabel}</span>
-          </article>
         </div>
       </SectionCard>
 
