@@ -4,14 +4,14 @@ import {
   ReadinessStatus,
   type MainDriver,
   type ReadinessResult,
-  type TrainingInput,
+  type PreCheckInput,
 } from "../types/appTypes";
 
 function clampScore(score: number) {
   return Math.min(100, Math.max(0, Math.round(score)));
 }
 
-function getPreviousSessionLoad(input: TrainingInput) {
+function getPreviousSessionLoad(input: PreCheckInput) {
   return input.previousSessionRpe * input.previousSessionDurationMinutes;
 }
 
@@ -127,7 +127,7 @@ function getMotivationAdjustment(motivation: number) {
   return 10;
 }
 
-function getMainDrivers(input: TrainingInput) {
+function getMainDrivers(input: PreCheckInput) {
   const drivers: MainDriver[] = [];
   const previousSessionLoad = getPreviousSessionLoad(input);
 
@@ -182,7 +182,7 @@ function getMainDrivers(input: TrainingInput) {
   return drivers;
 }
 
-export function calculateReadiness(input: TrainingInput): ReadinessResult {
+export function calculateReadiness(input: PreCheckInput): ReadinessResult {
   const previousSessionLoad = getPreviousSessionLoad(input);
 
   const score = clampScore(

@@ -11,7 +11,7 @@ import {
   getWeeklyVolumeLoadTrend,
   isSessionInTrainingTrendWeek,
 } from "../domain/trainingTrendCharts";
-import { useTrainingLog } from "../state/TrainingLogContext";
+import { useLiftBattery } from "../state/LiftBatteryContext";
 import {
   EvidenceType,
   MetricStatus,
@@ -431,7 +431,7 @@ export function TrainingPage() {
     saveTrainingSession,
     deleteTrainingSession,
     programSettings,
-  } = useTrainingLog();
+  } = useLiftBattery();
 
   // The save form defaults to the user's first priority muscle so newly entered sessions
   // immediately line up with the priority-muscle summaries shown lower on the page.

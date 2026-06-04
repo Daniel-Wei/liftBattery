@@ -4,7 +4,7 @@ import { SectionCard } from "../components/SectionCard";
 import { StatusBadge } from "../components/StatusBadge";
 import { getLevelData } from "../data/mockData";
 import { getDerivedOverviewMetrics } from "../domain/overviewMetrics";
-import { useTrainingLog } from "../state/TrainingLogContext";
+import { useLiftBattery } from "../state/LiftBatteryContext";
 import { MetricStatus, RiskSeverity, UserLevel } from "../types/appTypes";
 
 export function OverviewPage() {
@@ -16,7 +16,7 @@ export function OverviewPage() {
     latestLog,
     trainingSessions,
     programSettings,
-  } = useTrainingLog();
+  } = useLiftBattery();
 
   const derivedOverviewMetrics = getDerivedOverviewMetrics({
     trainingSessions,

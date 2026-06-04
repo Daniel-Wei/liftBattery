@@ -5,24 +5,24 @@ import {
   getWeeklySessionLoadTrend,
   getWeeklyVolumeLoadTrend,
 } from "../domain/trainingTrendCharts";
-import { useTrainingLog } from "../state/TrainingLogContext";
-import type { DailyTrainingLog, TrendPoint } from "../types/appTypes";
+import { useLiftBattery } from "../state/LiftBatteryContext";
+import type { DailyPreCheckLog, TrendPoint } from "../types/appTypes";
 
-function sortLogsOldestFirst(logs: DailyTrainingLog[]) {
+function sortLogsOldestFirst(logs: DailyPreCheckLog[]) {
   return [...logs].sort((firstLog, secondLog) => (
     firstLog.date.localeCompare(secondLog.date)
     || firstLog.updatedAt.localeCompare(secondLog.updatedAt)
   ));
 }
 
-function getPreCheckReadinessTrend(logs: DailyTrainingLog[]): TrendPoint[] {
+function getPreCheckReadinessTrend(logs: DailyPreCheckLog[]): TrendPoint[] {
   return sortLogsOldestFirst(logs).slice(-7).map((log) => ({
     label: log.date.slice(5),
     value: log.readiness.score,
   }));
 }
 
-function getSleepTrend(logs: DailyTrainingLog[]): TrendPoint[] {
+function getSleepTrend(logs: DailyPreCheckLog[]): TrendPoint[] {
   return sortLogsOldestFirst(logs).slice(-7).map((log) => ({
     label: log.date.slice(5),
     value: log.input.sleepHours,
@@ -30,7 +30,7 @@ function getSleepTrend(logs: DailyTrainingLog[]): TrendPoint[] {
 }
 
 export function TrendsPage() {
-  const { logs, trainingSessions } = useTrainingLog();
+  const { logs, trainingSessions } = useLiftBattery();
 
   const preCheckReadinessTrend = getPreCheckReadinessTrend(logs);
   const sleepTrend = getSleepTrend(logs);

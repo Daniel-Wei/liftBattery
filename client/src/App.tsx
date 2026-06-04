@@ -7,7 +7,7 @@ import { OverviewPage } from "./pages/OverviewPage";
 import { TodayPage } from "./pages/TodayPage";
 import { TrainingPage } from "./pages/TrainingPage";
 import { TrendsPage } from "./pages/TrendsPage";
-import { TrainingLogProvider } from "./state/TrainingLogContext";
+import { PreCheckProvider } from "./state/LiftBatteryContext";
 
 export default function App() {
   const [currentPage, setCurrentPage] = useState<PageKey>(PageKey.Landing);
@@ -33,10 +33,10 @@ export default function App() {
   }
 
   return (
-    <TrainingLogProvider>
+    <PreCheckProvider>
       <AppShell navItems={navItems} currentPage={currentPage} onNavigate={setCurrentPage}>
         {renderPage()}
       </AppShell>
-    </TrainingLogProvider>
+    </PreCheckProvider>
   );
 }

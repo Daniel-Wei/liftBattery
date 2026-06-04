@@ -1,10 +1,10 @@
 import type { CSSProperties } from "react";
 import { SectionCard } from "../components/SectionCard";
 import { StatusBadge } from "../components/StatusBadge";
-import { useTrainingLog } from "../state/TrainingLogContext";
-import { MetricStatus, type TrainingInput } from "../types/appTypes";
+import { useLiftBattery } from "../state/LiftBatteryContext";
+import { MetricStatus, type PreCheckInput } from "../types/appTypes";
 
-type TrainingInputField = keyof TrainingInput;
+type TrainingInputField = keyof PreCheckInput;
 
 type ReadinessControl = {
   field: TrainingInputField;
@@ -101,7 +101,7 @@ export function TodayPage() {
     saveTodayLog,
     todayDraftUpdated,
     last7Logs,
-  } = useTrainingLog();
+  } = useLiftBattery();
   const readiness = currentReadiness;
   const batteryRingStyle = {
     "--battery-score": `${readiness.score}%`,

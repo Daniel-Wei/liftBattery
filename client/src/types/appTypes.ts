@@ -25,7 +25,7 @@ export enum ReadinessStatus {
   Recovery = "recovery",
 }
 
-export type TrainingInput = {
+export type PreCheckInput = {
   sleepHours: number;
   soreness: number;
   motivation: number;
@@ -60,11 +60,11 @@ export type ReadinessResult = {
   mainDrivers: MainDriver[];
 };
 
-// DailyTrainingLog stores pre-workout readiness check-ins from TodayPage.
-export type DailyTrainingLog = {
+// DailyPreCheckLog stores pre-workout readiness check-ins from TodayPage.
+export type DailyPreCheckLog = {
   id: string;
   date: string;
-  input: TrainingInput;
+  input: PreCheckInput;
   readiness: ReadinessResult;
   createdAt: string;
   updatedAt: string;
@@ -133,56 +133,56 @@ export type ProgramSettings = {
   weeklyPriorityHardSetTarget: number;
 };
 
-export type TrainingLogState = {
-  // todayDraft is the current unsaved input the user is editing on TodayPage.
-  todayDraft: TrainingInput;
-  // todayDraftUpdated tracks whether the current editing draft has unsaved changes.
-  todayDraftUpdated: boolean;
-  // logs are saved history records that other pages can analyze later.
-  logs: DailyTrainingLog[];
+export type LiftBatteryState = {
+  // preCheckDraft is the current unsaved input the user is editing on TodayPage.
+  preCheckDraft: PreCheckInput;
+  // preCheckDraftUpdated tracks whether the current editing draft has unsaved changes.
+  preCheckDraftUpdated: boolean;
+  // preCheckLogs are saved history records that other pages can analyze later.
+  preCheckLogs: DailyPreCheckLog[];
   // trainingSessions are real post-workout lifting logs.
   trainingSessions: TrainingSession[];
   // programSettings provide targets for derived dashboard metrics.
   programSettings: ProgramSettings;
 };
 
-export enum TrainingLogActionType {
-  UpdateTodayDraft = "updateTodayDraft",
-  ResetTodayDraft = "resetTodayDraft",
-  SaveTodayLog = "saveTodayLog",
-  DeleteLog = "deleteLog",
+export enum LiftBatteryActionType {
+  UpdatePreCheckDraft = "updatePreCheckDraft",
+  ResetPreCheckDraft = "resetPreCheckDraft",
+  SavePreCheckLog = "savePreCheckLog",
+  DeletePreCheckLog = "deletePreCheckLog",
   SaveTrainingSession = "saveTrainingSession",
   DeleteTrainingSession = "deleteTrainingSession",
   UpdateProgramSettings = "updateProgramSettings",
 }
 
 // Future pages should consume derived results from logs instead of treating TodayPage as the data owner.
-export type TrainingLogAction =
+export type LiftBatteryAction =
   | {
-      type: TrainingLogActionType.UpdateTodayDraft;
-      field: keyof TrainingInput;
+      type: LiftBatteryActionType.UpdatePreCheckDraft;
+      field: keyof PreCheckInput;
       value: number;
     }
   | {
-      type: TrainingLogActionType.ResetTodayDraft;
+      type: LiftBatteryActionType.ResetPreCheckDraft;
     }
   | {
-      type: TrainingLogActionType.SaveTodayLog;
+      type: LiftBatteryActionType.SavePreCheckLog;
     }
   | {
-      type: TrainingLogActionType.DeleteLog;
+      type: LiftBatteryActionType.DeletePreCheckLog;
       id: string;
     }
   | {
-      type: TrainingLogActionType.SaveTrainingSession;
+      type: LiftBatteryActionType.SaveTrainingSession;
       session: TrainingSession;
     }
   | {
-      type: TrainingLogActionType.DeleteTrainingSession;
+      type: LiftBatteryActionType.DeleteTrainingSession;
       id: string;
     }
   | {
-      type: TrainingLogActionType.UpdateProgramSettings;
+      type: LiftBatteryActionType.UpdateProgramSettings;
       settings: ProgramSettings;
     };
 
