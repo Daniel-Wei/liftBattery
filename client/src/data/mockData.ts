@@ -36,7 +36,7 @@ const referenceLinks = {
 
 export const navItems: NavItem[] = [
   { key: PageKey.Overview, label: "Overview", labelZh: "总览" },
-  { key: PageKey.Today, label: "Pre-check", labelZh: "练前检查" },
+  { key: PageKey.PreCheck, label: "Pre-check", labelZh: "练前检查" },
   { key: PageKey.Training, label: "Training", labelZh: "训练记录" },
   { key: PageKey.Trends, label: "Trends", labelZh: "趋势" },
 ];
@@ -858,7 +858,7 @@ export const formulaNotes: FormulaNoteData[] = [
     ],
   },
   {
-    pageKey: PageKey.Today,
+    pageKey: PageKey.PreCheck,
     title: "Today starts with the smallest useful record.",
     titleZh: "今天页面从最小可用记录开始。",
     formula: "Input -> derived output -> watch state",

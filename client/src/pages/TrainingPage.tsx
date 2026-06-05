@@ -26,6 +26,7 @@ import {
     getSessionSetCount,
     getTrainingFormError,
     doesSessionMatchMuscleGroup,
+    sortTrainingSessionsNewestFirst,
     buildRealTrainingMetrics,
     getExerciseSummaries,
     getPriorityMuscleSummaries,
@@ -84,8 +85,9 @@ export function TrainingPage() {
   const filteredTrainingSessions = weekTrainingSessions.filter((session) => (
     doesSessionMatchMuscleGroup(session, selectedMuscleGroupFilter)
   ));
+  const sortedFilteredTrainingSessions = sortTrainingSessionsNewestFirst(filteredTrainingSessions);
   const selectedWeekDisplayLabel = formatTrainingTrendWeekLabel(selectedWeek);
-  const latestSession = filteredTrainingSessions[0] ?? null;
+  const latestSession = sortedFilteredTrainingSessions[0] ?? null;
 
   // #endregion
 
@@ -93,13 +95,13 @@ export function TrainingPage() {
   
   const totalSavedSessionPages = Math.max(
     1,
-    Math.ceil(filteredTrainingSessions.length / savedSessionPageSize),
+    Math.ceil(sortedFilteredTrainingSessions.length / savedSessionPageSize),
   );
 
   const visibleSavedSessionPage = Math.min(savedSessionPage, totalSavedSessionPages);
   const savedSessionStartIndex = (visibleSavedSessionPage - 1) * savedSessionPageSize;
 
-  const latestTrainingSessions = filteredTrainingSessions.slice(
+  const latestTrainingSessions = sortedFilteredTrainingSessions.slice(
     savedSessionStartIndex,
     savedSessionStartIndex + savedSessionPageSize,
   );
@@ -108,18 +110,18 @@ export function TrainingPage() {
 
   // #region: derive training metrics and summaries from the filtered sessions for the current training week and muscle group filter
   
-  const realTrainingMetrics = buildRealTrainingMetrics(filteredTrainingSessions);
+  const realTrainingMetrics = buildRealTrainingMetrics(sortedFilteredTrainingSessions);
   const mainSessionLoadMetric = realTrainingMetrics[0];
   const secondaryTrainingMetrics = realTrainingMetrics.slice(1);
 
-  const exerciseSummaries = getExerciseSummaries(filteredTrainingSessions);
+  const exerciseSummaries = getExerciseSummaries(sortedFilteredTrainingSessions);
   const priorityMuscleSummaries = getPriorityMuscleSummaries(
-    filteredTrainingSessions,
+    sortedFilteredTrainingSessions,
     programSettings.priorityMuscles,
   );
 
-  const volumeLoadTrend = getWeeklyVolumeLoadTrend(filteredTrainingSessions);
-  const estimatedPrTrend = getWeeklyEstimatedPrTrend(filteredTrainingSessions);
+  const volumeLoadTrend = getWeeklyVolumeLoadTrend(sortedFilteredTrainingSessions);
+  const estimatedPrTrend = getWeeklyEstimatedPrTrend(sortedFilteredTrainingSessions);
 
   // #endregion
 

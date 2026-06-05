@@ -122,7 +122,7 @@ function getTrainingSessionFromStorage(value: unknown): TrainingSession | null {
     || !isSetArray(value.sets)
     || !isString(value.createdAt)
     || !isString(value.updatedAt)
-    || !isMuscleGroup(value.MuscleGroup)
+    || !isMuscleGroup(value.primaryMuscleGroup)
   ) {
     return null;
   }
@@ -133,7 +133,7 @@ function getTrainingSessionFromStorage(value: unknown): TrainingSession | null {
     durationMinutes: value.durationMinutes,
     sessionRpe: value.sessionRpe,
     exerciseName: value.exerciseName,
-    primaryMuscleGroup: value.MuscleGroup,
+    primaryMuscleGroup: value.primaryMuscleGroup,
     sets: value.sets,
     createdAt: value.createdAt,
     updatedAt: value.updatedAt,

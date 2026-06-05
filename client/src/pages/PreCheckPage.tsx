@@ -3,7 +3,7 @@ import { SectionCard } from "../components/SectionCard";
 import { StatusBadge } from "../components/StatusBadge";
 import { useLiftBattery } from "../state/LiftBatteryContext";
 import { MetricStatus } from "../types/appTypes";
-import { readinessControls } from "../data/defaultValues";
+import { readinessControls } from "../data/programValues";
 
 function getRangeProgress(value: number, min: number, max: number) {
   return `${Math.min(100, Math.max(0, ((value - min) / (max - min)) * 100))}%`;
