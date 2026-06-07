@@ -1,4 +1,4 @@
-import { DailyPreCheckLog, MainDriver, MainDriverId, MetricStatus, MuscleGroup, PreCheckInput, ProgramSettings, ReadinessResult, ReadinessStatus, SetEntry, TrainingSession } from "./appTypes";
+import { PreCheckLog, MainDriver, MainDriverId, MetricStatus, MuscleGroup, PreCheckDetailsLog, ProgramSettings, ReadinessResult, ReadinessStatus, SetEntry, TrainingSession } from "./appTypes";
 
 // #region: primitive type guards
 export function isStringKeyValuePairObjectRecord(value: unknown): value is Record<string, unknown> {
@@ -49,7 +49,7 @@ export function isProgramSettings(value: unknown): value is ProgramSettings {
 // #endregion
 
 // #region: type guards for pre-check
-export function isPreCheckInput(value: unknown): value is PreCheckInput {
+export function isPreCheckInput(value: unknown): value is PreCheckDetailsLog {
   if (!isStringKeyValuePairObjectRecord(value)) {
     return false;
   }
@@ -121,7 +121,7 @@ export function isReadinessResult(value: unknown): value is ReadinessResult {
 }
 
 // Validates one saved daily log from localStorage.
-export function isDailyPreCheckLog(value: unknown): value is DailyPreCheckLog {
+export function isDailyPreCheckLog(value: unknown): value is PreCheckLog {
   if (!isStringKeyValuePairObjectRecord(value)) {
     return false;
   }
@@ -137,7 +137,7 @@ export function isDailyPreCheckLog(value: unknown): value is DailyPreCheckLog {
 }
 
 // Validates the full saved log list from localStorage.
-export function isDailyPreCheckLogArray(value: unknown): value is DailyPreCheckLog[] {
+export function isDailyPreCheckLogArray(value: unknown): value is PreCheckLog[] {
   return Array.isArray(value) && value.every(isDailyPreCheckLog);
 }
 // #endregion

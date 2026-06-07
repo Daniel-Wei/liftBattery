@@ -4,19 +4,22 @@ import { SectionCard } from "../components/SectionCard";
 import { StatusBadge } from "../components/StatusBadge";
 import { getLevelData } from "../data/mockData";
 import { getDerivedOverviewMetrics } from "../domain/overviewMetrics";
-import { getOverview } from "../store/selectors/overviewSelector";
-import { MetricStatus, RiskSeverity, UserLevel } from "../types/appTypes";
 import { useAppSelector } from "../store/hooks";
+import { getOverviewData } from "../store/selectors/overviewSelector";
+import { MetricStatus, RiskSeverity, UserLevel } from "../types/appTypes";
+import { selectCurrentReadiness } from "../store/selectors/preCheckSelector";
 
 export function OverviewPage() {
   // mock data for now, will be replaced by live data in the future
   const data = getLevelData(UserLevel.Level1);
+
   const { 
-    currentReadiness, 
     latestLog, 
     trainingSessions, 
     programSettings 
-  } = useAppSelector(getOverview);
+  } = useAppSelector(getOverviewData);
+
+  const currentReadiness = useAppSelector(selectCurrentReadiness);
 
   const derivedOverviewMetrics = getDerivedOverviewMetrics({
     trainingSessions,

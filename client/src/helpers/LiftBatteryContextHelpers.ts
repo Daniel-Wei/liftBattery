@@ -10,7 +10,7 @@ import {
   isDailyPreCheckLogArray,
 } from "../types/appTypeChecks";
 import {
-  initialPreCheckInput,
+  initialPreCheckDetailsInput,
   defaultProgramSettings,
 } from "../data/defaultValues";
 import { 
@@ -19,7 +19,7 @@ import {
     TRAINING_SESSIONS_STORAGE_KEY,
     PROGRAM_SETTINGS_STORAGE_KEY,
  } from "../state/LiftBatteryContextLocalStorageKeys";
-import { DailyPreCheckLog, LiftBatteryState, PreCheckInput, TrainingSession } from "../types/appTypes";
+import { PreCheckLog, LiftBatteryState, PreCheckDetailsLog, TrainingSession } from "../types/appTypes";
 
 // #region: helper functions for pre-check
 // Loads the current unsaved draft, falling back safely if storage is empty or invalid.
@@ -28,7 +28,7 @@ function loadPreCheck() {
     const savedValue = localStorage.getItem(PRE_CHECK_DRAFT_STORAGE_KEY);
 
     if (savedValue === null) {
-      return initialPreCheckInput;
+      return initialPreCheckDetailsInput;
     }
 
     const parsedValue: unknown = JSON.parse(savedValue);
@@ -37,70 +37,13 @@ function loadPreCheck() {
       return parsedValue;
     }
 
-    return initialPreCheckInput;
+    return initialPreCheckDetailsInput;
   } catch {
-    return initialPreCheckInput;
+    return initialPreCheckDetailsInput;
   }
 }
 
-// Loads saved history logs, falling back to an empty history if storage is empty or invalid.
-function loadPreCheckLogs() {
-  try {
-    const savedValue = localStorage.getItem(PRE_CHECK_LOGS_STORAGE_KEY);
 
-    if (savedValue === null) {
-      return [];
-    }
-
-    const parsedValue: unknown = JSON.parse(savedValue);
-
-    if (isDailyPreCheckLogArray(parsedValue)) {
-      return parsedValue;
-    }
-
-    return [];
-  } catch {
-    return [];
-  }
-}
-
-export function getTodayDate() {
-  return new Date().toISOString().slice(0, 10);
-}
-    
-export function getTodayPreCheck(logs: DailyPreCheckLog[]) {
-  const today = getTodayDate();
-  return logs.find((log) => log.date === today);
-}
-
-function isSamePreCheckInput(firstInput: PreCheckInput, secondInput: PreCheckInput) {
-  return (
-    firstInput.sleepHours === secondInput.sleepHours
-    && firstInput.soreness === secondInput.soreness
-    && firstInput.motivation === secondInput.motivation
-    && firstInput.restingHeartRateDelta === secondInput.restingHeartRateDelta
-    && firstInput.previousSessionRpe === secondInput.previousSessionRpe
-    && firstInput.previousSessionDurationMinutes === secondInput.previousSessionDurationMinutes
-  );
-}
-
-export function getPreCheckDraftUpdated(todayDraft: PreCheckInput, logs: DailyPreCheckLog[]) {
-  const todayLog = getTodayPreCheck(logs);
-
-  if (!todayLog) {
-    return true;
-  }
-
-  return !isSamePreCheckInput(todayDraft, todayLog.input);
-}
-
-// Keeps latestLog and last7Logs consistent without mutating the original logs array.
-export function sortLogsNewestFirst(logs: DailyPreCheckLog[]) {
-  return [...logs].sort((firstLog, secondLog) => (
-    secondLog.date.localeCompare(firstLog.date)
-    || secondLog.updatedAt.localeCompare(firstLog.updatedAt)
-  ));
-}
 // #endregion
 
 //#region: helper functions for training sessions
@@ -202,21 +145,5 @@ function loadProgramSettings() {
   } catch {
     return defaultProgramSettings;
   }
-}
-// #endregion
-
-// #region: helper functions for training log state management
-// Builds the initial reducer state from separate localStorage keys.
-export function loadInitialLiftBatteryState(): LiftBatteryState {
-  const todayDraft = loadPreCheck();
-  const preCheckLogs = loadPreCheckLogs();
-
-  return {
-    preCheckDraft: todayDraft,
-    preCheckDraftUpdated: getPreCheckDraftUpdated(todayDraft, preCheckLogs),
-    preCheckLogs: preCheckLogs,
-    trainingSessions: loadTrainingSessions(),
-    programSettings: loadProgramSettings(),
-  };
 }
 // #endregion

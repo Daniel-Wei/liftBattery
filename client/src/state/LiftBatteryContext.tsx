@@ -8,16 +8,16 @@ import {
 import { calculateReadiness } from "../domain/readiness";
 import { LiftBatteryActionType } from "../types/appTypes";
 import type {
-  DailyPreCheckLog,
+  PreCheckLog,
   ProgramSettings,
   ReadinessResult,
-  PreCheckInput,
+  PreCheckDetailsLog,
   LiftBatteryAction,
   LiftBatteryState,
   TrainingSession,
 } from "../types/appTypes";
 import {
-  initialPreCheckInput,
+  initialPreCheckDetailsInput,
   defaultLiftBatteryState,
 } from "../data/defaultValues";
 import {
@@ -35,15 +35,15 @@ import {
  } from "./LiftBatteryContextLocalStorageKeys";
 
 type LiftBatteryContextValue = {
-  preCheckDraft: PreCheckInput;
+  preCheckDraft: PreCheckDetailsLog;
   preCheckDraftUpdated: boolean;
   currentReadiness: ReadinessResult;
-  preCheckLogs: DailyPreCheckLog[];
-  latestLog: DailyPreCheckLog | null;
-  last7Logs: DailyPreCheckLog[];
+  preCheckLogs: PreCheckLog[];
+  latestLog: PreCheckLog | null;
+  last7Logs: PreCheckLog[];
   trainingSessions: TrainingSession[];
   programSettings: ProgramSettings;
-  updatePreCheckDraft: (field: keyof PreCheckInput, value: number) => void;
+  updatePreCheckDraft: (field: keyof PreCheckDetailsLog, value: number) => void;
   resetPreCheckDraft: () => void;
   savePreCheckLog: () => void;
   deletePreCheckLog: (id: string) => void;
@@ -76,65 +76,6 @@ function liftBatteryReducer(
       };
     }
 
-    case LiftBatteryActionType.ResetPreCheckDraft: {
-      const savedTodayDraft = getTodayPreCheck(state.preCheckLogs)?.input ?? initialPreCheckInput;
-
-      return {
-        ...state,
-        preCheckDraft: savedTodayDraft,
-        preCheckDraftUpdated: false,
-      };
-    }
-
-    case LiftBatteryActionType.SavePreCheckLog: {
-      const now = new Date().toISOString();
-      const today = getTodayDate();
-      const currentReadiness = calculateReadiness(state.preCheckDraft);
-      const existingTodayPreCheck = getTodayPreCheck(state.preCheckLogs);
-
-      if (existingTodayPreCheck) {
-        return {
-          ...state,
-          preCheckDraftUpdated: false,
-          preCheckLogs: state.preCheckLogs.map((log) => {
-            if (log.date !== today) {
-              return log;
-            }
-
-            return {
-              ...log,
-              input: state.preCheckDraft,
-              readiness: currentReadiness,
-              updatedAt: now,
-            };
-          }),
-        };
-      }
-
-      const newLog: DailyPreCheckLog = {
-        id: `log-${today}-${Date.now()}`,
-        date: today,
-        input: state.preCheckDraft,
-        readiness: currentReadiness,
-        createdAt: now,
-        updatedAt: now,
-      };
-
-      return {
-        ...state,
-        preCheckDraftUpdated: false,
-        preCheckLogs: [newLog, ...state.preCheckLogs],
-      };
-    }
-
-    case LiftBatteryActionType.DeletePreCheckLog:
-      const nextLogs = state.preCheckLogs.filter((log) => log.id !== action.id);
-
-      return {
-        ...state,
-        preCheckLogs: nextLogs,
-        preCheckDraftUpdated: getPreCheckDraftUpdated(state.preCheckDraft, nextLogs),
-      };
 
     case LiftBatteryActionType.SaveTrainingSession: {
       const sessionExists = state.trainingSessions.some((session) => (
@@ -216,7 +157,7 @@ export function LiftBatteryProvider({ children }: LiftBatteryProviderProps) {
     }
   }, [state.programSettings]);
 
-  function updatePreCheckDraft(field: keyof PreCheckInput, value: number) {
+  function updatePreCheckDraft(field: keyof PreCheckDetailsLog, value: number) {
     dispatch({ type: LiftBatteryActionType.UpdatePreCheckDraft, field, value });
   }
 

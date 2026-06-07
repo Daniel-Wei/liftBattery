@@ -1,7 +1,7 @@
 import type {
   ProgramSettings,
-  PreCheckInput,
   LiftBatteryState,
+  PreCheckDetailsLog,
 } from "../types/appTypes";
 
 export const defaultProgramSettings: ProgramSettings = {
@@ -12,7 +12,7 @@ export const defaultProgramSettings: ProgramSettings = {
   weeklyPriorityHardSetTarget: 50,
 };
 
-export const initialPreCheckInput: PreCheckInput = {
+export const initialPreCheckDetailsInput: PreCheckDetailsLog = {
   sleepHours: 7.5,
   soreness: 3,
   motivation: 7,
@@ -22,7 +22,7 @@ export const initialPreCheckInput: PreCheckInput = {
 };
 
 export const defaultLiftBatteryState: LiftBatteryState = {
-  preCheckDraft: initialPreCheckInput,
+  preCheckDraft: initialPreCheckDetailsInput,
   preCheckDraftUpdated: true,
   preCheckLogs: [],
   trainingSessions: [],

@@ -25,7 +25,7 @@ export enum ReadinessStatus {
   Recovery = "recovery",
 }
 
-export type PreCheckInput = {
+export type PreCheckDetailsLog = {
   sleepHours: number;
   soreness: number;
   motivation: number;
@@ -61,10 +61,10 @@ export type ReadinessResult = {
 };
 
 // DailyPreCheckLog stores pre-workout readiness check-ins from TodayPage.
-export type DailyPreCheckLog = {
+export type PreCheckLog = {
   id: string;
   date: string;
-  input: PreCheckInput;
+  input: PreCheckDetailsLog;
   readiness: ReadinessResult;
   createdAt: string;
   updatedAt: string;
@@ -136,11 +136,11 @@ export type ProgramSettings = {
 
 export type LiftBatteryState = {
   // preCheckDraft is the current unsaved input the user is editing on TodayPage.
-  preCheckDraft: PreCheckInput;
+  preCheckDraft: PreCheckDetailsLog;
   // preCheckDraftUpdated tracks whether the current editing draft has unsaved changes.
   preCheckDraftUpdated: boolean;
   // preCheckLogs are saved history records that other pages can analyze later.
-  preCheckLogs: DailyPreCheckLog[];
+  preCheckLogs: PreCheckLog[];
   // trainingSessions are real post-workout lifting logs.
   trainingSessions: TrainingSession[];
   // programSettings provide targets for derived dashboard metrics.
@@ -161,7 +161,7 @@ export enum LiftBatteryActionType {
 export type LiftBatteryAction =
   | {
       type: LiftBatteryActionType.UpdatePreCheckDraft;
-      field: keyof PreCheckInput;
+      field: keyof PreCheckDetailsLog;
       value: number;
     }
   | {
@@ -375,7 +375,7 @@ export type FormulaNoteData = {
 };
 
 export type ReadinessControl = {
-  field: keyof PreCheckInput;
+  field: keyof PreCheckDetailsLog;
   label: string;
   labelZh: string;
   min: number;

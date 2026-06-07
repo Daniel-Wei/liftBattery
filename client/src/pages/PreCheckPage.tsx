@@ -1,9 +1,18 @@
 import type { CSSProperties } from "react";
 import { SectionCard } from "../components/SectionCard";
 import { StatusBadge } from "../components/StatusBadge";
-import { useLiftBattery } from "../state/LiftBatteryContext";
 import { MetricStatus } from "../types/appTypes";
 import { readinessControls } from "../data/programValues";
+import { useAppDispatch, useAppSelector } from "../store/hooks";
+import {
+  getPreCheckData,
+  selectCurrentReadiness,
+} from "../store/selectors/preCheckSelector";
+import { 
+  savePreCheckLogDraft, 
+  resetPreCheckDraft, 
+  updatePreCheckDraft 
+} from "../store/slices/preCheckSlice";
 
 function getRangeProgress(value: number, min: number, max: number) {
   return `${Math.min(100, Math.max(0, ((value - min) / (max - min)) * 100))}%`;
@@ -18,16 +27,15 @@ function formatInputValue(value: number, unit: string) {
 }
 
 export function PreCheckPage() {
+
+  const dispatch = useAppDispatch();
+  const readiness = useAppSelector(selectCurrentReadiness);
   const {
     preCheckDraft,
-    currentReadiness,
-    updatePreCheckDraft,
-    resetPreCheckDraft,
-    savePreCheckLog,
     preCheckDraftUpdated,
-    last7Logs,
-  } = useLiftBattery();
-  const readiness = currentReadiness;
+    latest7Logs,
+  } = useAppSelector(getPreCheckData);
+
   const batteryRingStyle = {
     "--battery-score": `${readiness.score}%`,
   } as CSSProperties;
@@ -86,10 +94,10 @@ export function PreCheckPage() {
           </div>
           <div className="quick-log-actions">
             <StatusBadge status={MetricStatus.Good} label="Live calculation" />
-            <button type="button" className="button-dark" onClick={savePreCheckLog}>
+            <button type="button" className="button-dark" onClick={() => dispatch(savePreCheckLogDraft(preCheckDraft))} disabled={!preCheckDraftUpdated}>
               Save readiness check-in
             </button>
-            <button type="button" className="button-dark" onClick={resetPreCheckDraft}>
+            <button type="button" className="button-dark" onClick={() => dispatch(resetPreCheckDraft())}>
               Reset inputs
             </button>
           </div>
@@ -119,7 +127,7 @@ export function PreCheckPage() {
                   step={control.step}
                   value={value}
                   onChange={(event) => (
-                    updatePreCheckDraft(control.field, Number(event.target.value))
+                    dispatch(updatePreCheckDraft({ field: control.field, value: Number(event.target.value) }))
                   )}
                   className="range-input range-input--modern"
                   style={{ "--range-progress": progress } as CSSProperties}
@@ -145,11 +153,11 @@ export function PreCheckPage() {
 
       <SectionCard title="Saved pre-check records" titleZh="已保存练前检查">
         <div className="compact-card-list">
-          {last7Logs.length === 0 ? (
+          {latest7Logs.length === 0 ? (
             <p className="muted-text">
               No saved pre-check records yet. Save today&apos;s readiness check-in to send it to Trends.
             </p>
-          ) : last7Logs.map((log) => (
+          ) : latest7Logs.map((log) => (
             <article key={log.id} className="compact-signal-card">
               <div>
                 <p className="work-title">{log.date}</p>
