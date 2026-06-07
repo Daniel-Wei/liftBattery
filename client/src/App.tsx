@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Provider as ReduxProvider } from "react-redux";
 import { AppShell } from "./components/AppShell";
 import { navItems } from "./data/mockData";
 import { PageKey } from "./types/appTypes";
@@ -8,6 +9,7 @@ import { PreCheckPage } from "./pages/PreCheckPage";
 import { TrainingPage } from "./pages/TrainingPage";
 import { TrendsPage } from "./pages/TrendsPage";
 import { LiftBatteryProvider } from "./state/LiftBatteryContext";
+import { liftBatteryStore } from "./store/liftBatteryStore";
 
 export default function App() {
   const [currentPage, setCurrentPage] = useState<PageKey>(PageKey.Landing);
@@ -33,10 +35,12 @@ export default function App() {
   }
 
   return (
-    <LiftBatteryProvider>
-      <AppShell navItems={navItems} currentPage={currentPage} onNavigate={setCurrentPage}>
-        {renderPage()}
-      </AppShell>
-    </LiftBatteryProvider>
+    <ReduxProvider store={liftBatteryStore}>
+      <LiftBatteryProvider>
+        <AppShell navItems={navItems} currentPage={currentPage} onNavigate={setCurrentPage}>
+          {renderPage()}
+        </AppShell>
+      </LiftBatteryProvider>
+    </ReduxProvider>
   );
 }

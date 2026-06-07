@@ -1,22 +1,22 @@
-import type { CSSProperties } from "react";
+import { type CSSProperties } from "react";
 import { MetricCard } from "../components/MetricCard";
 import { SectionCard } from "../components/SectionCard";
 import { StatusBadge } from "../components/StatusBadge";
 import { getLevelData } from "../data/mockData";
 import { getDerivedOverviewMetrics } from "../domain/overviewMetrics";
-import { useLiftBattery } from "../state/LiftBatteryContext";
+import { getOverview } from "../store/selectors/overviewSelector";
 import { MetricStatus, RiskSeverity, UserLevel } from "../types/appTypes";
+import { useAppSelector } from "../store/hooks";
 
 export function OverviewPage() {
   // mock data for now, will be replaced by live data in the future
   const data = getLevelData(UserLevel.Level1);
-
-  const {
-    currentReadiness,
-    latestLog,
-    trainingSessions,
-    programSettings,
-  } = useLiftBattery();
+  const { 
+    currentReadiness, 
+    latestLog, 
+    trainingSessions, 
+    programSettings 
+  } = useAppSelector(getOverview);
 
   const derivedOverviewMetrics = getDerivedOverviewMetrics({
     trainingSessions,
