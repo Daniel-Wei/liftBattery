@@ -546,45 +546,24 @@ export function TrainingPage() {
 
       {/* Analysis sections only appear after saved training data exists. */}
       {filteredTrainingSessions.length > 0 ? (
-        <div className="two-column">
-          <SectionCard title="Saved exercise summary" titleZh="已保存动作总结" eyebrow="Real session data">
-            <div className="compact-card-list">
-              {exerciseSummaries.map((summary) => (
-                <article key={summary.key} className="compact-signal-card">
-                  <div>
-                    <p className="work-title">{summary.exerciseName}</p>
-                    <p className="info-subtitle">{summary.muscleGroups}</p>
-                  </div>
-                  <div className="saved-session-actions">
-                    <span className="signal-chip">{summary.sets} sets</span>
-                    <span className="signal-chip signal-chip--muted">
-                      {formatWholeNumber(summary.volumeLoad)} kg
-                    </span>
-                  </div>
-                </article>
-              ))}
-            </div>
-          </SectionCard>
-
-          <SectionCard title="Priority muscle work" titleZh="重点肌群训练" eyebrow="From saved sets">
-            <div className="compact-card-list">
-              {priorityMuscleSummaries.map((summary) => (
-                <article key={summary.muscleGroup} className="compact-signal-card">
-                  <div>
-                    <p className="work-title">{summary.muscleGroup}</p>
-                    <p className="info-subtitle">Saved hard sets and volume load</p>
-                  </div>
-                  <div className="saved-session-actions">
-                    <span className="signal-chip">{summary.hardSets} hard sets</span>
-                    <span className="signal-chip signal-chip--muted">
-                      {formatWholeNumber(summary.volumeLoad)} kg
-                    </span>
-                  </div>
-                </article>
-              ))}
-            </div>
-          </SectionCard>
-        </div>
+        <SectionCard title="Priority muscle work" titleZh="重点肌群训练" eyebrow="From saved sets">
+          <div className="compact-card-list">
+            {priorityMuscleSummaries.map((summary) => (
+              <article key={summary.muscleGroup} className="compact-signal-card">
+                <div>
+                  <p className="work-title">{summary.muscleGroup}</p>
+                  <p className="info-subtitle">Saved hard sets and volume load</p>
+                </div>
+                <div className="saved-session-actions">
+                  <span className="signal-chip">{summary.hardSets} hard sets</span>
+                  <span className="signal-chip signal-chip--muted">
+                    {formatWholeNumber(summary.volumeLoad)} kg
+                  </span>
+                </div>
+              </article>
+            ))}
+          </div>
+        </SectionCard>
       ) : (
         <SectionCard title="No training analysis yet" titleZh="暂无训练分析" eyebrow="Needs saved data">
           <p className="body-text">
@@ -593,24 +572,6 @@ export function TrainingPage() {
           </p>
         </SectionCard>
       )}
-
-      {/* Trend charts are hidden until there is at least one saved session. */}
-      {volumeLoadTrend.length > 0 ? (
-        <div className="two-column">
-          <ChartMock
-            title={`Training volume / 训练量 (${selectedWeek.label})`}
-            titleZh="本周训练课负荷"
-            data={volumeLoadTrend}
-            variant="amber"
-          />
-          <ChartMock
-            title={`Estimated PR / PR 推测 (${selectedWeek.label})`}
-            titleZh="本周训练量"
-            data={estimatedPrTrend}
-            variant="purple"
-          />
-        </div>
-      ) : null}
 
     </div>
   );
