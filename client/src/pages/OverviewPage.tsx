@@ -5,19 +5,16 @@ import { StatusBadge } from "../components/StatusBadge";
 import { getLevelData } from "../data/mockData";
 import { getDerivedOverviewMetrics } from "../domain/overviewMetrics";
 import { useAppSelector } from "../store/hooks";
-import { getOverviewData } from "../store/selectors/overviewSelector";
 import { MetricStatus, RiskSeverity, UserLevel } from "../types/appTypes";
-import { selectCurrentReadiness } from "../store/selectors/preCheckSelector";
+import { getPreCheckData, selectCurrentReadiness } from "../store/selectors/preCheckSelector";
 
 export function OverviewPage() {
   // mock data for now, will be replaced by live data in the future
   const data = getLevelData(UserLevel.Level1);
 
   const { 
-    latestLog, 
-    trainingSessions, 
-    programSettings 
-  } = useAppSelector(getOverviewData);
+    latestLog
+  } = useAppSelector(getPreCheckData);
 
   const currentReadiness = useAppSelector(selectCurrentReadiness);
 

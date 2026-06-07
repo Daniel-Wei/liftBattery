@@ -1,10 +1,8 @@
 import { configureStore } from "@reduxjs/toolkit";
-import { overviewSliceReducer} from "./slices/overviewSlice";
 import { preCheckSliceReducer } from "./slices/preCheckSlice";
 
 export const liftBatteryStore = configureStore({
   reducer: {
-    overview: overviewSliceReducer,
     preCheck: preCheckSliceReducer,
   },
 });

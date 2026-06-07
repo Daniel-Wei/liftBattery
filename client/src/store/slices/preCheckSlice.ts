@@ -6,7 +6,7 @@ import type {
 } from "../../types/appTypes";
 import {
   getPreCheckDraftUpdated,
-  getSavedTodayPreCheckLog,
+  getTodayPreCheckLog,
   loadSavedPreCheckLogs,
 } from "../../helpers/PreCheckHelpers";
 import { getTodayDate } from "../../helpers/GenericHelpers";
@@ -23,12 +23,15 @@ type PreCheckState = {
   savedPreCheckLogs: PreCheckLog[];
 };
 
-function getInitialPreCheckState() {
+function getInitialPreCheckState(): PreCheckState {
+  const savedPreCheckLogs = [...loadSavedPreCheckLogs()];
+  const savedTodayPreCheckLog = getTodayPreCheckLog(savedPreCheckLogs);
   return {
-    preCheckDraft: getSavedTodayPreCheckLog()?.input?? initialPreCheckDetailsInput,
-    preCheckDraftUpdated: false,
-    savedPreCheckLogs: loadSavedPreCheckLogs(),
-  } as PreCheckState;
+    preCheckDraft: savedTodayPreCheckLog !== undefined ?
+      {...savedTodayPreCheckLog.input} : {...initialPreCheckDetailsInput},
+    preCheckDraftUpdated: savedTodayPreCheckLog === undefined,
+    savedPreCheckLogs: savedPreCheckLogs,
+  };
 }
 
 const preCheckSlice = createSlice({
@@ -38,36 +41,41 @@ const preCheckSlice = createSlice({
     updatePreCheckDraft: (state, action: PayloadAction<UpdatePreCheckDetailsPayload>) => {
       state.preCheckDraft[action.payload.field] = action.payload.value;
       state.preCheckDraftUpdated = getPreCheckDraftUpdated(
+        state.savedPreCheckLogs,
         state.preCheckDraft,
       );
     },
 
-    resetPreCheckDraft: (state) =>  {
-      state.preCheckDraft = getSavedTodayPreCheckLog()?.input?? initialPreCheckDetailsInput;
-      state.preCheckDraftUpdated = false;
+    resetPreCheckDraft: () =>  {
+      return getInitialPreCheckState();
     },
 
-    savePreCheckLogDraft: (state, _) => {
-      let todayLog = getSavedTodayPreCheckLog() ?.input ?? null;
+    savePreCheckLogDraft: (state) => {
+      let todayLog = getTodayPreCheckLog(state.savedPreCheckLogs);
       if(todayLog){
-        todayLog = state.preCheckDraft;
+        todayLog.input = {...state.preCheckDraft};
         state.preCheckDraftUpdated = false;
       }
       else {
+        const today = getTodayDate();
         const newLog: PreCheckLog = {
-          id: `log-${getTodayDate()}-${Date.now()}`,
-          date: getTodayDate(),
-          input: state.preCheckDraft,
+          id: `log-${today}-${Date.now()}`,
+          date: today,
+          input: {...state.preCheckDraft},
           readiness: calculateReadiness(state.preCheckDraft),
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
         };
         state.savedPreCheckLogs.unshift(newLog);
         state.preCheckDraftUpdated = false;
       }
     },
     deletePreCheckLog: (state, action: PayloadAction<string>) => {
+      const deletedLog = state.savedPreCheckLogs.find(log => log.id === action.payload);
       state.savedPreCheckLogs = state.savedPreCheckLogs.filter(log => log.id !== action.payload);
+      const todayPreCheckLogDeleted = deletedLog?.date === getTodayDate();
+      if(todayPreCheckLogDeleted){
+        state.preCheckDraftUpdated = true;
+        state.preCheckDraft = {...initialPreCheckDetailsInput};
+      }
     },
   },
 });

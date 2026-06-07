@@ -7,10 +7,9 @@ import {
 import { PreCheckLog, PreCheckDetailsLog } from "../types/appTypes";
 import { getTodayDate } from "./GenericHelpers";
 
-export function getSavedTodayPreCheckLog() {
+export function getTodayPreCheckLog(savedPreCheckLogs: PreCheckLog[]) {
   const today = getTodayDate();
-  const savedLogs = loadSavedPreCheckLogs();
-  return savedLogs.find((savedLog) => savedLog.date === today);
+  return savedPreCheckLogs.find((savedLog) => savedLog.date === today);
 }
 
 // Loads saved history logs, falling back to an empty history if storage is empty or invalid.
@@ -34,8 +33,9 @@ export function loadSavedPreCheckLogs() {
   }
 }
 
-export function getPreCheckDraftUpdated(todayDraft: PreCheckDetailsLog) {
-  const savedTodayLog = getSavedTodayPreCheckLog();
+export function getPreCheckDraftUpdated(preCheckLogs: PreCheckLog[], todayDraft: PreCheckDetailsLog) {
+  const today = getTodayDate();
+  const savedTodayLog = preCheckLogs.find((log) => log.date === today);
 
   if (!savedTodayLog) {
     return true;
@@ -48,7 +48,6 @@ export function getPreCheckDraftUpdated(todayDraft: PreCheckDetailsLog) {
 export function sortPreCheckLogsNewestFirst(logs: PreCheckLog[]) {
   return [...logs].sort((firstLog, secondLog) => (
     secondLog.date.localeCompare(firstLog.date)
-    || secondLog.updatedAt.localeCompare(firstLog.updatedAt)
   ));
 }
 

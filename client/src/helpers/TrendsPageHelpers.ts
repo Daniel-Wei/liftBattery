@@ -3,7 +3,6 @@ import type { PreCheckLog, TrendPoint } from "../types/appTypes";
 export function sortLogsOldestFirst(logs: PreCheckLog[]) {
   return [...logs].sort((firstLog, secondLog) => (
     firstLog.date.localeCompare(secondLog.date)
-    || firstLog.updatedAt.localeCompare(secondLog.updatedAt)
   ));
 }
 

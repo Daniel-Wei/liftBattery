@@ -12,5 +12,5 @@ export const getPreCheckData = (state: RootState) => {
 };
 
 export const selectCurrentReadiness = (state: RootState) => {
-  return calculateReadiness(state.preCheck.preCheckDraft) ;
+  return calculateReadiness(state.preCheck.preCheckDraft);
 }

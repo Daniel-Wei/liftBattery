@@ -131,8 +131,6 @@ export function isDailyPreCheckLog(value: unknown): value is PreCheckLog {
     && isString(value.date)
     && isPreCheckInput(value.input)
     && isReadinessResult(value.readiness)
-    && isString(value.createdAt)
-    && isString(value.updatedAt)
   );
 }
 

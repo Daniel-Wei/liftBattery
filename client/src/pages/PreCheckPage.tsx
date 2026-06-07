@@ -1,4 +1,5 @@
-import type { CSSProperties } from "react";
+import { useEffect, type CSSProperties } from "react";
+import { PRE_CHECK_LOGS_STORAGE_KEY } from "../state/LiftBatteryContextLocalStorageKeys";
 import { SectionCard } from "../components/SectionCard";
 import { StatusBadge } from "../components/StatusBadge";
 import { MetricStatus } from "../types/appTypes";
@@ -27,14 +28,25 @@ function formatInputValue(value: number, unit: string) {
 }
 
 export function PreCheckPage() {
-
   const dispatch = useAppDispatch();
   const readiness = useAppSelector(selectCurrentReadiness);
   const {
     preCheckDraft,
     preCheckDraftUpdated,
+    savedPreCheckLogs,
     latest7Logs,
   } = useAppSelector(getPreCheckData);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(
+        PRE_CHECK_LOGS_STORAGE_KEY,
+        JSON.stringify(savedPreCheckLogs),
+      );
+    } catch {
+      // Keep UI usable if localStorage is unavailable.
+    }
+  }, [savedPreCheckLogs]);
 
   const batteryRingStyle = {
     "--battery-score": `${readiness.score}%`,
@@ -94,7 +106,11 @@ export function PreCheckPage() {
           </div>
           <div className="quick-log-actions">
             <StatusBadge status={MetricStatus.Good} label="Live calculation" />
-            <button type="button" className="button-dark" onClick={() => dispatch(savePreCheckLogDraft(preCheckDraft))} disabled={!preCheckDraftUpdated}>
+            <button type="button" 
+              className="button-dark" 
+              onClick={() => dispatch(savePreCheckLogDraft())} 
+              disabled={!preCheckDraftUpdated}
+            >
               Save readiness check-in
             </button>
             <button type="button" className="button-dark" onClick={() => dispatch(resetPreCheckDraft())}>
