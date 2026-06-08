@@ -1,6 +1,5 @@
 import type {
   ProgramSettings,
-  LiftBatteryState,
   PreCheckDetailsLog,
 } from "../types/appTypes";
 
@@ -19,12 +18,4 @@ export const initialPreCheckDetailsInput: PreCheckDetailsLog = {
   restingHeartRateDelta: 1,
   previousSessionRpe: 7,
   previousSessionDurationMinutes: 60,
-};
-
-export const defaultLiftBatteryState: LiftBatteryState = {
-  preCheckDraft: initialPreCheckDetailsInput,
-  preCheckDraftUpdated: true,
-  preCheckLogs: [],
-  trainingSessions: [],
-  programSettings: defaultProgramSettings,
 };

@@ -22,20 +22,20 @@ const trainingSlice = createSlice({
   initialState: getInitialTrainingState(),
   reducers: {
     saveTrainingSession: (state, action: PayloadAction<UpdateTrainingPayload>) => {
-      let existedSession = state.trainingSessions.find((session) => (
+      const existingSessionIndex = state.trainingSessions.findIndex((session) => (
         session.id === action.payload.id
       ));
 
-      if (existedSession !== undefined) {
-        existedSession = {...action.payload};
-      }else{
-        state.trainingSessions.push({...action.payload});
+      if (existingSessionIndex === -1) {
+        state.trainingSessions.push(action.payload);
+        return;
       }
-    },
 
+      state.trainingSessions[existingSessionIndex] = action.payload;
+    },
     
     deleteTrainingSession: (state, action: PayloadAction<string>) => {
-      state.trainingSessions.filter(ts => ts.id !== action.payload);
+      state.trainingSessions = state.trainingSessions.filter(ts => ts.id !== action.payload);
     },
   },
 });

@@ -7,7 +7,7 @@ export const liftBatteryStore = configureStore({
   reducer: {
     preCheck: preCheckSliceReducer,
     training: trainingSliceReducer,
-    prgramSettings: programSettingsSliceReducer
+    programSettings: programSettingsSliceReducer
   },
 });
 

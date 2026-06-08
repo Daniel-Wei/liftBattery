@@ -1,9 +1,9 @@
 import {
   isDailyPreCheckLogArray,
 } from "../types/appTypeChecks";
-import { 
+import {
     PRE_CHECK_LOGS_STORAGE_KEY,
- } from "../data/LiftBatteryContextLocalStorageKeys";
+ } from "../data/localStorageKeys";
 import { PreCheckLog, PreCheckDetailsLog } from "../types/appTypes";
 import { getTodayDate } from "./GenericHelpers";
 

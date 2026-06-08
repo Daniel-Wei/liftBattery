@@ -1,4 +1,4 @@
-import { PROGRAM_SETTINGS_STORAGE_KEY } from "../data/LiftBatteryContextLocalStorageKeys";
+import { PROGRAM_SETTINGS_STORAGE_KEY } from "../data/localStorageKeys";
 import { defaultProgramSettings } from "../data/defaultValues";
 import { isProgramSettings } from "../types/appTypeChecks";
 

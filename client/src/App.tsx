@@ -35,11 +35,9 @@ export default function App() {
 
   return (
     <ReduxProvider store={liftBatteryStore}>
-      <LiftBatteryProvider>
         <AppShell navItems={navItems} currentPage={currentPage} onNavigate={setCurrentPage}>
           {renderPage()}
         </AppShell>
-      </LiftBatteryProvider>
     </ReduxProvider>
   );
 }

@@ -17,7 +17,7 @@ import {
     TrendDirection,
     EvidenceType,} 
 from "../types/appTypes";
-import { TRAINING_SESSIONS_STORAGE_KEY } from "../data/LiftBatteryContextLocalStorageKeys"
+import { TRAINING_SESSIONS_STORAGE_KEY } from "../data/localStorageKeys";
 import {
   isString,
   isNumber,

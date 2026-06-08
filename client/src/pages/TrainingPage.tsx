@@ -1,5 +1,4 @@
-import { useState } from "react";
-import { ChartMock } from "../components/ChartMock";
+import { useState, useEffect } from "react";
 import { MetricCard } from "../components/MetricCard";
 import { SectionCard } from "../components/SectionCard";
 import { StatusBadge } from "../components/StatusBadge";
@@ -7,8 +6,6 @@ import {
   formatTrainingTrendWeekLabel,
   getCurrentTrainingTrendWeek,
   getTrainingTrendWeeks,
-  getWeeklyEstimatedPrTrend,
-  getWeeklyVolumeLoadTrend,
   isSessionInTrainingTrendWeek,
 } from "../domain/trainingTrendCharts";
 import {
@@ -44,6 +41,7 @@ import { useAppDispatch, useAppSelector } from "../store/hooks";
 import { deleteTrainingSession, saveTrainingSession } from "../store/slices/trainingSlice";
 import { getProgramSettings } from "../store/selectors/programSettingsSelector";
 import { getTrainingData } from "../store/selectors/trainingSelector";
+import { TRAINING_SESSIONS_STORAGE_KEY } from "../data/localStorageKeys";
 
 export function TrainingPage() {
  const dispatch = useAppDispatch();
@@ -89,8 +87,22 @@ export function TrainingPage() {
 
   // #endregion
 
+  // #region: persistence for saved training sessions
+  useEffect(() => {
+    try {
+      localStorage.setItem(
+        TRAINING_SESSIONS_STORAGE_KEY,
+        JSON.stringify(trainingSessions),
+      );
+    } catch {
+      // Keep UI usable if localStorage is unavailable.
+    }
+  }, [trainingSessions]);
+
+  // #endregion
+
   // #region: pagination for saved sessions: calculate total pages and slice the filtered sessions to only show the current page
-  
+
   const totalSavedSessionPages = Math.max(
     1,
     Math.ceil(sortedFilteredTrainingSessions.length / savedSessionPageSize),
@@ -218,7 +230,7 @@ export function TrainingPage() {
       updatedAt: now,
     };
 
-    () => dispatch(saveTrainingSession(session));
+    dispatch(saveTrainingSession(session));
     setFormError("");
   }
 

@@ -132,59 +132,6 @@ export type ProgramSettings = {
   weeklyPriorityHardSetTarget: number;
 };
 
-export type LiftBatteryState = {
-  // preCheckDraft is the current unsaved input the user is editing on TodayPage.
-  preCheckDraft: PreCheckDetailsLog;
-  // preCheckDraftUpdated tracks whether the current editing draft has unsaved changes.
-  preCheckDraftUpdated: boolean;
-  // preCheckLogs are saved history records that other pages can analyze later.
-  preCheckLogs: PreCheckLog[];
-  // trainingSessions are real post-workout lifting logs.
-  trainingSessions: TrainingSession[];
-  // programSettings provide targets for derived dashboard metrics.
-  programSettings: ProgramSettings;
-};
-
-export enum LiftBatteryActionType {
-  UpdatePreCheckDraft = "updatePreCheckDraft",
-  ResetPreCheckDraft = "resetPreCheckDraft",
-  SavePreCheckLog = "savePreCheckLog",
-  DeletePreCheckLog = "deletePreCheckLog",
-  SaveTrainingSession = "saveTrainingSession",
-  DeleteTrainingSession = "deleteTrainingSession",
-  UpdateProgramSettings = "updateProgramSettings",
-}
-
-// Future pages should consume derived results from logs instead of treating TodayPage as the data owner.
-export type LiftBatteryAction =
-  | {
-      type: LiftBatteryActionType.UpdatePreCheckDraft;
-      field: keyof PreCheckDetailsLog;
-      value: number;
-    }
-  | {
-      type: LiftBatteryActionType.ResetPreCheckDraft;
-    }
-  | {
-      type: LiftBatteryActionType.SavePreCheckLog;
-    }
-  | {
-      type: LiftBatteryActionType.DeletePreCheckLog;
-      id: string;
-    }
-  | {
-      type: LiftBatteryActionType.SaveTrainingSession;
-      session: TrainingSession;
-    }
-  | {
-      type: LiftBatteryActionType.DeleteTrainingSession;
-      id: string;
-    }
-  | {
-      type: LiftBatteryActionType.UpdateProgramSettings;
-      settings: ProgramSettings;
-    };
-
 export type LevelProfile = {
   level: UserLevel;
   label: string;

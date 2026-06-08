@@ -2,6 +2,6 @@ import type { RootState } from "../liftBatteryStore";
 
 export const getProgramSettings = (state: RootState) => {
   return {
-    programSettings: state.prgramSettings.programSettingDetails
+    programSettings: state.programSettings.programSettingDetails
   };
 };

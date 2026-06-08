@@ -18,7 +18,7 @@ function getInitialProgramSettingsState(): ProgramSettingsState {
 }
 
 const programSettingsSlice = createSlice({
-  name: "training",
+  name: "programSettings",
   initialState: getInitialProgramSettingsState(),
   reducers: {
     updateProgramSettings: (state, action: PayloadAction<UpdateProgramSettingsPayload>) => {
@@ -28,7 +28,7 @@ const programSettingsSlice = createSlice({
 });
 
 export const { 
-  updateProgramSettings: saveTrainingSession,
+  updateProgramSettings,
 } = programSettingsSlice.actions;
 
 export const programSettingsSliceReducer = programSettingsSlice.reducer;
