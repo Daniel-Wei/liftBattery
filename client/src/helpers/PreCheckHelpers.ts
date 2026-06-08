@@ -24,7 +24,11 @@ export function loadSavedPreCheckLogs() {
     const parsedValue: unknown = JSON.parse(savedValue);
 
     if (isDailyPreCheckLogArray(parsedValue)) {
-      return parsedValue;
+      return parsedValue.map((log) => ({
+        id: log.id,
+        date: log.date,
+        input: { ...log.input },
+      }));
     }
 
     return [];

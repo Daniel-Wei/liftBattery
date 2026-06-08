@@ -10,7 +10,6 @@ import {
   loadSavedPreCheckLogs,
 } from "../../helpers/PreCheckHelpers";
 import { getTodayDate } from "../../helpers/GenericHelpers";
-import { calculateReadiness } from "../../domain/readiness";
 
 type UpdatePreCheckDetailsPayload = {
   field: keyof PreCheckDetailsLog;
@@ -62,7 +61,6 @@ const preCheckSlice = createSlice({
           id: `log-${today}-${Date.now()}`,
           date: today,
           input: {...state.preCheckDraft},
-          readiness: calculateReadiness(state.preCheckDraft),
         };
         state.savedPreCheckLogs.unshift(newLog);
         state.preCheckDraftUpdated = false;

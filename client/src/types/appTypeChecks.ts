@@ -1,4 +1,4 @@
-import { PreCheckLog, MainDriver, MainDriverId, MetricStatus, MuscleGroup, PreCheckDetailsLog, ProgramSettings, ReadinessResult, ReadinessStatus, SetEntry, TrainingSession } from "./appTypes";
+import { PreCheckLog, MainDriver, MainDriverId, MetricStatus, MuscleGroup, PreCheckDetailsLog, ProgramSettings, ReadinessStatus, SetEntry, TrainingSession } from "./appTypes";
 
 // #region: primitive type guards
 export function isStringKeyValuePairObjectRecord(value: unknown): value is Record<string, unknown> {
@@ -101,25 +101,6 @@ export function isMetricStatus(value: unknown): value is MetricStatus {
     || value === MetricStatus.Neutral;
 }
 
-// Validates the calculated readiness result stored with a saved log.
-export function isReadinessResult(value: unknown): value is ReadinessResult {
-  if (!isStringKeyValuePairObjectRecord(value)) {
-    return false;
-  }
-
-  return (
-    isNumber(value.score)
-    && isReadinessStatus(value.status)
-    && isString(value.statusLabel)
-    && isString(value.statusLabelZh)
-    && isMetricStatus(value.badgeStatus)
-    && isString(value.recommendation)
-    && isString(value.recommendationZh)
-    && Array.isArray(value.mainDrivers)
-    && value.mainDrivers.every(isMainDriver)
-  );
-}
-
 // Validates one saved daily log from localStorage.
 export function isDailyPreCheckLog(value: unknown): value is PreCheckLog {
   if (!isStringKeyValuePairObjectRecord(value)) {
@@ -130,7 +111,6 @@ export function isDailyPreCheckLog(value: unknown): value is PreCheckLog {
     isString(value.id)
     && isString(value.date)
     && isPreCheckInput(value.input)
-    && isReadinessResult(value.readiness)
   );
 }
 

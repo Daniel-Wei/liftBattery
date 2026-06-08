@@ -65,7 +65,6 @@ export type PreCheckLog = {
   id: string;
   date: string;
   input: PreCheckDetailsLog;
-  readiness: ReadinessResult;
 };
 
 export type MuscleGroup =

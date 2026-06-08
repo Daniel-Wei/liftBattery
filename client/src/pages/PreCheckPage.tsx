@@ -14,6 +14,7 @@ import {
   resetPreCheckDraft, 
   updatePreCheckDraft 
 } from "../store/slices/preCheckSlice";
+import { calculateReadiness } from "../domain/readiness";
 
 function getRangeProgress(value: number, min: number, max: number) {
   return `${Math.min(100, Math.max(0, ((value - min) / (max - min)) * 100))}%`;
@@ -173,15 +174,19 @@ export function PreCheckPage() {
             <p className="muted-text">
               No saved pre-check records yet. Save today&apos;s readiness check-in to send it to Trends.
             </p>
-          ) : latest7Logs.map((log) => (
-            <article key={log.id} className="compact-signal-card">
-              <div>
-                <p className="work-title">{log.date}</p>
-                <p className="info-subtitle">{log.readiness.recommendation}</p>
-              </div>
-              <span className="signal-chip">{log.readiness.score} / 100</span>
-            </article>
-          ))}
+          ) : latest7Logs.map((log) => {
+            const savedReadiness = calculateReadiness(log.input);
+
+            return (
+              <article key={log.id} className="compact-signal-card">
+                <div>
+                  <p className="work-title">{log.date}</p>
+                  <p className="info-subtitle">{savedReadiness.recommendation}</p>
+                </div>
+                <span className="signal-chip">{savedReadiness.score} / 100</span>
+              </article>
+            );
+          })}
         </div>
       </SectionCard>
 
