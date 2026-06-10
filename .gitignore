@@ -1,0 +1,11 @@
+.dotnet/
+
+node_modules/
+client/node_modules/
+client/dist/
+client/node_modules/.tmp/
+
+bin/
+obj/
+backend/**/bin/
+backend/**/obj/
