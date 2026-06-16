@@ -7,16 +7,16 @@ namespace LiftOps.Api.Functions;
 
 public sealed class TrainingLogFunctions
 {
-    private readonly ITrainingLogService _service;
+    private readonly ITrainingSessionService _service;
 
-    public TrainingLogFunctions(ITrainingLogService service)
+    public TrainingLogFunctions(ITrainingSessionService service)
     {
         _service = service;
     }
 
-    [Function("GetTrainingLogs")]
-    public async Task<HttpResponseData> GetTrainingLogs(
-        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "traininglogs")] HttpRequestData request)
+    [Function("GetTrainingSessions")]
+    public async Task<HttpResponseData> GetTrainingSessions(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "trainingsessions")] HttpRequestData request)
     {
         var query = System.Web.HttpUtility.ParseQueryString(request.Url.Query);
         var from = DateOnly.TryParse(query["from"], out var parsedFrom)

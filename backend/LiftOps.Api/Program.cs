@@ -22,7 +22,7 @@ var host = new HostBuilder()
         services.AddSingleton<IPreCheckRepository, PreCheckRepository>();
         services.AddSingleton<ITrainingLogRepository, TrainingLogRepository>();
         services.AddSingleton<IPreCheckService, PreCheckService>();
-        services.AddSingleton<ITrainingLogService, TrainingLogService>();
+        services.AddSingleton<ITrainingSessionService, TrainingSessionService>();
     })
     .Build();
 

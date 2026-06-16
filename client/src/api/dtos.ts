@@ -1,3 +1,5 @@
+import { MuscleGroup } from "../types/appTypes";
+
 export type PreCheckDto = {
   id?: string;
   date: string;
@@ -9,14 +11,17 @@ export type PreCheckDto = {
   notes?: string;
 };
 
-export type TrainingLogDto = {
+export type TrainingSessionDto = {
   id?: string;
   date: string;
-  muscleGroup: string;
+  durationMinutes: number;
+  sessionRpe: number;
   exerciseName: string;
-  sets: number;
+  muscleGroup: MuscleGroup;
   reps: number;
-  weight: number;
+  weightKg: number;
+  rpe?: number;
   rir?: number;
+  sets: number;
   notes?: string;
 };

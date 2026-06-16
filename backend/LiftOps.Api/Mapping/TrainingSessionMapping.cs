@@ -3,32 +3,38 @@ using LiftOps.Api.Models;
 
 namespace LiftOps.Api.Mapping;
 
-public static class TrainingLogMapping
+public static class TrainingSessionMapping
 {
-    public static TrainingLogDto ToDto(TrainingLog log)
+    public static TrainingSessionDto ToDto(TrainingSession log)
     {
-        return new TrainingLogDto(
+        return new TrainingSessionDto(
             log.Id,
             log.Date.ToString("yyyy-MM-dd"),
+            log.DurationMinutes,
+            log.SessionRpe,
             log.MuscleGroup,
             log.ExerciseName,
             log.Sets,
             log.Reps,
-            log.Weight,
+            log.WeightKg,
+            log.Rpe,
             log.Rir,
             log.Notes);
     }
 
-    public static TrainingLog ToModel(TrainingLogDto dto)
+    public static TrainingSession ToModel(TrainingSessionDto dto)
     {
-        return new TrainingLog(
+        return new TrainingSession(
             dto.Id ?? Guid.NewGuid().ToString("N"),
             DateOnly.Parse(dto.Date),
+            dto.DurationMinutes,
+            dto.SessionRpe,
             dto.MuscleGroup,
             dto.ExerciseName,
             dto.Sets,
             dto.Reps,
-            dto.Weight,
+            dto.WeightKg,
+            dto.Rpe,
             dto.Rir,
             dto.Notes);
     }

@@ -129,7 +129,6 @@ export function TrainingPage() {
     programSettings.priorityMuscles,
   );
 
-
   // #endregion
 
   // #region: event handlers
@@ -203,31 +202,25 @@ export function TrainingPage() {
 
     const durationMinutes = Number(trainingForm.durationMinutes);
     const sessionRpe = Number(trainingForm.sessionRpe);
-    const setsCount = Number(trainingForm.setsCount);
+    const sets = Number(trainingForm.setsCount);
     const reps = Number(trainingForm.reps);
     const weightKg = Number(trainingForm.weightKg);
-    const setRpe = getOptionalNumber(trainingForm.setRpe);
+    const rpe = getOptionalNumber(trainingForm.setRpe);
     const rir = getOptionalNumber(trainingForm.rir);
-    const now = new Date().toISOString();
-    // Keep the first real training log simple: one exercise with repeated working sets.
-    const sets = Array.from({ length: setsCount }, (_item, index) => ({
-      id: createId(`set-${index + 1}`),
-      reps,
-      weightKg,
-      ...(setRpe === undefined ? {} : { rpe: setRpe }),
-      ...(rir === undefined ? {} : { rir }),
-      isWarmup: false,
-    }));
     const session: TrainingSession = {
       id: createId("session"),
       date: trainingForm.date,
-      durationMinutes,
-      sessionRpe,
-      exerciseName: trainingForm.exerciseName.trim(),
-      primaryMuscleGroup: trainingForm.primaryMuscleGroup,
-      sets,
-      createdAt: now,
-      updatedAt: now,
+      details: {
+        durationMinutes,
+        sessionRpe,
+        exerciseName: trainingForm.exerciseName.trim(),
+        primaryMuscleGroup: trainingForm.primaryMuscleGroup,
+        sets,
+        weightKg,
+        rpe,
+        rir,
+        reps
+      }
     };
 
     dispatch(saveTrainingSession(session));

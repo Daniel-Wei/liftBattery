@@ -80,26 +80,24 @@ export type MuscleGroup =
   | "Abs"
   | "All";
 
-export type SetEntry = {
-  id: string;
+export type TrainingSessionDetails = {
+  durationMinutes: number;
+  sessionRpe: number;
+  exerciseName: string;
+  muscleGroup: MuscleGroup;
   reps: number;
   weightKg: number;
   rpe?: number;
   rir?: number;
-  isWarmup: boolean;
+  sets: number;
+  notes?: string;
 };
 
 // TrainingSession stores one quick-saved post-workout exercise, separate from readiness check-ins.
 export type TrainingSession = {
   id: string;
   date: string;
-  durationMinutes: number;
-  sessionRpe: number;
-  exerciseName: string;
-  primaryMuscleGroup: MuscleGroup;
-  sets: SetEntry[];
-  createdAt: string;
-  updatedAt: string;
+  details: TrainingSessionDetails;
 };
 
 // BodyweightEntry stores scale-weight data for weight trend calculations.
