@@ -1,27 +1,47 @@
+import { useEffect } from "react";
 import { ChartMock } from "../components/ChartMock";
+import { MultiLineTrendChart } from "../components/MultiLineTrendChart";
 import { SectionCard } from "../components/SectionCard";
 import {
-  getWeeklyEstimatedPrTrend,
+  getTrainingTrendWeeks,
+  getWeeklyMainLiftEstimatedPrTrends,
   getWeeklySessionLoadTrend,
   getWeeklyVolumeLoadTrend,
 } from "../domain/trainingTrendCharts";
-import { 
-  getPreCheckReadinessTrend, 
-  getSleepTrend 
-} 
-from "../helpers/TrendsPageHelpers";
+import {
+  getPreCheckReadinessTrend,
+  getSleepTrend,
+} from "../helpers/TrendsPageHelpers";
 import { useAppSelector } from "../store/hooks";
+import { useAppDispatch } from "../store/hooks";
 import { getPreCheckData } from "../store/selectors/preCheckSelector";
 import { selectTrainingSessions } from "../store/selectors/trainingSelector";
+import { fetchTrainingSessions } from "../store/slices/trainingSlice";
 
 export function TrendsPage() {
+  const dispatch = useAppDispatch();
   const { savedPreCheckLogs } = useAppSelector(getPreCheckData);
   const trainingSessions = useAppSelector(selectTrainingSessions);
+  const trainingTrendWeeks = getTrainingTrendWeeks();
+  const firstTrainingTrendWeek = trainingTrendWeeks[0];
+  const lastTrainingTrendWeek = trainingTrendWeeks[trainingTrendWeeks.length - 1];
   const preCheckReadinessTrend = getPreCheckReadinessTrend(savedPreCheckLogs);
   const sleepTrend = getSleepTrend(savedPreCheckLogs);
   const sessionLoadTrend = getWeeklySessionLoadTrend(trainingSessions);
   const volumeLoadTrend = getWeeklyVolumeLoadTrend(trainingSessions);
-  const estimatedPrTrend = getWeeklyEstimatedPrTrend(trainingSessions);
+  const mainLiftEstimatedPrTrends = getWeeklyMainLiftEstimatedPrTrends(trainingSessions);
+  const trainingTrendWeekLabels = trainingTrendWeeks.map((week) => week.label);
+
+  useEffect(() => {
+    if (!firstTrainingTrendWeek || !lastTrainingTrendWeek) {
+      return;
+    }
+
+    void dispatch(fetchTrainingSessions({
+      from: firstTrainingTrendWeek.startDate,
+      to: lastTrainingTrendWeek.endDate,
+    }));
+  }, [dispatch, firstTrainingTrendWeek, lastTrainingTrendWeek]);
 
   return (
     <div className="page page-stack">
@@ -63,17 +83,23 @@ export function TrendsPage() {
         />
       </div>
 
-      <ChartMock
-        title="Estimated PR trend"
-        titleZh="PR 推测趋势"
-        data={estimatedPrTrend}
-        variant="purple"
+      <MultiLineTrendChart
+        title="Main lift estimated PR trend"
+        titleZh="三大项 PR 推测趋势"
+        series={mainLiftEstimatedPrTrends.map((trend) => ({
+          id: trend.id,
+          label: trend.label,
+          detail: trend.liftName,
+          variant: trend.variant,
+          data: trend.data,
+        }))}
+        xLabels={trainingTrendWeekLabels}
       />
 
       <SectionCard title="Trend scope" titleZh="趋势范围" eyebrow="1.0">
         <p className="body-text">
-          Estimated PR uses a simple e1RM proxy from saved working sets. It is useful for direction,
-          not a guaranteed max attempt number.
+          Estimated PR uses a simple e1RM proxy from saved working sets. The main-lift PR chart
+          tracks Chest, Back, and Leg training separately by week.
         </p>
       </SectionCard>
     </div>
