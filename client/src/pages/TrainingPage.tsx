@@ -110,7 +110,9 @@ export function TrainingPage() {
       // Keep UI usable if localStorage is unavailable.
     }
   }, [trainingSessions]);
+  // #endregion
 
+  // #region: useEffect -> clear success, error msgs on timeout
   useEffect(() => {
     if (!successMessage) {
       return;
@@ -159,7 +161,6 @@ export function TrainingPage() {
     programSettings.priorityMuscles,
   );
   const selectedExerciseOptions = getExerciseOptionsForMuscleGroup(trainingSessionDraft.primaryMuscleGroup);
-  const isSavingTrainingSession = pendingOperation === "save";
   // #endregion
 
   // #region: helpers
@@ -460,8 +461,8 @@ export function TrainingPage() {
         </div>
 
         <div className="training-form-actions">
-          <button type="button" className="button-dark" onClick={handleSaveTrainingSession} disabled={isSavingTrainingSession}>
-            {isSavingTrainingSession ? "Saving..." : "Save exercise"}
+          <button type="button" className="button-dark" onClick={handleSaveTrainingSession}>
+            Save exercise
           </button>
           {formError ? <p className="form-error" role="alert">{formError}</p> : null}
           {error ? <p className="form-error" role="alert">{error}</p> : null}
