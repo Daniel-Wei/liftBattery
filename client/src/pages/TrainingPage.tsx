@@ -6,7 +6,6 @@ import {
   formatTrainingTrendWeekLabel,
   getCurrentTrainingTrendWeek,
   getTrainingTrendWeeks,
-  isSessionInTrainingTrendWeek,
 } from "../domain/trainingTrendCharts";
 import {
   MetricStatus,
@@ -70,8 +69,9 @@ export function TrainingPage() {
   const programSettings = useAppSelector(selectProgramSettings);
   const trainingSessions = useAppSelector(selectTrainingSessions);
   const { trainingSessionDraft, error, status } = useAppSelector(getTrainingData);
-  const [formError, setFormError] = useState("");
 
+  // #region local states
+  const [formError, setFormError] = useState("");
   const [selectedMuscleGroupFilter, setSelectedMuscleGroupFilter] = useState<MuscleGroupFilter>("All");
   const trainingTrendWeeks = getTrainingTrendWeeks();
   const [selectedWeekLabel, setSelectedWeekLabel] = useState(() => (
@@ -80,10 +80,10 @@ export function TrainingPage() {
   const selectedWeek = trainingTrendWeeks.find((week) => week.label === selectedWeekLabel)
     ?? getCurrentTrainingTrendWeek();
 
-  const [savedSessionPageSize, setSavedSessionPageSize] = useState(5);
-  const [savedSessionPage, setSavedSessionPage] = useState(1);
   const [collapsedTrainingGroupKeys, setCollapsedTrainingGroupKeys] = useState<Set<string>>(() => new Set());
+  // #endregion
 
+  // #region: useEffect -> get saved training sessions in range + update localstorage when sessions updated
   useEffect(() => {
     void dispatch(fetchTrainingSessions({
       from: selectedWeek.startDate,
@@ -101,28 +101,16 @@ export function TrainingPage() {
       // Keep UI usable if localStorage is unavailable.
     }
   }, [trainingSessions]);
-
-  const weekTrainingSessions = trainingSessions.filter((session) => (
-    isSessionInTrainingTrendWeek(session, selectedWeek)
-  ));
-  const filteredTrainingSessions = weekTrainingSessions.filter((session) => (
+  // #endregion
+  
+  // #region: filtered sessions & pagination setup
+  const filteredTrainingSessions = trainingSessions.filter((session) => (
     doesSessionMatchMuscleGroup(session, selectedMuscleGroupFilter)
   ));
   const sortedFilteredTrainingSessions = sortTrainingSessionsNewestFirst(filteredTrainingSessions);
   const selectedWeekDisplayLabel = formatTrainingTrendWeekLabel(selectedWeek);
   const trainingDayGroups = getTrainingDayGroups(sortedFilteredTrainingSessions);
   const latestTrainingDay = trainingDayGroups[0] ?? null;
-
-  const totalSavedSessionPages = Math.max(
-    1,
-    Math.ceil(trainingDayGroups.length / savedSessionPageSize),
-  );
-  const visibleSavedSessionPage = Math.min(savedSessionPage, totalSavedSessionPages);
-  const savedSessionStartIndex = (visibleSavedSessionPage - 1) * savedSessionPageSize;
-  const visibleTrainingDayGroups = trainingDayGroups.slice(
-    savedSessionStartIndex,
-    savedSessionStartIndex + savedSessionPageSize,
-  );
 
   const realTrainingMetrics = buildRealTrainingMetrics(sortedFilteredTrainingSessions);
   const mainSessionLoadMetric = realTrainingMetrics[0];
@@ -139,14 +127,12 @@ export function TrainingPage() {
 
     if (selectedWeekOption) {
       setSelectedWeekLabel(selectedWeekOption.label);
-      setSavedSessionPage(1);
     }
   }
 
   function handleMuscleGroupFilterChange(value: MuscleGroup) {
     if (value === "All") {
       setSelectedMuscleGroupFilter("All");
-      setSavedSessionPage(1);
       return;
     }
 
@@ -156,14 +142,6 @@ export function TrainingPage() {
 
     if (selectedMuscleGroup) {
       setSelectedMuscleGroupFilter(selectedMuscleGroup);
-      setSavedSessionPage(1);
-    }
-  }
-
-  function handleSavedSessionPageSizeChange(value: number) {
-    if (savedSessionPageSizeOptions.includes(value)) {
-      setSavedSessionPageSize(value);
-      setSavedSessionPage(1);
     }
   }
 
@@ -469,23 +447,11 @@ export function TrainingPage() {
                 </select>
               </label>
 
-              <label className="training-form-field training-form-field--compact">
-                <span className="training-form-label">Page size</span>
-                <select
-                  className="training-input training-input--compact"
-                  value={savedSessionPageSize}
-                  onChange={(event) => handleSavedSessionPageSizeChange(Number(event.target.value))}
-                >
-                  {savedSessionPageSizeOptions.map((pageSize) => (
-                    <option key={pageSize} value={pageSize}>{pageSize}</option>
-                  ))}
-                </select>
-              </label>
             </div>
           </div>
 
           <div className="training-group-table-wrap">
-            {visibleTrainingDayGroups.length === 0 ? (
+            {trainingDayGroups.length === 0 ? (
               <p className="muted-text">No matching saved training days in this week.</p>
             ) : (
               <table className="training-group-table">
@@ -500,7 +466,7 @@ export function TrainingPage() {
                     <th scope="col">Action</th>
                   </tr>
                 </thead>
-                {visibleTrainingDayGroups.map((dayGroup) => {
+                {trainingDayGroups.map((dayGroup) => {
                   const dayGroupKey = `day:${dayGroup.date}`;
                   const isDayCollapsed = isTrainingGroupCollapsed(dayGroupKey);
 
@@ -584,28 +550,6 @@ export function TrainingPage() {
                 })}
               </table>
             )}
-          </div>
-
-          <div className="saved-session-pagination">
-            <button
-              type="button"
-              className="text-button"
-              disabled={visibleSavedSessionPage === 1}
-              onClick={() => setSavedSessionPage(visibleSavedSessionPage - 1)}
-            >
-              Previous
-            </button>
-            <span className="pagination-label">
-              Page {visibleSavedSessionPage} / {totalSavedSessionPages}
-            </span>
-            <button
-              type="button"
-              className="text-button"
-              disabled={visibleSavedSessionPage === totalSavedSessionPages}
-              onClick={() => setSavedSessionPage(visibleSavedSessionPage + 1)}
-            >
-              Next
-            </button>
           </div>
         </div>
       </SectionCard>

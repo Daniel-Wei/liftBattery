@@ -91,13 +91,6 @@ function getWeekForSession(session: TrainingSession) {
   ));
 }
 
-export function isSessionInTrainingTrendWeek(
-  session: TrainingSession,
-  week: TrainingTrendWeek,
-) {
-  return session.date >= week.startDate && session.date <= week.endDate;
-}
-
 function getWeekGroupedTrainingTrend(
   trainingSessions: TrainingSession[],
   getSessionValue: (session: TrainingSession) => number,
