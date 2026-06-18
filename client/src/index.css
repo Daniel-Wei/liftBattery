@@ -1671,6 +1671,100 @@ textarea:focus-visible {
   font-weight: var(--weight-semibold);
 }
 
+.floating-operation-badge {
+  position: fixed;
+  right: 1.75rem;
+  bottom: 1.75rem;
+  z-index: 70;
+  display: inline-flex;
+  align-items: center;
+  gap: 1rem;
+  max-width: min(34rem, calc(100vw - 2rem));
+  min-width: 22rem;
+  border: 1px solid rgba(31, 72, 98, 0.16);
+  border-radius: 8px;
+  padding: 1.45rem 1.65rem;
+  box-shadow:
+    0 24px 56px rgba(20, 57, 82, 0.22),
+    inset 0 1px 0 rgba(255, 255, 255, 0.64);
+  font-size: 1.18rem;
+  font-weight: var(--weight-semibold);
+  line-height: 1.35;
+}
+
+.floating-operation-badge--success {
+  border-color: rgba(56, 144, 104, 0.28);
+  background: linear-gradient(145deg, #e8faef, #cbefd9);
+  color: #246446;
+}
+
+.floating-operation-badge--error {
+  border-color: rgba(181, 69, 61, 0.32);
+  background: linear-gradient(145deg, #fff2ef, #f8d5ce);
+  color: #8d302c;
+}
+
+.operation-success-mark {
+  flex: 0 0 auto;
+  width: 1rem;
+  height: 1rem;
+  border-radius: 50%;
+  background: #2f9d62;
+  box-shadow: 0 0 0 7px rgba(47, 157, 98, 0.12);
+}
+
+.operation-error-mark {
+  flex: 0 0 auto;
+  width: 1rem;
+  height: 1rem;
+  border-radius: 50%;
+  background: #c94f45;
+  box-shadow: 0 0 0 7px rgba(201, 79, 69, 0.12);
+}
+
+.operation-loading-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: grid;
+  place-items: center;
+  background: rgba(232, 244, 250, 0.5);
+  backdrop-filter: blur(5px);
+  -webkit-backdrop-filter: blur(5px);
+}
+
+.operation-loading-panel {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.85rem;
+  min-width: 17rem;
+  border: 1px solid rgba(31, 72, 98, 0.18);
+  border-radius: 8px;
+  background: linear-gradient(145deg, #f8fdff, #e8f4fa);
+  color: var(--color-ink);
+  padding: 1.05rem 1.2rem;
+  box-shadow:
+    0 22px 48px rgba(20, 57, 82, 0.22),
+    inset 0 1px 0 rgba(255, 255, 255, 0.7);
+  font-size: 1rem;
+  font-weight: var(--weight-semibold);
+}
+
+.operation-spinner {
+  width: 1.2rem;
+  height: 1.2rem;
+  border: 2px solid rgba(31, 72, 98, 0.18);
+  border-top-color: currentColor;
+  border-radius: 999px;
+  animation: operation-spin 0.78s linear infinite;
+}
+
+@keyframes operation-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 .saved-session-block {
   display: grid;
   gap: 0.75rem;

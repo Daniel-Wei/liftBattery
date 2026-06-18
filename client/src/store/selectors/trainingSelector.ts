@@ -10,6 +10,10 @@ export const getTrainingData = createSelector(
       trainingSessionDraft: training.trainingSessionDraft,
       status: training.status,
       error: training.error,
+      pendingOperation: training.pendingOperation,
+      pendingMessage: training.pendingMessage,
+      successMessage: training.successMessage,
+      operationErrorMessage: training.operationErrorMessage,
     }
   }
 )

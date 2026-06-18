@@ -20,6 +20,8 @@ type UpdateTrainingSessionDetailsPayload = {
   };
 }[keyof TrainingSessionDetails];
 
+type TrainingPendingOperation = "fetch" | "save" | "delete";
+
 function updateDraftField<Field extends keyof TrainingSessionDetails>(
   draft: TrainingSessionDetails,
   field: Field,
@@ -33,7 +35,19 @@ type TrainingState = {
   trainingSessions: TrainingSession[],
   status: RequestStatus,
   error: string | null,
+  pendingOperation: TrainingPendingOperation | null,
+  pendingMessage: string | null,
+  successMessage: string | null,
+  operationErrorMessage: string | null,
 };
+
+const artificialTrainingRequestDelayMs = 700;
+
+function waitForTrainingRequestDelay() {
+  return new Promise<void>((resolve) => {
+    window.setTimeout(resolve, artificialTrainingRequestDelayMs);
+  });
+}
 
 function getInitialTrainingState(): TrainingState {
   const savedTrainingSessions = [...loadSavedTrainingSessions()];
@@ -42,6 +56,10 @@ function getInitialTrainingState(): TrainingState {
     trainingSessions: savedTrainingSessions,
     status: "idle",
     error: null,
+    pendingOperation: null,
+    pendingMessage: null,
+    successMessage: null,
+    operationErrorMessage: null,
   };
 }
 
@@ -54,6 +72,7 @@ export const fetchTrainingSessions = createAsyncThunk<
   "training/getTrainingSessions", // type prefix: pending, fulfilled, rejected generated
   async (payload, thunkApi) => {
     try {
+      await waitForTrainingRequestDelay();
       const { from, to } = payload;
       const dto = await getTrainingSessions(from, to);
       return dto.map(fromTrainingDto);
@@ -73,6 +92,7 @@ export const saveTrainingSession = createAsyncThunk<
     const state = thunkApi.getState();
 
     try {
+      await waitForTrainingRequestDelay();
       const dto = toTrainingSessionDto(state.training.trainingSessionDraft);
       const savedDto = await saveTrainingSessionToApi(dto);
       return fromTrainingDto(savedDto);
@@ -90,6 +110,7 @@ export const deleteTrainingSession = createAsyncThunk<
   "training/deleteTrainingSession",
   async (id, thunkApi) => {
     try {
+      await waitForTrainingRequestDelay();
       await deleteTrainingSessionFromApi(id);
       return id;
     } catch (error) {
@@ -111,54 +132,101 @@ const trainingSlice = createSlice({
         action.payload.field,
         action.payload.value,
       );
+    },
+    clearTrainingSuccessMessage: (state) => {
+      state.successMessage = null;
+    },
+    clearTrainingErrorMessage: (state) => {
+      state.operationErrorMessage = null;
+    },
   },
-},
   extraReducers: (builder) => {
       builder
         .addCase(fetchTrainingSessions.pending, (state) => {
           state.status = "loading";
           state.error = null;
+          state.pendingOperation = "fetch";
+          state.pendingMessage = "Loading training records...";
+          state.successMessage = null;
+          state.operationErrorMessage = null;
         })
         .addCase(fetchTrainingSessions.fulfilled, (state, action) => {
           state.status = "success";
           state.error = null;
+          state.pendingOperation = null;
+          state.pendingMessage = null;
+          state.successMessage = "Training records loaded";
+          state.operationErrorMessage = null;
   
           state.trainingSessions = action.payload;
         })
         .addCase(fetchTrainingSessions.rejected, (state, action) => {
+          const errorMessage = action.payload ?? action.error.message ?? "Could not load training sessions.";
           state.status = "error";
-          state.error = action.payload ?? action.error.message ?? "Could not load training sessions.";
+          state.pendingOperation = null;
+          state.pendingMessage = null;
+          state.successMessage = null;
+          state.error = errorMessage;
+          state.operationErrorMessage = errorMessage;
         })
         .addCase(saveTrainingSession.pending, (state) => {
           state.status = "saving";
           state.error = null;
+          state.pendingOperation = "save";
+          state.pendingMessage = "Saving exercise...";
+          state.successMessage = null;
+          state.operationErrorMessage = null;
         })
         .addCase(saveTrainingSession.fulfilled, (state, action) => {
           state.status = "success";
           state.error = null;
+          state.pendingOperation = null;
+          state.pendingMessage = null;
+          state.successMessage = "Exercise saved";
+          state.operationErrorMessage = null;
           state.trainingSessions.push(action.payload);
         })
         .addCase(saveTrainingSession.rejected, (state, action) => {
+          const errorMessage = action.payload ?? action.error.message ?? "Could not save training session.";
           state.status = "error";
-          state.error = action.payload ?? action.error.message ?? "Could not save training session.";
+          state.pendingOperation = null;
+          state.pendingMessage = null;
+          state.successMessage = null;
+          state.error = errorMessage;
+          state.operationErrorMessage = errorMessage;
         })
         .addCase(deleteTrainingSession.pending, (state) => {
           state.status = "saving";
           state.error = null;
+          state.pendingOperation = "delete";
+          state.pendingMessage = "Deleting exercise...";
+          state.successMessage = null;
+          state.operationErrorMessage = null;
         })
         .addCase(deleteTrainingSession.fulfilled, (state, action) => {
           state.status = "success";
           state.error = null;
+          state.pendingOperation = null;
+          state.pendingMessage = null;
+          state.successMessage = "Exercise deleted";
+          state.operationErrorMessage = null;
           state.trainingSessions = state.trainingSessions.filter(ts => ts.id !== action.payload);
         })
         .addCase(deleteTrainingSession.rejected, (state, action) => {
+          const errorMessage = action.payload ?? action.error.message ?? "Could not delete training session.";
           state.status = "error";
-          state.error = action.payload ?? action.error.message ?? "Could not delete training session.";
+          state.pendingOperation = null;
+          state.pendingMessage = null;
+          state.successMessage = null;
+          state.error = errorMessage;
+          state.operationErrorMessage = errorMessage;
         });
       }
 });
 
 export const {
+  clearTrainingErrorMessage,
+  clearTrainingSuccessMessage,
   updateTrainingSessionDraft,
 } = trainingSlice.actions;
 

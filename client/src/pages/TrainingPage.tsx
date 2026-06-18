@@ -33,6 +33,8 @@ import {
 } from "../data/programValues";
 import { useAppDispatch, useAppSelector } from "../store/hooks";
 import {
+  clearTrainingErrorMessage,
+  clearTrainingSuccessMessage,
   deleteTrainingSession,
   fetchTrainingSessions,
   saveTrainingSession,
@@ -68,7 +70,14 @@ export function TrainingPage() {
   const dispatch = useAppDispatch();
   const programSettings = useAppSelector(selectProgramSettings);
   const trainingSessions = useAppSelector(selectTrainingSessions);
-  const { trainingSessionDraft, error, status } = useAppSelector(getTrainingData);
+  const {
+    trainingSessionDraft,
+    error,
+    pendingOperation,
+    pendingMessage,
+    successMessage,
+    operationErrorMessage,
+  } = useAppSelector(getTrainingData);
 
   // #region local states
   const [formError, setFormError] = useState("");
@@ -101,6 +110,30 @@ export function TrainingPage() {
       // Keep UI usable if localStorage is unavailable.
     }
   }, [trainingSessions]);
+
+  useEffect(() => {
+    if (!successMessage) {
+      return;
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      dispatch(clearTrainingSuccessMessage());
+    }, 1800);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [dispatch, successMessage]);
+
+  useEffect(() => {
+    if (!operationErrorMessage) {
+      return;
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      dispatch(clearTrainingErrorMessage());
+    }, 4200);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [dispatch, operationErrorMessage]);
   // #endregion
   
   // #region: filtered sessions setup
@@ -126,15 +159,32 @@ export function TrainingPage() {
     programSettings.priorityMuscles,
   );
   const selectedExerciseOptions = getExerciseOptionsForMuscleGroup(trainingSessionDraft.primaryMuscleGroup);
-  const isSaving = status === "saving";
+  const isSavingTrainingSession = pendingOperation === "save";
   // #endregion
 
   // #region: helpers
+  function getTrainingWeekForDate(date: string) {
+    return trainingTrendWeeks.find((week) => (
+      date >= week.startDate && date <= week.endDate
+    ));
+  }
+
+  function handleTrainingDateDraftChange(value: string) {
+    dispatch(updateTrainingSessionDraft({ field: "date", value }));
+
+    const dateWeek = getTrainingWeekForDate(value);
+
+    if (dateWeek) {
+      setSelectedWeekLabel(dateWeek.label);
+    }
+  }
+
   function handleTrainingWeekChange(value: string) {
     const selectedWeekOption = trainingTrendWeeks.find((week) => week.label === value);
 
     if (selectedWeekOption) {
       setSelectedWeekLabel(selectedWeekOption.label);
+      dispatch(updateTrainingSessionDraft({ field: "date", value: selectedWeekOption.startDate }));
     }
   }
 
@@ -290,7 +340,7 @@ export function TrainingPage() {
               className="training-input"
               type="date"
               value={trainingSessionDraft.date}
-              onChange={(event) => dispatch(updateTrainingSessionDraft({ field: "date", value: event.target.value }))}
+              onChange={(event) => handleTrainingDateDraftChange(event.target.value)}
             />
           </label>
 
@@ -410,8 +460,8 @@ export function TrainingPage() {
         </div>
 
         <div className="training-form-actions">
-          <button type="button" className="button-dark" onClick={handleSaveTrainingSession} disabled={isSaving}>
-            {isSaving ? "Saving..." : "Save exercise"}
+          <button type="button" className="button-dark" onClick={handleSaveTrainingSession} disabled={isSavingTrainingSession}>
+            {isSavingTrainingSession ? "Saving..." : "Save exercise"}
           </button>
           {formError ? <p className="form-error" role="alert">{formError}</p> : null}
           {error ? <p className="form-error" role="alert">{error}</p> : null}
@@ -590,6 +640,37 @@ export function TrainingPage() {
           </p>
         </SectionCard>
       )}
+
+      {pendingMessage ? (
+        <div className="operation-loading-overlay" role="status" aria-live="polite">
+          <div className="operation-loading-panel">
+            <span className="operation-spinner" aria-hidden="true" />
+            <span>{pendingMessage}</span>
+          </div>
+        </div>
+      ) : null}
+
+      {successMessage ? (
+        <div
+          className="floating-operation-badge floating-operation-badge--success"
+          role="status"
+          aria-live="polite"
+        >
+          <span className="operation-success-mark" aria-hidden="true" />
+          <span>{successMessage}</span>
+        </div>
+      ) : null}
+
+      {operationErrorMessage ? (
+        <div
+          className="floating-operation-badge floating-operation-badge--error"
+          role="alert"
+          aria-live="assertive"
+        >
+          <span className="operation-error-mark" aria-hidden="true" />
+          <span>{operationErrorMessage}</span>
+        </div>
+      ) : null}
     </div>
   );
 }
