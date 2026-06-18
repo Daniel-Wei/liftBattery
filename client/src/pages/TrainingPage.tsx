@@ -6,6 +6,7 @@ import {
   formatTrainingTrendWeekLabel,
   getCurrentTrainingTrendWeek,
   getTrainingTrendWeeks,
+  isSessionInTrainingTrendWeek
 } from "../domain/trainingTrendCharts";
 import {
   MetricStatus,
@@ -29,7 +30,6 @@ import {
   getDefaultExerciseForMuscleGroup,
   getExerciseOptionsForMuscleGroup,
   muscleGroupOptions,
-  savedSessionPageSizeOptions,
 } from "../data/programValues";
 import { useAppDispatch, useAppSelector } from "../store/hooks";
 import {
@@ -103,15 +103,21 @@ export function TrainingPage() {
   }, [trainingSessions]);
   // #endregion
   
-  // #region: filtered sessions & pagination setup
-  const filteredTrainingSessions = trainingSessions.filter((session) => (
+  // #region: filtered sessions setup
+  const weekTrainingSessions = trainingSessions.filter((session) => (
+    isSessionInTrainingTrendWeek(session, selectedWeek)
+  ));
+
+  const filteredTrainingSessions = weekTrainingSessions.filter((session) => (
     doesSessionMatchMuscleGroup(session, selectedMuscleGroupFilter)
   ));
   const sortedFilteredTrainingSessions = sortTrainingSessionsNewestFirst(filteredTrainingSessions);
   const selectedWeekDisplayLabel = formatTrainingTrendWeekLabel(selectedWeek);
   const trainingDayGroups = getTrainingDayGroups(sortedFilteredTrainingSessions);
   const latestTrainingDay = trainingDayGroups[0] ?? null;
+  // #endregion
 
+  // #region: training metrics setup
   const realTrainingMetrics = buildRealTrainingMetrics(sortedFilteredTrainingSessions);
   const mainSessionLoadMetric = realTrainingMetrics[0];
   const secondaryTrainingMetrics = realTrainingMetrics.slice(1);
@@ -121,7 +127,9 @@ export function TrainingPage() {
   );
   const selectedExerciseOptions = getExerciseOptionsForMuscleGroup(trainingSessionDraft.primaryMuscleGroup);
   const isSaving = status === "saving";
+  // #endregion
 
+  // #region: helpers
   function handleTrainingWeekChange(value: string) {
     const selectedWeekOption = trainingTrendWeeks.find((week) => week.label === value);
 
@@ -194,6 +202,7 @@ export function TrainingPage() {
       return nextKeys;
     });
   }
+  //#endregion
 
   return (
     <div className="page page-stack">

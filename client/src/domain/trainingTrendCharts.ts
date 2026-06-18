@@ -30,6 +30,13 @@ export function getTrainingTrendWeeks() {
   return presetTrainingTrendWeeks;
 }
 
+export function isSessionInTrainingTrendWeek(
+  session: TrainingSession,
+  week: TrainingTrendWeek,
+) {
+  return session.date >= week.startDate && session.date <= week.endDate;
+}
+
 export function getCurrentTrainingTrendWeek() {
   const today = new Date().toISOString().slice(0, 10);
   const currentWeek = presetTrainingTrendWeeks.find((week) => (

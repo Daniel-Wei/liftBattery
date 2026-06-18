@@ -184,5 +184,3 @@ export function getExerciseOptionsForMuscleGroup(muscleGroup: MuscleGroup) {
 export function getDefaultExerciseForMuscleGroup(muscleGroup: MuscleGroup) {
   return getExerciseOptionsForMuscleGroup(muscleGroup)[0] ?? "";
 }
-
-export const savedSessionPageSizeOptions = [5, 10];
