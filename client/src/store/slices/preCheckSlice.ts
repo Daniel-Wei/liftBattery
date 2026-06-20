@@ -22,7 +22,7 @@ import {
 import { getTrainingSessions as getTrainingSessionsFromApi } from "../../api/trainingSessionApi";
 import { fromPreCheckDto, toPreCheckDto } from "../../api/preCheckDtoMapping";
 import { fromTrainingDto } from "../../api/trainingSessionDtoMapping";
-import { getErrorMessage, RequestStatus } from "./sliceHelpers";
+import { RequestStatus } from "./sliceHelpers";
 
 type UpdatePreCheckDetailsPayload = {
   field: keyof PreCheckDetailsLog;
@@ -116,8 +116,8 @@ export const fetchTodayPreCheck = createAsyncThunk<
           defaultDraft: getPreCheckDraftWithPreviousTrainingDefaults(),
         };
       }
-    } catch (error) {
-      return thunkApi.rejectWithValue(getErrorMessage(error));
+    } catch {
+      return thunkApi.rejectWithValue("无法读取今日练前检查，请稍后重试。");
     }
   },
 );
@@ -136,8 +136,8 @@ export const savePreCheck = createAsyncThunk<
       const dto = toPreCheckDto(state.preCheck.preCheckDraft, savedTodayLog);
       const savedDto = await savePreCheckToApi(dto);
       return fromPreCheckDto(savedDto, state.preCheck.preCheckDraft);
-    } catch (error) {
-      return thunkApi.rejectWithValue(getErrorMessage(error));
+    } catch {
+      return thunkApi.rejectWithValue("无法保存练前检查，请稍后重试。");
     }
   },
 );
@@ -152,8 +152,8 @@ export const deletePreCheckLog = createAsyncThunk<
     try {
       await deletePreCheckFromApi(id);
       return id;
-    } catch (error) {
-      return thunkApi.rejectWithValue(getErrorMessage(error));
+    } catch {
+      return thunkApi.rejectWithValue("无法删除练前检查，请稍后重试。");
     }
   },
 );
@@ -218,7 +218,7 @@ const preCheckSlice = createSlice({
       })
       .addCase(fetchTodayPreCheck.rejected, (state, action) => {
         state.status = "error";
-        state.error = action.payload ?? action.error.message ?? "Could not load today's pre-check.";
+        state.error = action.payload ?? "无法读取今日练前检查，请稍后重试。";
       })
       .addCase(savePreCheck.pending, (state) => {
         state.status = "saving";
@@ -233,7 +233,7 @@ const preCheckSlice = createSlice({
       })
       .addCase(savePreCheck.rejected, (state, action) => {
         state.status = "error";
-        state.error = action.payload ?? action.error.message ?? "Could not save pre-check.";
+        state.error = action.payload ?? "无法保存练前检查，请稍后重试。";
       })
       .addCase(deletePreCheckLog.pending, (state) => {
         state.status = "saving";
@@ -253,7 +253,7 @@ const preCheckSlice = createSlice({
       })
       .addCase(deletePreCheckLog.rejected, (state, action) => {
         state.status = "error";
-        state.error = action.payload ?? action.error.message ?? "Could not delete pre-check.";
+        state.error = action.payload ?? "无法删除练前检查，请稍后重试。";
       });
   },
 });

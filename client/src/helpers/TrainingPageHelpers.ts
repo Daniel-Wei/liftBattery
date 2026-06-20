@@ -122,7 +122,7 @@ function getTopSetEffortValue(trainingSessions: TrainingSession[]) {
     .map((set) => set.rpe ?? 0);
 
   if (rpeValues.length > 0) {
-    return `RPE ${formatDecimal(Math.max(...rpeValues))}`;
+    return `单组难度 ${formatDecimal(Math.max(...rpeValues))}`;
   }
 
   const rirValues = workingSets
@@ -130,57 +130,57 @@ function getTopSetEffortValue(trainingSessions: TrainingSession[]) {
     .map((set) => set.rir ?? 0);
 
   if (rirValues.length > 0) {
-    return `${formatDecimal(Math.min(...rirValues))} RIR`;
+    return `力竭前剩余 ${formatDecimal(Math.min(...rirValues))} 次`;
   }
 
-  return "No effort data";
+  return "暂无努力程度数据";
 }
 
 function getTopSetEffortStatus(topSetEffort: string) {
-  if (topSetEffort === "No effort data") {
+  if (topSetEffort === "暂无努力程度数据") {
     return MetricStatus.Neutral;
   }
 
-  if (topSetEffort.startsWith("RPE ")) {
-    const rpe = Number(topSetEffort.replace("RPE ", ""));
+  if (topSetEffort.startsWith("单组难度 ")) {
+    const rpe = Number(topSetEffort.replace("单组难度 ", ""));
     return rpe >= 9 ? MetricStatus.Watch : MetricStatus.Good;
   }
 
-  const rir = Number(topSetEffort.replace(" RIR", ""));
+  const rir = Number(topSetEffort.replace("力竭前剩余 ", "").replace(" 次", ""));
   return rir <= 1 ? MetricStatus.Watch : MetricStatus.Good;
 }
 
 export function getTrainingFormError(form: TrainingSessionDetails) {
   if (form.date.trim() === "") {
-    return "Please choose a session date.";
+    return "请选择训练日期。";
   }
 
   if (form.exerciseName.trim() === "") {
-    return "Please enter an exercise name.";
+    return "请选择训练动作。";
   }
 
   if (!Number.isFinite(form.sessionRpe) || form.sessionRpe < 1 || form.sessionRpe > 10) {
-    return "Session RPE must be between 1 and 10.";
+    return "训练总体难度必须在 1 到 10 之间。";
   }
 
   if (!Number.isInteger(form.sets) || form.sets <= 0) {
-    return "Sets must be a whole number greater than 0.";
+    return "组数必须是大于 0 的整数。";
   }
 
   if (!Number.isFinite(form.reps) || form.reps <= 0) {
-    return "Reps must be greater than 0.";
+    return "每组次数必须大于 0。";
   }
 
   if (!Number.isFinite(form.weightKg) || form.weightKg < 0) {
-    return "Weight must be 0 kg or higher.";
+    return "重量必须大于或等于 0 千克。";
   }
 
   if (form.rpe !== undefined && (!Number.isFinite(form.rpe) || form.rpe < 1 || form.rpe > 10)) {
-    return "Set RPE must be blank or between 1 and 10.";
+    return "单组难度可以留空，填写时必须在 1 到 10 之间。";
   }
 
   if (form.rir !== undefined && (!Number.isFinite(form.rir) || form.rir < 0)) {
-    return "RIR must be blank or 0 or higher.";
+    return "力竭前剩余次数可以留空，填写时必须大于或等于 0。";
   }
 
   return null;
@@ -190,10 +190,10 @@ export function getSessionExerciseName(session: TrainingSession) {
   const exerciseNames = [...new Set(getWorkingSets(session).map((set) => set.exerciseName))];
 
   if (exerciseNames.length === 0) {
-    return "No exercise";
+    return "暂无动作";
   }
 
-  return exerciseNames.length === 1 ? exerciseNames[0] : `${exerciseNames.length} exercises`;
+  return exerciseNames.length === 1 ? exerciseNames[0] : `${exerciseNames.length} 个动作`;
 }
 
 export function getSessionSetCount(session: TrainingSession) {
@@ -232,17 +232,17 @@ export function buildRealTrainingMetrics(trainingSessions: TrainingSession[]): M
     {
       label: "Latest Training Day",
       labelZh: "最近训练日",
-      value: latestTrainingDay ? `${latestTrainingDay.setCount} sets` : "No session",
+      value: latestTrainingDay ? `${latestTrainingDay.setCount} 组` : "暂无训练记录",
       trend: latestTrainingDay ? TrendDirection.Up : TrendDirection.Stable,
       status: latestTrainingDay ? MetricStatus.Good : MetricStatus.Neutral,
       evidenceType: EvidenceType.SimpleArithmetic,
       explanation: "Uses saved sets from the latest training day; duration is captured only in Pre-check.",
-      explanationZh: "使用最近训练日保存的组数；训练总时长只在 Pre-check 记录。",
+      explanationZh: "使用最近训练日保存的组数；训练总时长只在练前检查中记录。",
     },
     {
       label: "Latest Session RPE",
-      labelZh: "最近训练 RPE",
-      value: latestTrainingDay ? `${latestTrainingDay.sessionRpe} / 10` : "No session",
+      labelZh: "最近训练总体难度",
+      value: latestTrainingDay ? `${latestTrainingDay.sessionRpe} / 10` : "暂无训练记录",
       trend: latestTrainingDay && latestTrainingDay.sessionRpe >= 8
         ? TrendDirection.Up
         : TrendDirection.Stable,
@@ -251,47 +251,47 @@ export function buildRealTrainingMetrics(trainingSessions: TrainingSession[]): M
         : MetricStatus.Neutral,
       evidenceType: EvidenceType.Established,
       explanation: "Uses the session RPE from the latest saved training day.",
-      explanationZh: "使用最近训练日的 session RPE。",
+      explanationZh: "使用最近训练日的总体难度。",
     },
     {
       label: "Saved Hard Sets",
-      labelZh: "已保存 hard sets",
+      labelZh: "已保存高强度组",
       value: `${hardSets}`,
       trend: hardSets > 0 ? TrendDirection.Up : TrendDirection.Stable,
       status: hardSets > 0 ? MetricStatus.Good : MetricStatus.Neutral,
       evidenceType: EvidenceType.SimpleArithmetic,
       explanation: "Counts saved non-warmup sets that are hard enough by RPE or RIR.",
-      explanationZh: "统计已保存训练中按 RPE 或 RIR 判断足够接近力竭的非热身组。",
+      explanationZh: "统计已保存训练中按单组难度或力竭前剩余次数判断足够接近力竭的非热身组。",
     },
     {
       label: "Saved Total Volume",
       labelZh: "已保存总训练量",
-      value: `${formatWholeNumber(volumeLoad)} kg`,
+      value: `${formatWholeNumber(volumeLoad)} 千克`,
       trend: volumeLoad > 0 ? TrendDirection.Up : TrendDirection.Stable,
       status: volumeLoad > 0 ? MetricStatus.Good : MetricStatus.Neutral,
       evidenceType: EvidenceType.Established,
       explanation: "Sums reps x weight across all saved sets, including warm-ups.",
-      explanationZh: "汇总所有已保存组的 次数 x 重量，包括热身组。",
+      explanationZh: "汇总所有已保存组的次数乘以重量，包括热身组。",
     },
     {
       label: "Saved Working Volume",
       labelZh: "已保存正式组训练量",
-      value: `${formatWholeNumber(workingVolumeLoad)} kg`,
+      value: `${formatWholeNumber(workingVolumeLoad)} 千克`,
       trend: workingVolumeLoad > 0 ? TrendDirection.Up : TrendDirection.Stable,
       status: workingVolumeLoad > 0 ? MetricStatus.Good : MetricStatus.Neutral,
       evidenceType: EvidenceType.Established,
       explanation: "Sums reps x weight across saved working sets only.",
-      explanationZh: "只汇总已保存正式组的 次数 x 重量。",
+      explanationZh: "只汇总已保存正式组的次数乘以重量。",
     },
     {
       label: "Top Set Effort",
       labelZh: "顶组努力程度",
       value: topSetEffort,
-      trend: topSetEffort === "No effort data" ? TrendDirection.Stable : TrendDirection.Up,
+      trend: topSetEffort === "暂无努力程度数据" ? TrendDirection.Stable : TrendDirection.Up,
       status: getTopSetEffortStatus(topSetEffort),
       evidenceType: EvidenceType.Established,
       explanation: "Uses saved set RPE first, then saved RIR if RPE is missing.",
-      explanationZh: "优先使用已保存的单组 RPE；没有 RPE 时使用 RIR。",
+      explanationZh: "优先使用已保存的单组难度；没有单组难度时使用力竭前剩余次数。",
     },
   ];
 }

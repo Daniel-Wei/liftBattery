@@ -70,25 +70,24 @@ export function PreCheckPage() {
         ? MetricStatus.Watch
         : MetricStatus.Neutral;
   const backendStatusLabel = isLoading
-    ? "Loading backend"
+    ? "正在读取记录"
     : isSaving
-      ? "Saving..."
+      ? "正在保存"
       : hasBackendError
-        ? "Backend error"
+        ? "同步失败"
         : status === "success"
-          ? "Backend synced"
-          : "Local draft";
+          ? "已同步"
+          : "本地草稿";
 
   return (
     <div className="page page-stack">
       <header className="dashboard-hero today-dashboard-hero">
         <div className="dashboard-title-row">
           <div>
-            <p className="landing-eyebrow">Today / 今天</p>
-            <h1 className="page-title">Pre-workout readiness check-in.</h1>
+            <p className="landing-eyebrow">今天</p>
+            <h1 className="page-title">练前状态检查</h1>
             <p className="page-subtitle">
-              Before training, log the few signals that shape today&apos;s recommendation:
-              sleep, soreness, motivation, resting heart rate change, and previous session effort.
+              训练前记录睡眠、酸痛、动力、静息心率变化和上次训练负荷，生成今天的训练建议。
             </p>
           </div>
           
@@ -98,11 +97,11 @@ export function PreCheckPage() {
           <div className="battery-panel-badges">
             <StatusBadge
               status={readiness.badgeStatus}
-              label={`${readiness.statusLabel} / ${readiness.statusLabelZh}`}
+              label={readiness.statusLabelZh}
             />
             <StatusBadge
               status={preCheckDraftUpdated ? MetricStatus.Watch : MetricStatus.Good}
-              label={preCheckDraftUpdated ? "Draft updated" : "Draft saved"}
+              label={preCheckDraftUpdated ? "草稿有修改" : "草稿已保存"}
             />
             <StatusBadge
               status={backendBadgeStatus}
@@ -113,17 +112,15 @@ export function PreCheckPage() {
           <div className="battery-ring" style={batteryRingStyle}>
             <div className="battery-ring-core">
               <span className="battery-score">{readiness.score}</span>
-              <span className="battery-ring-label">Readiness</span>
-              <span className="battery-ring-label-zh">今日状态</span>
+              <span className="battery-ring-label">今日状态</span>
             </div>
           </div>
           
 
           <div className="battery-focus-copy">
            
-            <p className="battery-focus-eyebrow">Pre-workout output / 训练前输出</p>
-            <h2 className="battery-focus-title">{readiness.recommendation}</h2>
-            <p className="battery-focus-detail">{readiness.recommendationZh}</p>
+            <p className="battery-focus-eyebrow">练前建议</p>
+            <h2 className="battery-focus-title">{readiness.recommendationZh}</h2>
           </div>
 
         </div>
@@ -132,11 +129,11 @@ export function PreCheckPage() {
       <section className="quick-log-shell">
         <div className="quick-log-header">
           <div>
-            <p className="section-eyebrow">Controlled inputs</p>
-            <h2 className="section-title">Pre-workout readiness / 训练前状态</h2>
+            <p className="section-eyebrow">状态输入</p>
+            <h2 className="section-title">训练前状态</h2>
           </div>
           <div className="quick-log-actions">
-            <StatusBadge status={MetricStatus.Good} label="Live calculation" />
+            <StatusBadge status={MetricStatus.Good} label="实时计算" />
             <button type="button" 
               className="button-dark" 
               onClick={() => {
@@ -144,10 +141,10 @@ export function PreCheckPage() {
               }} 
               disabled={!preCheckDraftUpdated || isSaving}
             >
-              {isSaving ? "Saving..." : "Save readiness check-in"}
+              {isSaving ? "正在保存" : "保存练前检查"}
             </button>
             <button type="button" className="button-dark" onClick={() => dispatch(resetPreCheckDraft())}>
-              Reset inputs
+              重置输入
             </button>
           </div>
         </div>
@@ -163,8 +160,7 @@ export function PreCheckPage() {
               <article key={control.field} className="quick-control-card">
                 <div className="quick-control-top">
                   <div>
-                    <p className="quick-control-label">{control.label}</p>
-                    <p className="quick-control-sub">{control.labelZh}</p>
+                    <p className="quick-control-label">{control.labelZh}</p>
                   </div>
                   <span className="quick-value-pill">
                     {formatInputValue(value, control.unit)}
@@ -189,7 +185,7 @@ export function PreCheckPage() {
         </div>
       </section>
 
-      <SectionCard title="Main drivers" titleZh="主要驱动因素">
+      <SectionCard title="主要影响因素">
         <div className="compact-card-list">
           {readiness.mainDrivers.map((mainDriver) => (
             <article key={mainDriver.id} className="compact-signal-card">
@@ -202,11 +198,11 @@ export function PreCheckPage() {
         </div>
       </SectionCard>
 
-      <SectionCard title="Saved pre-check records" titleZh="已保存练前检查">
+      <SectionCard title="已保存的练前检查">
         <div className="compact-card-list">
           {latest7Logs.length === 0 ? (
             <p className="muted-text">
-              No saved pre-check records yet. Save today&apos;s readiness check-in to send it to Trends.
+              暂无已保存记录。保存今天的练前检查后，可在趋势页查看变化。
             </p>
           ) : latest7Logs.map((log) => {
             const savedReadiness = calculateReadiness(log.input);
@@ -215,7 +211,7 @@ export function PreCheckPage() {
               <article key={log.id} className="compact-signal-card">
                 <div>
                   <p className="work-title">{log.date}</p>
-                  <p className="info-subtitle">{savedReadiness.recommendation}</p>
+                  <p className="info-subtitle">{savedReadiness.recommendationZh}</p>
                 </div>
                 <span className="signal-chip">{savedReadiness.score} / 100</span>
               </article>

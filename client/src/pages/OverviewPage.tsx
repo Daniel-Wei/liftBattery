@@ -9,6 +9,7 @@ import { MetricStatus, RiskSeverity, UserLevel } from "../types/appTypes";
 import { getPreCheckData, selectCurrentReadiness } from "../store/selectors/preCheckSelector";
 import { selectTrainingSessions } from "../store/selectors/trainingSelector";
 import { selectProgramSettings } from "../store/selectors/programSettingsSelector";
+import { getRiskSeverityLabel } from "../helpers/displayLabels";
 
 export function OverviewPage() {
   // mock data for now, will be replaced by live data in the future
@@ -34,9 +35,9 @@ export function OverviewPage() {
       <header className="dashboard-hero">
         <div className="dashboard-title-row">
           <div>
-            <p className="landing-eyebrow">Training science overview / 训练科学总览</p>
-            <h1 className="page-title">{data.trainingBlock.name}</h1>
-            <p className="page-subtitle">{data.trainingBlock.subtitle}</p>
+            <p className="landing-eyebrow">训练科学总览</p>
+            <h1 className="page-title">训练计划总览</h1>
+            <p className="page-subtitle">第 {data.trainingBlock.currentWeek} 周：先建立稳定习惯，再逐步增加复杂度。</p>
           </div>
         </div>
 
@@ -44,29 +45,27 @@ export function OverviewPage() {
           <div className="battery-ring" style={batteryRingStyle}>
             <div className="battery-ring-core">
               <span className="battery-score">{currentReadiness.score}</span>
-              <span className="battery-ring-label">Lift Battery</span>
-              <span className="battery-ring-label-zh">训练电量</span>
+              <span className="battery-ring-label">训练电量</span>
             </div>
           </div>
 
           <div className="battery-focus-copy">
             <p className="battery-focus-eyebrow">
-              Live readiness from today&apos;s draft / 今日实时状态
+              根据今日练前记录实时计算
             </p>
-            <h2 className="battery-focus-title">{currentReadiness.recommendation}</h2>
-            <p className="battery-focus-detail">{currentReadiness.recommendationZh}</p>
+            <h2 className="battery-focus-title">{currentReadiness.recommendationZh}</h2>
           </div>
 
           <div className="battery-focus-meta">
             <div>
-              <p className="battery-meta-label">Week</p>
+              <p className="battery-meta-label">当前周</p>
               <p className="battery-meta-value">
                 {data.trainingBlock.currentWeek} / {data.trainingBlock.totalWeeks}
               </p>
             </div>
             <div>
-              <p className="battery-meta-label">Latest log</p>
-              <p className="battery-meta-value">{latestLog?.date ?? "None"}</p>
+              <p className="battery-meta-label">最近记录</p>
+              <p className="battery-meta-value">{latestLog?.date ?? "暂无"}</p>
             </div>
           </div>
         </div>
@@ -74,13 +73,13 @@ export function OverviewPage() {
         <div className="hero-badge-row">
           <StatusBadge
             status={MetricStatus.Neutral}
-            label={`Week ${data.trainingBlock.currentWeek} / ${data.trainingBlock.totalWeeks}`}
+            label={`第 ${data.trainingBlock.currentWeek} 周 / 共 ${data.trainingBlock.totalWeeks} 周`}
           />
           <StatusBadge
             status={MetricStatus.Good}
-            label={`Today: ${data.trainingBlock.trainingMode}`}
+            label="今天：按计划训练"
           />
-          <StatusBadge status={MetricStatus.Watch} label={data.trainingBlock.mode} />
+          <StatusBadge status={MetricStatus.Watch} label="综合健身与力量基础" />
         </div>
       </header>
 
@@ -90,20 +89,20 @@ export function OverviewPage() {
         ))}
       </section>
 
-      <SectionCard title="Watch states" titleZh="观察状态" eyebrow="Pattern-based, not diagnostic">
+      <SectionCard title="需要留意的状态" eyebrow="基于记录模式，仅供训练参考">
         <div className="card-list">
           {data.riskWatches.map((risk) => (
             <article key={risk.title} className="risk-card">
               <div className="info-row">
                 <div>
-                  <p className="risk-title">{risk.title}</p>
+                  <p className="risk-title">{risk.titleZh}</p>
                 </div>
                 <StatusBadge
                   status={risk.severity === RiskSeverity.High ? MetricStatus.Risk : MetricStatus.Watch}
-                  label={risk.severity}
+                  label={getRiskSeverityLabel(risk.severity)}
                 />
               </div>
-              <p className="risk-detail">{risk.recommendation}</p>
+              <p className="risk-detail">{risk.recommendationZh}</p>
             </article>
           ))}
         </div>

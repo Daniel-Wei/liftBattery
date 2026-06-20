@@ -1,4 +1,5 @@
 import { MetricStatus } from "../types/appTypes";
+import { getMetricStatusLabel } from "../helpers/displayLabels";
 
 type StatusBadgeProps = {
   status: MetricStatus;
@@ -20,5 +21,5 @@ export function StatusBadge({ status, label }: StatusBadgeProps) {
     className = "status-badge status-badge--risk";
   }
 
-  return <span className={className}>{label ?? status}</span>;
+  return <span className={className}>{label ?? getMetricStatusLabel(status)}</span>;
 }

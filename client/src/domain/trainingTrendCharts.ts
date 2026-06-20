@@ -47,7 +47,11 @@ export function getCurrentTrainingTrendWeek() {
 }
 
 export function formatTrainingTrendWeekLabel(week: TrainingTrendWeek) {
-  return `${week.label}: ${week.startDate} to ${week.endDate}`;
+  return `${formatTrainingTrendWeekShortLabel(week)}：${week.startDate} 至 ${week.endDate}`;
+}
+
+export function formatTrainingTrendWeekShortLabel(week: TrainingTrendWeek) {
+  return `第 ${Number(week.label.replace("W", ""))} 周`;
 }
 
 function getSessionLoad(session: TrainingSession) {
@@ -120,7 +124,7 @@ function getWeekGroupedTrainingTrend(
   return presetTrainingTrendWeeks
     .filter((week) => valueByWeekLabel.has(week.label))
     .map((week) => ({
-      label: week.label,
+      label: formatTrainingTrendWeekShortLabel(week),
       value: valueByWeekLabel.get(week.label) ?? 0,
     }));
 }
@@ -147,7 +151,7 @@ function getWeekGroupedMaxTrainingTrend(
   return presetTrainingTrendWeeks
     .filter((week) => valueByWeekLabel.has(week.label))
     .map((week) => ({
-      label: week.label,
+      label: formatTrainingTrendWeekShortLabel(week),
       value: Math.round(valueByWeekLabel.get(week.label) ?? 0),
     }));
 }
@@ -155,22 +159,22 @@ function getWeekGroupedMaxTrainingTrend(
 const mainLiftEstimatedPrConfigs = [
   {
     id: "chest",
-    label: "Chest",
-    liftName: "Chest lifts",
+    label: "胸部",
+    liftName: "胸部主要动作",
     variant: "blue",
     muscleGroups: ["Chest"],
   },
   {
     id: "back",
-    label: "Back",
-    liftName: "Back lifts",
+    label: "背部",
+    liftName: "背部主要动作",
     variant: "green",
     muscleGroups: ["Back"],
   },
   {
     id: "legs",
-    label: "Legs",
-    liftName: "Leg lifts",
+    label: "腿部",
+    liftName: "腿部主要动作",
     variant: "amber",
     muscleGroups: ["Quads", "Hamstrings", "Glutes"],
   },
@@ -216,7 +220,7 @@ function getWeeklyMainLiftEstimatedPrTrend(
   return presetTrainingTrendWeeks
     .filter((week) => valueByWeekLabel.has(week.label))
     .map((week) => ({
-      label: week.label,
+      label: formatTrainingTrendWeekShortLabel(week),
       value: Math.round(valueByWeekLabel.get(week.label) ?? 0),
     }));
 }

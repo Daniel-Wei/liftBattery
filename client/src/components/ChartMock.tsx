@@ -20,7 +20,7 @@ const plotHeight = chartHeight - chartPadding.top - chartPadding.bottom;
 
 function formatAxisValue(value: number) {
   if (Math.abs(value) >= 100 || Number.isInteger(value)) {
-    return Math.round(value).toLocaleString("en-US");
+    return Math.round(value).toLocaleString("zh-CN");
   }
 
   return value.toFixed(1);
@@ -58,7 +58,7 @@ export function ChartMock({ title, titleZh, data, variant = "blue" }: ChartMockP
         <p className="chart-title">{title}</p>
         {shouldShowSubtitle ? <h2 className="chart-subtitle">{titleZh}</h2> : null}
         <div className="chart-line-frame chart-line-frame--empty">
-          <p className="muted-text">No trend data yet.</p>
+          <p className="muted-text">暂无趋势数据。</p>
         </div>
       </div>
     );
@@ -98,7 +98,7 @@ export function ChartMock({ title, titleZh, data, variant = "blue" }: ChartMockP
         <svg
           className="chart-line-svg"
           role="img"
-          aria-label={`${title} line chart`}
+          aria-label={`${title}折线图`}
           viewBox={`0 0 ${chartWidth} ${chartHeight}`}
         >
           {yTicks.map((tick) => {

@@ -5,7 +5,7 @@ import type {
 } from "../../types/appTypes";
 import { loadSavedTrainingSessions } from "../../helpers/TrainingPageHelpers";
 import { getTrainingSessions } from "../../api/trainingSessionApi";
-import { getErrorMessage, RequestStatus } from "./sliceHelpers";
+import { RequestStatus } from "./sliceHelpers";
 import { fromTrainingDto, toTrainingSessionDto } from "../../api/trainingSessionDtoMapping";
 import { initialTrainingSessionDetailsInput } from "../../data/defaultValues";
 import { 
@@ -76,8 +76,8 @@ export const fetchTrainingSessions = createAsyncThunk<
       const { from, to } = payload;
       const dto = await getTrainingSessions(from, to);
       return dto.map(fromTrainingDto);
-    } catch (error) {
-      return thunkApi.rejectWithValue(getErrorMessage(error));
+    } catch {
+      return thunkApi.rejectWithValue("无法读取训练记录，请稍后重试。");
     }
   },
 );
@@ -96,8 +96,8 @@ export const saveTrainingSession = createAsyncThunk<
       const dto = toTrainingSessionDto(state.training.trainingSessionDraft);
       const savedDto = await saveTrainingSessionToApi(dto);
       return fromTrainingDto(savedDto);
-    } catch (error) {
-      return thunkApi.rejectWithValue(getErrorMessage(error));
+    } catch {
+      return thunkApi.rejectWithValue("无法保存训练动作，请稍后重试。");
     }
   },
 );
@@ -113,8 +113,8 @@ export const deleteTrainingSession = createAsyncThunk<
       await waitForTrainingRequestDelay();
       await deleteTrainingSessionFromApi(id);
       return id;
-    } catch (error) {
-      return thunkApi.rejectWithValue(getErrorMessage(error));
+    } catch {
+      return thunkApi.rejectWithValue("无法删除训练动作，请稍后重试。");
     }
   },
 );
@@ -146,7 +146,7 @@ const trainingSlice = createSlice({
           state.status = "loading";
           state.error = null;
           state.pendingOperation = "fetch";
-          state.pendingMessage = "Loading training records...";
+          state.pendingMessage = "正在读取训练记录...";
           state.successMessage = null;
           state.operationErrorMessage = null;
         })
@@ -155,13 +155,13 @@ const trainingSlice = createSlice({
           state.error = null;
           state.pendingOperation = null;
           state.pendingMessage = null;
-          state.successMessage = "Training records loaded";
+          state.successMessage = "训练记录已加载";
           state.operationErrorMessage = null;
   
           state.trainingSessions = action.payload;
         })
         .addCase(fetchTrainingSessions.rejected, (state, action) => {
-          const errorMessage = action.payload ?? action.error.message ?? "Could not load training sessions.";
+          const errorMessage = action.payload ?? "无法读取训练记录，请稍后重试。";
           state.status = "error";
           state.pendingOperation = null;
           state.pendingMessage = null;
@@ -173,7 +173,7 @@ const trainingSlice = createSlice({
           state.status = "saving";
           state.error = null;
           state.pendingOperation = "save";
-          state.pendingMessage = "Saving exercise...";
+          state.pendingMessage = "正在保存训练动作...";
           state.successMessage = null;
           state.operationErrorMessage = null;
         })
@@ -182,12 +182,12 @@ const trainingSlice = createSlice({
           state.error = null;
           state.pendingOperation = null;
           state.pendingMessage = null;
-          state.successMessage = "Exercise saved";
+          state.successMessage = "训练动作已保存";
           state.operationErrorMessage = null;
           state.trainingSessions.push(action.payload);
         })
         .addCase(saveTrainingSession.rejected, (state, action) => {
-          const errorMessage = action.payload ?? action.error.message ?? "Could not save training session.";
+          const errorMessage = action.payload ?? "无法保存训练动作，请稍后重试。";
           state.status = "error";
           state.pendingOperation = null;
           state.pendingMessage = null;
@@ -199,7 +199,7 @@ const trainingSlice = createSlice({
           state.status = "saving";
           state.error = null;
           state.pendingOperation = "delete";
-          state.pendingMessage = "Deleting exercise...";
+          state.pendingMessage = "正在删除训练动作...";
           state.successMessage = null;
           state.operationErrorMessage = null;
         })
@@ -208,12 +208,12 @@ const trainingSlice = createSlice({
           state.error = null;
           state.pendingOperation = null;
           state.pendingMessage = null;
-          state.successMessage = "Exercise deleted";
+          state.successMessage = "训练动作已删除";
           state.operationErrorMessage = null;
           state.trainingSessions = state.trainingSessions.filter(ts => ts.id !== action.payload);
         })
         .addCase(deleteTrainingSession.rejected, (state, action) => {
-          const errorMessage = action.payload ?? action.error.message ?? "Could not delete training session.";
+          const errorMessage = action.payload ?? "无法删除训练动作，请稍后重试。";
           state.status = "error";
           state.pendingOperation = null;
           state.pendingMessage = null;

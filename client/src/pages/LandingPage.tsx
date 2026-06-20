@@ -7,56 +7,55 @@ export function LandingPage({ onStart }: LandingPageProps) {
     <main className="landing-page">
       <section className="landing-layout">
         <div>
-          <p className="landing-eyebrow">Lift Battery</p>
+          <p className="landing-eyebrow">训练电量</p>
           <h1 className="landing-title">
-            Your training battery, without the spreadsheet.
+            不用表格，也能看懂自己的训练状态。
           </h1>
           <p className="landing-copy">
-            A focused 1.0 for serious recreational lifters: pre-workout readiness,
-            post-workout training records, recovery context, and one overview.
+            面向认真健身用户的第一版：记录练前状态和训练内容，并用一个总览查看变化。
           </p>
           <p className="landing-copy-muted">
-            面向认真健身用户的 1.0：练前检查、训练记录、恢复记录，以及一个总览页面。
+            先把必要流程做好：检查今天的状态、保存训练、回看趋势。
           </p>
 
           <button type="button" className="button-dark landing-cta" onClick={onStart}>
-            Open dashboard
+            打开训练总览
           </button>
         </div>
 
         <div className="product-preview-shell">
           <div className="preview-header">
             <div>
-              <p className="preview-eyebrow">1.0 overview</p>
-              <h2 className="preview-title">Simple training state</h2>
+              <p className="preview-eyebrow">第一版总览</p>
+              <h2 className="preview-title">简单清楚的训练状态</h2>
             </div>
-            <span className="status-badge status-badge--good">Focused build</span>
+            <span className="status-badge status-badge--good">核心功能</span>
           </div>
 
           <div className="preview-grid">
             <div className="preview-metric">
-              <p className="preview-eyebrow">Pre-check</p>
-              <p className="preview-value">Live</p>
+              <p className="preview-eyebrow">练前检查</p>
+              <p className="preview-value">实时</p>
             </div>
             <div className="preview-metric">
-              <p className="preview-eyebrow">Training</p>
-              <p className="preview-value">Saved</p>
+              <p className="preview-eyebrow">训练记录</p>
+              <p className="preview-value">已保存</p>
             </div>
             <div className="preview-metric">
-              <p className="preview-eyebrow">Trends</p>
-              <p className="preview-value">Weekly</p>
+              <p className="preview-eyebrow">训练趋势</p>
+              <p className="preview-value">按周查看</p>
             </div>
             <div className="preview-metric">
-              <p className="preview-eyebrow">Overview</p>
-              <p className="preview-value">Readable</p>
+              <p className="preview-eyebrow">训练总览</p>
+              <p className="preview-value">一目了然</p>
             </div>
           </div>
 
           <div className="preview-risk">
-            <p className="preview-eyebrow">Plain-language output</p>
-            <p className="preview-risk-title">Train as planned, lighter, or recovery-focused.</p>
+            <p className="preview-eyebrow">清楚直接的建议</p>
+            <p className="preview-risk-title">按计划训练、适当减量，或优先恢复。</p>
             <p className="preview-risk-copy">
-              The first version keeps the flow small: check readiness, save training, review trends.
+              第一版只保留最实用的流程：检查状态、保存训练、查看趋势。
             </p>
           </div>
         </div>

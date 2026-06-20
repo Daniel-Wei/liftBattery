@@ -35,7 +35,7 @@ type ChartPoint = TrendPoint & {
 
 function formatAxisValue(value: number) {
   if (Math.abs(value) >= 100 || Number.isInteger(value)) {
-    return Math.round(value).toLocaleString("en-US");
+    return Math.round(value).toLocaleString("zh-CN");
   }
 
   return value.toFixed(1);
@@ -87,7 +87,7 @@ export function MultiLineTrendChart({
         <p className="chart-title">{title}</p>
         {shouldShowSubtitle ? <h2 className="chart-subtitle">{titleZh}</h2> : null}
         <div className="chart-line-frame chart-line-frame--empty">
-          <p className="muted-text">No trend data yet.</p>
+          <p className="muted-text">暂无趋势数据。</p>
         </div>
       </div>
     );
@@ -161,7 +161,7 @@ export function MultiLineTrendChart({
         <svg
           className="chart-line-svg"
           role="img"
-          aria-label={`${title} multi-line chart`}
+          aria-label={`${title}多折线图`}
           viewBox={`0 0 ${chartWidth} ${chartHeight}`}
         >
           {yTicks.map((tick) => {
@@ -225,7 +225,7 @@ export function MultiLineTrendChart({
                       cy={point.y}
                       r="3"
                     />
-                    <title>{`${line.label}: ${formatAxisValue(point.value)} kg`}</title>
+                    <title>{`${line.label}：${formatAxisValue(point.value)} 千克`}</title>
                   </g>
                 ))}
               </g>

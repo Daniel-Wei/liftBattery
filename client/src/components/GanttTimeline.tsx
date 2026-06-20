@@ -11,10 +11,10 @@ export function GanttTimeline({ phases, currentWeek }: GanttTimelineProps) {
     <section className="gantt-card">
       <div className="gantt-header">
         <div>
-          <p className="section-eyebrow">Training block timeline</p>
-          <h2 className="section-title">Gantt-style plan / Gantt 风格计划</h2>
+          <p className="section-eyebrow">训练周期时间线</p>
+          <h2 className="section-title">甘特图计划</h2>
         </div>
-        <StatusBadge status={MetricStatus.Neutral} label={`Week ${currentWeek}`} />
+        <StatusBadge status={MetricStatus.Neutral} label={`第 ${currentWeek} 周`} />
       </div>
 
       <div className="gantt-body">
@@ -27,15 +27,14 @@ export function GanttTimeline({ phases, currentWeek }: GanttTimelineProps) {
           return (
             <div key={phase.name} className="gantt-row">
               <div className="gantt-row-top">
-                <span className="gantt-phase-name">{phase.name}</span>
+                <span className="gantt-phase-name">{phase.nameZh}</span>
                 <span className="gantt-week">
-                  W{phase.startWeek}-W{phase.endWeek}
+                  第 {phase.startWeek} 至 {phase.endWeek} 周
                 </span>
               </div>
               <div className="gantt-track">
                 <div className={barClassName} style={{ left, width }} />
               </div>
-              <p className="gantt-phase-zh">{phase.nameZh}</p>
             </div>
           );
         })}

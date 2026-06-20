@@ -28,9 +28,12 @@ import {
 } from "../helpers/GenericHelpers";
 import {
   getDefaultExerciseForMuscleGroup,
+  getExerciseDisplayLabel,
   getExerciseOptionsForMuscleGroup,
+  getMuscleGroupDisplayLabel,
   muscleGroupOptions,
 } from "../data/programValues";
+import { getEvidenceTypeLabel } from "../helpers/displayLabels";
 import { useAppDispatch, useAppSelector } from "../store/hooks";
 import {
   clearTrainingErrorMessage,
@@ -60,10 +63,12 @@ function getTrainingDayExerciseLabel(dayGroup: TrainingDayGroup) {
   ));
 
   if (exerciseNames.length === 0) {
-    return "No exercise";
+    return "暂无动作";
   }
 
-  return exerciseNames.length === 1 ? exerciseNames[0] : `${exerciseNames.length} exercises`;
+  return exerciseNames.length === 1
+    ? getExerciseDisplayLabel(exerciseNames[0])
+    : `${exerciseNames.length} 个动作`;
 }
 
 export function TrainingPage() {
@@ -73,7 +78,6 @@ export function TrainingPage() {
   const {
     trainingSessionDraft,
     error,
-    pendingOperation,
     pendingMessage,
     successMessage,
     operationErrorMessage,
@@ -260,26 +264,26 @@ export function TrainingPage() {
       <header className="dashboard-hero">
         <div className="dashboard-title-row">
           <div>
-            <p className="landing-eyebrow">Training / 训练</p>
-            <h1 className="page-title">Saved training data only.</h1>
+            <p className="landing-eyebrow">训练记录</p>
+            <h1 className="page-title">只分析已经保存的训练数据</h1>
             <p className="page-subtitle">
-              Training analysis below is derived from sessions you save here. If a signal has no data source yet, it is not shown.
+              下方分析只使用这里保存的训练记录；没有可靠数据来源的指标不会显示。
             </p>
           </div>
         </div>
 
         <div className="battery-focus-panel training-load-panel">
           <div className="battery-panel-badges">
-            <StatusBadge status={mainSessionLoadMetric.status} label={mainSessionLoadMetric.evidenceType} />
+            <StatusBadge status={mainSessionLoadMetric.status} label={getEvidenceTypeLabel(mainSessionLoadMetric.evidenceType)} />
             <StatusBadge status={MetricStatus.Neutral} label={selectedWeekDisplayLabel} />
-            <StatusBadge status={MetricStatus.Neutral} label={`${trainingDayGroups.length} training days`} />
+            <StatusBadge status={MetricStatus.Neutral} label={`${trainingDayGroups.length} 个训练日`} />
           </div>
 
           <div className="training-load-summary">
-            <p className="battery-focus-eyebrow">Latest training output / 最近训练输出</p>
+            <p className="battery-focus-eyebrow">最近训练结果</p>
             <div className="training-load-detail-row">
               <p className="training-load-exercise">
-                {latestTrainingDay ? getTrainingDayExerciseLabel(latestTrainingDay) : "No saved session"}
+                {latestTrainingDay ? getTrainingDayExerciseLabel(latestTrainingDay) : "暂无已保存训练"}
               </p>
               {latestTrainingDay ? (
                 <p className="training-load-value">
@@ -289,8 +293,8 @@ export function TrainingPage() {
               <div className="training-load-copy">
                 <p className="battery-focus-detail">
                   {latestTrainingDay
-                    ? `${formatDisplayDate(latestTrainingDay.date)} - RPE ${latestTrainingDay.sessionRpe} - ${latestTrainingDay.setCount} sets (${latestTrainingDay.workingSetCount} working)`
-                    : "Save one completed session below."}
+                    ? `${formatDisplayDate(latestTrainingDay.date)} · 总体难度 ${latestTrainingDay.sessionRpe} · 共 ${latestTrainingDay.setCount} 组（${latestTrainingDay.workingSetCount} 组正式组）`
+                    : "请在下方保存已完成的训练动作。"}
                 </p>
               </div>
             </div>
@@ -298,20 +302,22 @@ export function TrainingPage() {
 
           <div className="battery-focus-meta">
             <div>
-              <p className="battery-meta-label">Session RPE</p>
+              <p className="battery-meta-label">训练总体难度</p>
               <p className="battery-meta-value">
                 {latestTrainingDay ? `${latestTrainingDay.sessionRpe} / 10` : "--"}
               </p>
             </div>
             <div>
-              <p className="battery-meta-label">Working sets</p>
+              <p className="battery-meta-label">正式组</p>
               <p className="battery-meta-value">
                 {latestTrainingDay ? `${latestTrainingDay.workingSetCount}` : "--"}
               </p>
             </div>
             <div>
-              <p className="battery-meta-label">Priority</p>
-              <p className="battery-meta-value">{programSettings.priorityMuscles.join(", ")}</p>
+              <p className="battery-meta-label">重点肌群</p>
+              <p className="battery-meta-value">
+                {programSettings.priorityMuscles.map(getMuscleGroupDisplayLabel).join("、")}
+              </p>
             </div>
           </div>
         </div>
@@ -323,20 +329,20 @@ export function TrainingPage() {
         ))}
       </section>
 
-      <SectionCard title="Save training exercise" titleZh="保存训练动作" eyebrow="Post-workout log">
+      <SectionCard title="保存训练动作" eyebrow="训练后记录">
         <div className="training-session-intro">
           <p className="body-text">
-            Add completed exercise sets. Total training duration is recorded only in Pre-check.
+            添加已完成的动作组。训练总时长只在练前检查中记录。
           </p>
           <StatusBadge
             status={MetricStatus.Neutral}
-            label={`Priority: ${programSettings.priorityMuscles.join(", ")}`}
+            label={`重点肌群：${programSettings.priorityMuscles.map(getMuscleGroupDisplayLabel).join("、")}`}
           />
         </div>
 
         <div className="training-session-form">
           <label className="training-form-field">
-            <span className="training-form-label">Date / 日期</span>
+            <span className="training-form-label">日期</span>
             <input
               className="training-input"
               type="date"
@@ -346,7 +352,7 @@ export function TrainingPage() {
           </label>
 
           <label className="training-form-field">
-            <span className="training-form-label">Set type / 组类型</span>
+            <span className="training-form-label">组类型</span>
             <select
               className="training-input"
               value={trainingSessionDraft.isWarmup ? "warmup" : "working"}
@@ -355,13 +361,13 @@ export function TrainingPage() {
                 value: event.target.value === "warmup",
               }))}
             >
-              <option value="working">Working set</option>
-              <option value="warmup">Warm-up</option>
+              <option value="working">正式组</option>
+              <option value="warmup">热身组</option>
             </select>
           </label>
 
           <label className="training-form-field">
-            <span className="training-form-label">Training day RPE / 训练总体难度</span>
+            <span className="training-form-label">训练总体难度</span>
             <input
               className="training-input"
               type="number"
@@ -374,33 +380,37 @@ export function TrainingPage() {
           </label>
 
           <label className="training-form-field">
-            <span className="training-form-label">Primary muscle / 主要肌群</span>
+            <span className="training-form-label">主要肌群</span>
             <select
               className="training-input"
               value={trainingSessionDraft.primaryMuscleGroup}
               onChange={(event) => handlePrimaryMuscleGroupDraftChange(event.target.value as MuscleGroup)}
             >
               {muscleGroupOptions.map((muscleGroup) => (
-                <option key={muscleGroup} value={muscleGroup}>{muscleGroup}</option>
+                <option key={muscleGroup} value={muscleGroup}>
+                  {getMuscleGroupDisplayLabel(muscleGroup)}
+                </option>
               ))}
             </select>
           </label>
 
           <label className="training-form-field">
-            <span className="training-form-label">Exercise / 动作</span>
+            <span className="training-form-label">动作</span>
             <select
               className="training-input"
               value={trainingSessionDraft.exerciseName}
               onChange={(event) => dispatch(updateTrainingSessionDraft({ field: "exerciseName", value: event.target.value }))}
             >
               {selectedExerciseOptions.map((exerciseName) => (
-                <option key={exerciseName} value={exerciseName}>{exerciseName}</option>
+                <option key={exerciseName} value={exerciseName}>
+                  {getExerciseDisplayLabel(exerciseName)}
+                </option>
               ))}
             </select>
           </label>
 
           <label className="training-form-field">
-            <span className="training-form-label">Sets / 组数</span>
+            <span className="training-form-label">组数</span>
             <input
               className="training-input"
               type="number"
@@ -412,7 +422,7 @@ export function TrainingPage() {
           </label>
 
           <label className="training-form-field">
-            <span className="training-form-label">Reps / 次数</span>
+            <span className="training-form-label">每组次数</span>
             <input
               className="training-input"
               type="number"
@@ -423,7 +433,7 @@ export function TrainingPage() {
           </label>
 
           <label className="training-form-field">
-            <span className="training-form-label">Weight kg / 重量</span>
+            <span className="training-form-label">重量（千克）</span>
             <input
               className="training-input"
               type="number"
@@ -435,7 +445,7 @@ export function TrainingPage() {
           </label>
 
           <label className="training-form-field">
-            <span className="training-form-label">Set RPE optional / 单组 RPE</span>
+            <span className="training-form-label">单组难度（选填）</span>
             <input
               className="training-input"
               type="number"
@@ -448,7 +458,7 @@ export function TrainingPage() {
           </label>
 
           <label className="training-form-field">
-            <span className="training-form-label">RIR optional / 剩余次数</span>
+            <span className="training-form-label">力竭前剩余次数（选填）</span>
             <input
               className="training-input"
               type="number"
@@ -462,7 +472,7 @@ export function TrainingPage() {
 
         <div className="training-form-actions">
           <button type="button" className="button-dark" onClick={handleSaveTrainingSession}>
-            Save exercise
+            保存动作
           </button>
           {formError ? <p className="form-error" role="alert">{formError}</p> : null}
           {error ? <p className="form-error" role="alert">{error}</p> : null}
@@ -471,15 +481,15 @@ export function TrainingPage() {
         <div className="saved-session-block">
           <div className="saved-session-header">
             <div>
-              <p className="section-eyebrow">Saved training days</p>
+              <p className="section-eyebrow">已保存的训练日</p>
               <p className="muted-text">
-                Sets saved on the same date are grouped into one training day, then grouped by muscle and exercise.
+                同一天保存的训练组会合并为一个训练日，再按肌群和动作分组。
               </p>
             </div>
 
             <div className="saved-session-controls">
               <label className="training-form-field training-form-field--compact">
-                <span className="training-form-label">Training week</span>
+                <span className="training-form-label">训练周</span>
                 <select
                   className="training-input training-input--compact"
                   value={selectedWeekLabel}
@@ -494,15 +504,17 @@ export function TrainingPage() {
               </label>
 
               <label className="training-form-field training-form-field--compact">
-                <span className="training-form-label">Muscle</span>
+                <span className="training-form-label">肌群</span>
                 <select
                   className="training-input training-input--compact"
                   value={selectedMuscleGroupFilter}
                   onChange={(event) => handleMuscleGroupFilterChange(event.target.value as MuscleGroup)}
                 >
-                  <option value="All">All</option>
+                  <option value="All">全部</option>
                   {muscleGroupOptions.map((muscleGroup) => (
-                    <option key={muscleGroup} value={muscleGroup}>{muscleGroup}</option>
+                    <option key={muscleGroup} value={muscleGroup}>
+                      {getMuscleGroupDisplayLabel(muscleGroup)}
+                    </option>
                   ))}
                 </select>
               </label>
@@ -512,18 +524,18 @@ export function TrainingPage() {
 
           <div className="training-group-table-wrap">
             {trainingDayGroups.length === 0 ? (
-              <p className="muted-text">No matching saved training days in this week.</p>
+              <p className="muted-text">本周暂无符合筛选条件的训练记录。</p>
             ) : (
               <table className="training-group-table">
                 <thead>
                   <tr>
-                    <th scope="col">Exercise</th>
-                    <th scope="col">Sets</th>
-                    <th scope="col">Working sets</th>
-                    <th scope="col">Hard sets</th>
-                    <th scope="col">Total volume</th>
-                    <th scope="col">Working volume</th>
-                    <th scope="col">Action</th>
+                    <th scope="col">动作</th>
+                    <th scope="col">总组数</th>
+                    <th scope="col">正式组</th>
+                    <th scope="col">高强度组</th>
+                    <th scope="col">总训练量</th>
+                    <th scope="col">正式组训练量</th>
+                    <th scope="col">操作</th>
                   </tr>
                 </thead>
                 {trainingDayGroups.map((dayGroup) => {
@@ -544,12 +556,12 @@ export function TrainingPage() {
                               <span className="training-group-toggle" aria-hidden="true">
                                 {isDayCollapsed ? "▸" : "▾"}
                               </span>
-                              <span className="training-group-title">Date: {formatDisplayDate(dayGroup.date)}</span>
+                              <span className="training-group-title">日期：{formatDisplayDate(dayGroup.date)}</span>
                             </button>
                             <span className="training-group-summary">
-                              RPE {dayGroup.sessionRpe} - {dayGroup.setCount} sets - {dayGroup.workingSetCount} working - {dayGroup.hardSetCount} hard - {formatWholeNumber(dayGroup.volumeLoad)} kg total - {formatWholeNumber(dayGroup.workingVolumeLoad)} kg working
+                              总体难度 {dayGroup.sessionRpe} · 共 {dayGroup.setCount} 组 · {dayGroup.workingSetCount} 组正式组 · {dayGroup.hardSetCount} 组高强度组 · 总训练量 {formatWholeNumber(dayGroup.volumeLoad)} 千克 · 正式组训练量 {formatWholeNumber(dayGroup.workingVolumeLoad)} 千克
                             </span>
-                            <span className="signal-chip">{dayGroup.workingSetCount} working</span>
+                            <span className="signal-chip">{dayGroup.workingSetCount} 组正式组</span>
                           </div>
                         </th>
                       </tr>
@@ -572,10 +584,10 @@ export function TrainingPage() {
                                     <span className="training-group-toggle" aria-hidden="true">
                                       {isMuscleCollapsed ? "▸" : "▾"}
                                     </span>
-                                    <span className="training-group-title">Muscle: {muscleGroup.muscleGroup}</span>
+                                    <span className="training-group-title">肌群：{getMuscleGroupDisplayLabel(muscleGroup.muscleGroup)}</span>
                                   </button>
                                   <span className="training-group-summary">
-                                    {muscleGroup.setCount} sets - {muscleGroup.workingSetCount} working - {muscleGroup.hardSetCount} hard - {formatWholeNumber(muscleGroup.volumeLoad)} kg total - {formatWholeNumber(muscleGroup.workingVolumeLoad)} kg working
+                                    共 {muscleGroup.setCount} 组 · {muscleGroup.workingSetCount} 组正式组 · {muscleGroup.hardSetCount} 组高强度组 · 总训练量 {formatWholeNumber(muscleGroup.volumeLoad)} 千克 · 正式组训练量 {formatWholeNumber(muscleGroup.workingVolumeLoad)} 千克
                                   </span>
                                 </div>
                               </th>
@@ -584,20 +596,20 @@ export function TrainingPage() {
                             {!isMuscleCollapsed ? muscleGroup.exercises.map((exercise) => (
                               <tr key={exercise.key} className="training-group-row training-group-row--exercise">
                                 <td>
-                                  <span className="training-exercise-name">{exercise.exerciseName}</span>
+                                  <span className="training-exercise-name">{getExerciseDisplayLabel(exercise.exerciseName)}</span>
                                 </td>
                                 <td>{exercise.setCount}</td>
                                 <td>{exercise.workingSetCount}</td>
                                 <td>{exercise.hardSetCount}</td>
-                                <td>{formatWholeNumber(exercise.volumeLoad)} kg</td>
-                                <td>{formatWholeNumber(exercise.workingVolumeLoad)} kg</td>
+                                <td>{formatWholeNumber(exercise.volumeLoad)} 千克</td>
+                                <td>{formatWholeNumber(exercise.workingVolumeLoad)} 千克</td>
                                 <td>
                                   <button
                                     type="button"
                                     className="text-button"
                                     onClick={() => handleDeleteSessionIds(exercise.sessionIds)}
                                   >
-                                    Delete
+                                    删除
                                   </button>
                                 </td>
                               </tr>
@@ -615,18 +627,18 @@ export function TrainingPage() {
       </SectionCard>
 
       {filteredTrainingSessions.length > 0 ? (
-        <SectionCard title="Priority muscle work" titleZh="重点肌群训练" eyebrow="From saved sets">
+        <SectionCard title="重点肌群训练" eyebrow="来自已保存训练组">
           <div className="compact-card-list">
             {priorityMuscleSummaries.map((summary) => (
               <article key={summary.muscleGroup} className="compact-signal-card">
                 <div>
-                  <p className="work-title">{summary.muscleGroup}</p>
-                  <p className="info-subtitle">Saved hard sets and volume load</p>
+                  <p className="work-title">{getMuscleGroupDisplayLabel(summary.muscleGroup)}</p>
+                  <p className="info-subtitle">已保存的高强度组与训练量</p>
                 </div>
                 <div className="saved-session-actions">
-                  <span className="signal-chip">{summary.hardSets} hard sets</span>
+                  <span className="signal-chip">{summary.hardSets} 组高强度组</span>
                   <span className="signal-chip signal-chip--muted">
-                    {formatWholeNumber(summary.volumeLoad)} kg
+                    {formatWholeNumber(summary.volumeLoad)} 千克
                   </span>
                 </div>
               </article>
@@ -634,10 +646,9 @@ export function TrainingPage() {
           </div>
         </SectionCard>
       ) : (
-        <SectionCard title="No training analysis yet" titleZh="暂无训练分析" eyebrow="Needs saved data">
+        <SectionCard title="暂无训练分析" eyebrow="需要先保存训练数据">
           <p className="body-text">
-            Save a session above first. This page will only show analysis that can be derived
-            from saved training data.
+            请先在上方保存训练动作。本页面只展示能够从已保存训练数据中得出的分析。
           </p>
         </SectionCard>
       )}

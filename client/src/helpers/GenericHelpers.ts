@@ -23,7 +23,7 @@ export function getOptionalNumber(value: string) {
 }
 
 export function formatWholeNumber(value: number) {
-  return Math.round(value).toLocaleString("en-US");
+  return Math.round(value).toLocaleString("zh-CN");
 }
 
 export function formatDecimal(value: number) {

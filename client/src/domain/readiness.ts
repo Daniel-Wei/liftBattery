@@ -134,48 +134,48 @@ function getMainDrivers(input: PreCheckDetailsLog) {
   if (input.sleepHours < 6) {
     drivers.push({
       id: MainDriverId.ShortSleep,
-      message: "Short sleep",
-      reason: "sleep hours < 6",
+      message: "睡眠时间偏短",
+      reason: "睡眠少于 6 小时",
     });
   }
 
   if (input.soreness >= 7) {
     drivers.push({
       id: MainDriverId.HighSoreness,
-      message: "High soreness",
-      reason: "soreness >= 7 / 10",
+      message: "肌肉酸痛较高",
+      reason: "酸痛达到 7 / 10 或以上",
     });
   }
 
   if (input.motivation <= 4) {
     drivers.push({
       id: MainDriverId.LowMotivation,
-      message: "Low motivation",
-      reason: "motivation <= 4 / 10",
+      message: "训练动力较低",
+      reason: "训练动力为 4 / 10 或以下",
     });
   }
 
   if (input.restingHeartRateDelta > 6) {
     drivers.push({
       id: MainDriverId.RestingHeartRateAboveBaseline,
-      message: "Resting HR above baseline",
-      reason: "resting heart rate delta > 6 bpm",
+      message: "静息心率高于基线",
+      reason: "比基线高出 6 次/分以上",
     });
   }
 
   if (previousSessionLoad >= 700) {
     drivers.push({
       id: MainDriverId.HardPreviousSessionLoad,
-      message: "Hard previous session load",
-      reason: "previous session load >= 700 AU",
+      message: "上次训练负荷较高",
+      reason: "上次训练负荷达到 700 或以上",
     });
   }
 
   if (drivers.length === 0) {
     drivers.push({
       id: MainDriverId.NoMajorIssues,
-      message: "No major issues",
-      reason: "none",
+      message: "没有明显问题",
+      reason: "当前状态稳定",
     });
   }
 
@@ -198,10 +198,10 @@ export function calculateReadiness(input: PreCheckDetailsLog): ReadinessResult {
     return {
       score,
       status: ReadinessStatus.Ready,
-      statusLabel: "Ready",
+      statusLabel: "状态较好",
       statusLabelZh: "状态较好",
       badgeStatus: MetricStatus.Good,
-      recommendation: "Push the planned session if warm-ups feel normal.",
+      recommendation: "如果热身表现正常，可以按计划推进训练。",
       recommendationZh: "如果热身表现正常，可以按计划推进训练。",
       mainDrivers: getMainDrivers(input),
     };
@@ -211,10 +211,10 @@ export function calculateReadiness(input: PreCheckDetailsLog): ReadinessResult {
     return {
       score,
       status: ReadinessStatus.Steady,
-      statusLabel: "Steady",
+      statusLabel: "稳定执行",
       statusLabelZh: "稳定执行",
       badgeStatus: MetricStatus.Neutral,
-      recommendation: "Train as planned, but avoid adding extra volume.",
+      recommendation: "按计划训练，但不要额外加量。",
       recommendationZh: "按计划训练，但不要额外加量。",
       mainDrivers: getMainDrivers(input),
     };
@@ -224,10 +224,10 @@ export function calculateReadiness(input: PreCheckDetailsLog): ReadinessResult {
     return {
       score,
       status: ReadinessStatus.Caution,
-      statusLabel: "Caution",
+      statusLabel: "谨慎观察",
       statusLabelZh: "谨慎观察",
       badgeStatus: MetricStatus.Watch,
-      recommendation: "Keep the session lighter and protect movement quality.",
+      recommendation: "降低今天输出，优先保留动作质量。",
       recommendationZh: "降低今天输出，优先保留动作质量。",
       mainDrivers: getMainDrivers(input),
     };
@@ -236,10 +236,10 @@ export function calculateReadiness(input: PreCheckDetailsLog): ReadinessResult {
   return {
     score,
     status: ReadinessStatus.Recovery,
-    statusLabel: "Recovery Priority",
+    statusLabel: "优先恢复",
     statusLabelZh: "优先恢复",
     badgeStatus: MetricStatus.Risk,
-    recommendation: "Make today recovery-focused or use a very light technical session.",
+    recommendation: "今天建议以恢复为主，或只做很轻的技术练习。",
     recommendationZh: "今天建议以恢复为主，或只做很轻的技术练习。",
     mainDrivers: getMainDrivers(input),
   };

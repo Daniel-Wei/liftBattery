@@ -1,4 +1,5 @@
 import type { FormulaNoteData } from "../types/appTypes";
+import { getEvidenceTypeLabel } from "../helpers/displayLabels";
 
 type FormulaNoteProps = {
   note: FormulaNoteData;
@@ -8,27 +9,24 @@ export function FormulaNote({ note }: FormulaNoteProps) {
   return (
     <section className="formula-note page">
       <div>
-        <p className="formula-kicker">Advanced explanation / 进阶解释</p>
-        <h2 className="formula-title">{note.title}</h2>
-        <p className="formula-title-zh">{note.titleZh}</p>
+        <p className="formula-kicker">进阶解释</p>
+        <h2 className="formula-title">{note.titleZh}</h2>
       </div>
 
       <div className="formula-grid">
         <div className="formula-box">
-          <p className="formula-label">Behind the scenes</p>
-          <p className="formula-text">{note.formula}</p>
+          <p className="formula-label">计算方式</p>
           <p className="formula-text-zh">{note.formulaZh}</p>
         </div>
 
         <div className="formula-box">
-          <p className="formula-label">Why it matters</p>
-          <p className="formula-copy">{note.concept}</p>
+          <p className="formula-label">为什么重要</p>
           <p className="formula-copy">{note.conceptZh}</p>
         </div>
       </div>
 
       <div className="formula-footer">
-        <span className="evidence-label">{note.evidenceType}</span>
+        <span className="evidence-label">{getEvidenceTypeLabel(note.evidenceType)}</span>
         <div className="formula-reference-list">
           {note.references.map((reference) => (
             <a

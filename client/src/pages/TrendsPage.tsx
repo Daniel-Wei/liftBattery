@@ -3,6 +3,7 @@ import { ChartMock } from "../components/ChartMock";
 import { MultiLineTrendChart } from "../components/MultiLineTrendChart";
 import { SectionCard } from "../components/SectionCard";
 import {
+  formatTrainingTrendWeekShortLabel,
   getTrainingTrendWeeks,
   getWeeklyMainLiftEstimatedPrTrends,
   getWeeklySessionLoadTrend,
@@ -30,7 +31,7 @@ export function TrendsPage() {
   const sessionLoadTrend = getWeeklySessionLoadTrend(trainingSessions);
   const volumeLoadTrend = getWeeklyVolumeLoadTrend(trainingSessions);
   const mainLiftEstimatedPrTrends = getWeeklyMainLiftEstimatedPrTrends(trainingSessions);
-  const trainingTrendWeekLabels = trainingTrendWeeks.map((week) => week.label);
+  const trainingTrendWeekLabels = trainingTrendWeeks.map(formatTrainingTrendWeekShortLabel);
 
   useEffect(() => {
     if (!firstTrainingTrendWeek || !lastTrainingTrendWeek) {
@@ -46,23 +47,21 @@ export function TrendsPage() {
   return (
     <div className="page page-stack">
       <header className="page-header">
-        <p className="eyebrow">Trends / 趋势</p>
-        <h1 className="page-title">Review what your saved records are actually changing.</h1>
+        <p className="eyebrow">趋势</p>
+        <h1 className="page-title">查看已保存记录带来的真实变化</h1>
         <p className="page-subtitle">
-          Trends only use saved pre-workout checks and saved training sessions for now.
+          当前趋势只使用已保存的练前检查和训练记录。
         </p>
       </header>
 
       <div className="two-column">
         <ChartMock
-          title="Pre-check records / 练前检查记录"
-          titleZh="状态分趋势"
+          title="练前状态分数趋势"
           data={preCheckReadinessTrend}
           variant="blue"
         />
         <ChartMock
-          title="Sleep hours"
-          titleZh="睡眠时长趋势"
+          title="睡眠时长趋势"
           data={sleepTrend}
           variant="green"
         />
@@ -70,22 +69,19 @@ export function TrendsPage() {
 
       <div className="two-column">
         <ChartMock
-          title="Weekly session load"
-          titleZh="周训练负荷"
+          title="每周训练负荷"
           data={sessionLoadTrend}
           variant="dark"
         />
         <ChartMock
-          title="Weekly training volume"
-          titleZh="周训练量"
+          title="每周训练量"
           data={volumeLoadTrend}
           variant="amber"
         />
       </div>
 
       <MultiLineTrendChart
-        title="Main lift estimated PR trend"
-        titleZh="三大项 PR 推测趋势"
+        title="主要动作预计单次最大重量趋势"
         series={mainLiftEstimatedPrTrends.map((trend) => ({
           id: trend.id,
           label: trend.label,
@@ -96,10 +92,10 @@ export function TrendsPage() {
         xLabels={trainingTrendWeekLabels}
       />
 
-      <SectionCard title="Trend scope" titleZh="趋势范围" eyebrow="1.0">
+      <SectionCard title="趋势数据范围" eyebrow="第一版">
         <p className="body-text">
-          Estimated PR uses a simple e1RM proxy from saved working sets. The main-lift PR chart
-          tracks Chest, Back, and Leg training separately by week.
+          预计单次最大重量根据已保存正式组的重量和次数进行简单估算，
+          并按周分别追踪胸部、背部和腿部主要动作。
         </p>
       </SectionCard>
     </div>
