@@ -7,13 +7,14 @@ using Microsoft.Extensions.Configuration;
 
 namespace LiftBattery.Api.Repositories;
 
-public sealed class TableTrendReportJobRepository : ITrendReportJobRepository
+public sealed class TrendReportJobRepository : ITrendReportJobRepository
 {
     private const string PartitionKeyValue = "trend-report";
     private readonly TableClient _tableClient;
     private readonly JsonSerializerOptions _jsonOptions = new(JsonSerializerDefaults.Web);
 
-    public TableTrendReportJobRepository(IConfiguration configuration)
+    // Uses the AzureWebJobsStorage connection setting to access Azure Table Storage.
+    public TrendReportJobRepository(IConfiguration configuration)
     {
         var connectionString = configuration["AzureWebJobsStorage"]
             ?? throw new InvalidOperationException("AzureWebJobsStorage is required.");
@@ -21,6 +22,7 @@ public sealed class TableTrendReportJobRepository : ITrendReportJobRepository
         _tableClient = new TableClient(connectionString, tableName);
     }
 
+    // Persists the initial job as an Azure Table entity.
     public async Task<TrendReportJob> CreateAsync(TrendReportJob job)
     {
         await EnsureTableAsync();
@@ -28,28 +30,7 @@ public sealed class TableTrendReportJobRepository : ITrendReportJobRepository
         return job;
     }
 
-    public async Task<TrendReportJob?> GetByIdAsync(string id)
-    {
-        await EnsureTableAsync();
-
-        try
-        {
-            var response = await _tableClient.GetEntityAsync<TrendReportJobEntity>(PartitionKeyValue, id);
-            return ToModel(response.Value);
-        }
-        catch (RequestFailedException exception) when (exception.Status == 404)
-        {
-            return null;
-        }
-    }
-
-    public async Task<TrendReportJob> UpdateAsync(TrendReportJob job)
-    {
-        await EnsureTableAsync();
-        await _tableClient.UpsertEntityAsync(ToEntity(job), TableUpdateMode.Replace);
-        return job;
-    }
-
+    // Atomically claims an eligible job by marking it Processing; the ETag prevents concurrent claims.
     public async Task<TrendReportJob?> TryStartProcessingAsync(
         string id,
         DateTimeOffset startedAtUtc)
@@ -82,6 +63,29 @@ public sealed class TableTrendReportJobRepository : ITrendReportJobRepository
         {
             return null;
         }
+    }
+
+    public async Task<TrendReportJob?> GetByIdAsync(string id)
+    {
+        await EnsureTableAsync();
+
+        try
+        {
+            var response = await _tableClient.GetEntityAsync<TrendReportJobEntity>(PartitionKeyValue, id);
+            return ToModel(response.Value);
+        }
+        catch (RequestFailedException exception) when (exception.Status == 404)
+        {
+            return null;
+        }
+    }
+
+    // Replaces the current job entity in Azure Table Storage.
+    public async Task<TrendReportJob> UpdateAsync(TrendReportJob job)
+    {
+        await EnsureTableAsync();
+        await _tableClient.UpsertEntityAsync(ToEntity(job), TableUpdateMode.Replace);
+        return job;
     }
 
     private Task EnsureTableAsync()

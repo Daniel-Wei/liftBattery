@@ -3,17 +3,18 @@ using Microsoft.Extensions.Configuration;
 
 namespace LiftBattery.Api.Services;
 
-public sealed class ServiceBusTrendReportQueue : ITrendReportQueue, IAsyncDisposable
+public sealed class TrendReportServiceBusQueue : ITrendReportQueue, IAsyncDisposable
 {
     private readonly IConfiguration _configuration;
     private ServiceBusClient? _client;
     private ServiceBusSender? _sender;
 
-    public ServiceBusTrendReportQueue(IConfiguration configuration)
+    public TrendReportServiceBusQueue(IConfiguration configuration)
     {
         _configuration = configuration;
     }
 
+    // Creates a small message containing the job ID and sends it to the configured queue.
     public async Task EnqueueAsync(string jobId)
     {
         var sender = GetSender();

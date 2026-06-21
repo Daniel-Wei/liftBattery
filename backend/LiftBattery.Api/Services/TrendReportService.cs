@@ -63,9 +63,16 @@ public sealed class TrendReportService : ITrendReportService
                 : 0;
     }
 
+    // Synchronous producer path:
+    // 1. validate the request and capture a submission-time data snapshot
+    // 2. persist the initial Queued job in Azure Table Storage
+    // 3. enqueue the job ID for background processing
     public async Task<TrendReportJobDto> CreateAsync(CreateTrendReportRequestDto request)
     {
+        // Validate and normalize the request DTO.
         var validatedRequest = ValidateRequest(request);
+
+        // Load the database records used for the submission-time snapshot.
         var rangeEnd = validatedRequest.EndWeek.AddDays(6);
         var trainingSessions = await _trainingRepository.GetByDateRangeAsync(
             validatedRequest.StartWeek,
@@ -80,6 +87,7 @@ public sealed class TrendReportService : ITrendReportService
             0,
             "等待后台处理",
             validatedRequest,
+            // The request stores user selections; the snapshot stores database data at submission time.
             new TrendReportSnapshot(trainingSessions, preCheckLogs),
             null,
             null,
@@ -88,10 +96,12 @@ public sealed class TrendReportService : ITrendReportService
             null,
             now);
 
+        // Persist the initial Queued job before publishing its message.
         await _jobRepository.CreateAsync(job);
 
         try
         {
+            // Publish only the job ID; the consumer loads the full job from Azure Table Storage.
             await _queue.EnqueueAsync(job.Id);
         }
         catch (Exception exception)
@@ -116,6 +126,10 @@ public sealed class TrendReportService : ITrendReportService
         return job is null ? null : ToDto(job);
     }
 
+    // Asynchronous consumer path:
+    // 1. atomically claim an eligible job and mark it Processing
+    // 2. update progress, calculate the report, and persist the completed result
+    // 3. on failure, persist Failed and rethrow so Service Bus can redeliver the message
     public async Task ProcessAsync(string jobId)
     {
         var job = await _jobRepository.TryStartProcessingAsync(jobId, DateTimeOffset.UtcNow);

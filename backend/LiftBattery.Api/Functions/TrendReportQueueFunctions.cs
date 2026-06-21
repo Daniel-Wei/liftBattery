@@ -12,6 +12,8 @@ public sealed class TrendReportQueueFunctions
         _service = service;
     }
 
+    // Azure Functions invokes this when a queue message is available, including redeliveries.
+    // The message body is the job ID used to start background report processing.
     [Function("ProcessTrendReportJob")]
     public Task ProcessTrendReportJob(
         [ServiceBusTrigger("%TrendReportQueueName%", Connection = "ServiceBusConnection")] string jobId)

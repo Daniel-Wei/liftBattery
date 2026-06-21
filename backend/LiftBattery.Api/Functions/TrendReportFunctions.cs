@@ -15,6 +15,8 @@ public sealed class TrendReportFunctions
         _service = service;
     }
 
+    // Passes the request DTO to the service to persist and enqueue a report job.
+    // Returns 202 with the initial job state after enqueueing; the report is calculated later.
     [Function("CreateTrendReport")]
     public async Task<HttpResponseData> CreateTrendReport(
         [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "trendreports")] HttpRequestData request)
