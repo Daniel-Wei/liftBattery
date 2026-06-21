@@ -1,6 +1,6 @@
-# CodeX Development Instructions for LiftOps
+# CodeX Development Instructions for liftBattery
 
-# LiftOps 的 CodeX 开发指令
+# liftBattery 的 CodeX 开发指令
 
 ---
 
@@ -99,7 +99,7 @@ Phase 1 只使用 mock 数据。
 
 ### English
 
-The final intended architecture for LiftOps is:
+The final intended architecture for liftBattery is:
 
 * React + TypeScript frontend
 * .NET 8 Azure Functions backend API
@@ -112,7 +112,7 @@ Docker scaffolding may be added in Phase 1, but it must not introduce real backe
 
 ### 中文
 
-LiftOps 的最终目标架构是：
+liftBattery 的最终目标架构是：
 
 * React + TypeScript 前端
 * .NET 8 Azure Functions 后端 API

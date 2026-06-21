@@ -1,14 +1,14 @@
-# LiftOps
+# liftBattery
 
 ## English
 
-LiftOps is a SaaS-style training operations dashboard for serious lifters.
+liftBattery is a SaaS-style training operations dashboard for serious lifters.
 
 It translates enterprise management concepts such as Core/Non-Core, Plan, Forecast, Utilisation, Capacity, Efficiency, Productivity, and Risk into evidence-informed training-state management.
 
 The product does not invent scientific formulas from scratch. It maps product metrics to established or commonly used training monitoring concepts such as session-RPE training load, volume load, RIR/RPE autoregulation, subjective wellness monitoring, monotony/strain, periodisation, bodyweight trend, and expert heuristic volume landmarks such as MV, MEV, MAV, and MRV.
 
-LiftOps is not a medical app, not a diagnosis tool, and not a coach replacement.
+liftBattery is not a medical app, not a diagnosis tool, and not a coach replacement.
 
 ## Final Architecture
 
@@ -23,13 +23,13 @@ Phase 1 remains frontend-only and mock-data-only. Azure Functions, Azure Service
 
 ## 中文
 
-LiftOps 是一个面向认真训练者的 SaaS 风格训练运营 Dashboard。
+liftBattery 是一个面向认真训练者的 SaaS 风格训练运营 Dashboard。
 
 它把 Core/Non-Core、Plan、Forecast、Utilisation、Capacity、Efficiency、Productivity 和 Risk 等企业管理概念，翻译成基于证据启发的训练状态管理语言。
 
 产品不会从零发明所谓科学公式，而是把产品指标映射到已有或常用的训练监控概念，例如 session-RPE 训练负荷、volume load、RIR/RPE 自我调节、主观 wellness 监控、monotony/strain、周期化、体重趋势，以及 MV、MEV、MAV、MRV 等专家启发式 volume landmarks。
 
-LiftOps 不是医疗 App，不是诊断工具，也不是教练替代品。
+liftBattery 不是医疗 App，不是诊断工具，也不是教练替代品。
 
 ## 最终架构
 
@@ -57,7 +57,7 @@ Most fitness apps track what the user did:
 - bodyweight
 - cardio
 
-LiftOps focuses on training operations:
+liftBattery focuses on training operations:
 
 - Did the user complete core work?
 - Did support work exceed plan?
@@ -78,7 +78,7 @@ LiftOps focuses on training operations:
 - 体重
 - 有氧
 
-LiftOps 关注的是训练运营：
+liftBattery 关注的是训练运营：
 
 - 用户是否完成核心训练？
 - 支持性训练是否超过计划？
@@ -94,7 +94,7 @@ LiftOps 关注的是训练运营：
 
 ## English
 
-LiftOps is a self-coaching dashboard.
+liftBattery is a self-coaching dashboard.
 
 It is designed for:
 
@@ -107,7 +107,7 @@ It is designed for:
 
 ## 中文
 
-LiftOps 是一个自我管理型训练 Dashboard。
+liftBattery 是一个自我管理型训练 Dashboard。
 
 它适合：
 
@@ -124,7 +124,7 @@ LiftOps 是一个自我管理型训练 Dashboard。
 
 ## English
 
-LiftOps uses enterprise SaaS concepts as product language, but the underlying logic must be mapped to training monitoring concepts.
+liftBattery uses enterprise SaaS concepts as product language, but the underlying logic must be mapped to training monitoring concepts.
 
 | SaaS Concept | Training Product Concept | Evidence-Informed Basis |
 |---|---|---|
@@ -140,7 +140,7 @@ LiftOps uses enterprise SaaS concepts as product language, but the underlying lo
 
 ## 中文
 
-LiftOps 使用企业 SaaS 概念作为产品语言，但底层逻辑必须映射到训练监控概念。
+liftBattery 使用企业 SaaS 概念作为产品语言，但底层逻辑必须映射到训练监控概念。
 
 | SaaS 概念 | 训练产品概念 | 基于证据启发的依据 |
 |---|---|---|

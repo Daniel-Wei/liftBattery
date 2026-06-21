@@ -1,6 +1,6 @@
-# LiftOps User Case: Maya Liu
+# liftBattery User Case: Maya Liu
 
-# LiftOps 用户案例：Maya Liu
+# liftBattery 用户案例：Maya Liu
 
 ---
 

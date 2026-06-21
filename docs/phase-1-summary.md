@@ -1,8 +1,8 @@
-# LiftOps Phase 1 Summary / LiftOps Phase 1 阶段总结
+# liftBattery Phase 1 Summary / liftBattery Phase 1 阶段总结
 
 ## English
 
-Phase 1 creates a static React + TypeScript + Vite + Tailwind frontend for LiftOps. It uses mock data only and presents a SaaS-style training operations dashboard for serious lifters.
+Phase 1 creates a static React + TypeScript + Vite + Tailwind frontend for liftBattery. It uses mock data only and presents a SaaS-style training operations dashboard for serious lifters.
 
 No localStorage, backend API, authentication, AI coach, payment, subscription, social feed, medical diagnosis, or unsupported formula logic was added.
 
@@ -10,7 +10,7 @@ The final target architecture is now documented as React + .NET 8 Azure Function
 
 ## 中文
 
-Phase 1 创建了 LiftOps 的静态 React + TypeScript + Vite + Tailwind 前端。当前只使用 mock 数据，并呈现面向认真训练者的 SaaS 风格训练运营 Dashboard。
+Phase 1 创建了 liftBattery 的静态 React + TypeScript + Vite + Tailwind 前端。当前只使用 mock 数据，并呈现面向认真训练者的 SaaS 风格训练运营 Dashboard。
 
 没有添加 localStorage、后端 API、登录认证、AI 教练、支付、订阅、社交动态流、医学诊断或无依据公式逻辑。
 
@@ -211,7 +211,7 @@ Settings 页面现在包含 React + Azure Functions + Azure Service Bus + Docker
 
 | File / 文件 | EN | 中文 |
 |---|---|---|
-| `client/src/pages/LandingPage.tsx` | Added dark SaaS-style product landing page and dashboard preview. Exists to introduce LiftOps positioning. Review whether it feels enterprise SaaS but still fitness-specific. | 添加深色 SaaS 风格产品首页和 Dashboard 预览。用于介绍 LiftOps 定位。请 review 是否既有企业 SaaS 感又有训练产品感。 |
+| `client/src/pages/LandingPage.tsx` | Added dark SaaS-style product landing page and dashboard preview. Exists to introduce liftBattery positioning. Review whether it feels enterprise SaaS but still fitness-specific. | 添加深色 SaaS 风格产品首页和 Dashboard 预览。用于介绍 liftBattery 定位。请 review 是否既有企业 SaaS 感又有训练产品感。 |
 | `client/src/pages/ExecutiveDashboardPage.tsx` | Added main dashboard with metrics, Core/Non-Core, Capacity, Plan Utilisation, trends, Gantt, training mode, and risk watches. Exists as the core app screen. Review dashboard hierarchy. | 添加主 Dashboard，包含指标、Core/Non-Core、Capacity、Plan Utilisation、趋势、Gantt、训练模式和风险观察。作为核心页面。请 review Dashboard 层级。 |
 | `client/src/pages/PlanForecastPage.tsx` | Added weekly plan, 7-day forecast chart, and risk cards. Exists for Plan/Forecast workflows. Review forecast boundary language. | 添加每周计划、7 天预测图和风险卡。用于 Plan/Forecast 工作流。请 review 预测边界文案。 |
 | `client/src/pages/CoreNonCorePage.tsx` | Added core/support detail page and heuristic boundary note. Exists to explain work allocation. Review examples of core and support work. | 添加核心/支持负荷详情页和启发式边界说明。用于解释训练分配。请 review 核心和支持训练示例。 |

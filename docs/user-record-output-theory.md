@@ -1,6 +1,6 @@
-# LiftOps User Records, Outputs, and Theory
+# liftBattery User Records, Outputs, and Theory
 
-# LiftOps 用户记录、输出变化与理论依据
+# liftBattery 用户记录、输出变化与理论依据
 
 ---
 
@@ -8,7 +8,7 @@
 
 ### English
 
-LiftOps is not meant to copy enterprise SaaS formulas directly.
+liftBattery is not meant to copy enterprise SaaS formulas directly.
 
 It uses a structured input-output system, but the actual tabs and outputs should come from training science concepts:
 
@@ -27,7 +27,7 @@ The app should help the user answer:
 
 ### 中文
 
-LiftOps 不应该直接照搬企业 SaaS 的公式。
+liftBattery 不应该直接照搬企业 SaaS 的公式。
 
 它可以使用结构化的输入-输出系统，但真正的 tab 和输出应来自训练科学概念：
 
@@ -56,7 +56,7 @@ This section translates the main sport-science terms into plain product language
 
 这一节把主要运动科学术语翻译成人话，方便你 review 产品逻辑。
 
-| Term / 术语 | Plain meaning / 白话解释 | In LiftOps / 在 LiftOps 里的用途 |
+| Term / 术语 | Plain meaning / 白话解释 | In liftBattery / 在 liftBattery 里的用途 |
 |---|---|---|
 | Session RPE | How hard the whole workout felt, usually 1-10. | Used with session duration to estimate internal training load. |
 | Session RPE / 训练课 RPE | 整节训练主观有多累，通常 1-10 分。 | 和训练时长一起估算内部训练负荷。 |
@@ -457,9 +457,9 @@ Maya 不是“计划失败”。她是在多个信号叠加后调整负荷。App
 
 ### Weekly Summary / 每周总结
 
-At the end of the week, LiftOps summarizes:
+At the end of the week, liftBattery summarizes:
 
-一周结束后，LiftOps 总结：
+一周结束后，liftBattery 总结：
 
 ```txt
 Weekly load = 3,980 AU
@@ -685,7 +685,7 @@ Theory basis / 理论依据:
 
 English:
 
-LiftOps should separate volume into:
+liftBattery should separate volume into:
 
 - priority stimulus
 - support work
@@ -701,7 +701,7 @@ These outputs help users see whether their training stress is coming from the wo
 
 中文：
 
-LiftOps 应把训练量分成：
+liftBattery 应把训练量分成：
 
 - 重点刺激
 - 支持性训练
@@ -843,7 +843,7 @@ Important:
 - Some require extra hardware.
 - Some are better for athletes than casual lifters.
 - Some are controversial if used for injury prediction.
-- In LiftOps, these should be labelled as advanced, proxy, watch, or estimate.
+- In liftBattery, these should be labelled as advanced, proxy, watch, or estimate.
 
 ### 中文
 
@@ -854,7 +854,7 @@ Important:
 - 有些需要额外设备。
 - 有些更适合运动员，不一定适合普通健身用户。
 - 有些如果用于预测伤病会有争议。
-- 在 LiftOps 里应标注为 advanced、proxy、watch 或 estimate。
+- 在 liftBattery 里应标注为 advanced、proxy、watch 或 estimate。
 
 ---
 
@@ -1103,9 +1103,9 @@ Output changed / 输出变化：
 
 Boundary / 边界：
 
-ACWR is controversial, especially for injury prediction. In LiftOps, it should be a workload-context signal, not an injury-risk engine.
+ACWR is controversial, especially for injury prediction. In liftBattery, it should be a workload-context signal, not an injury-risk engine.
 
-ACWR 有争议，尤其不适合包装成伤病预测。在 LiftOps 中它应只是负荷语境信号，不是伤病风险引擎。
+ACWR 有争议，尤其不适合包装成伤病预测。在 liftBattery 中它应只是负荷语境信号，不是伤病风险引擎。
 
 Theory basis / 理论依据:
 
@@ -1432,7 +1432,7 @@ App 仍然可以保留结构化系统：
 
 ### English
 
-LiftOps should not claim:
+liftBattery should not claim:
 
 - medical diagnosis
 - overtraining diagnosis
@@ -1453,7 +1453,7 @@ Use language such as:
 
 ### 中文
 
-LiftOps 不应宣称：
+liftBattery 不应宣称：
 
 - 医学诊断
 - 过度训练诊断

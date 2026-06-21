@@ -1,6 +1,6 @@
-# LiftOps Architecture
+# liftBattery Architecture
 
-# LiftOps 架构说明
+# liftBattery 架构说明
 
 ---
 
@@ -37,7 +37,7 @@ Phase 1 仍然只是静态前端 UI。Azure Functions API 和 Azure Service Bus 
 ## Repository Layout / 项目结构
 
 ```txt
-liftops/
+liftBattery/
   client/        React + TypeScript + Vite frontend
   api/           Future .NET 8 Azure Functions backend and Service Bus integration boundary
   docs/          Product, architecture, and milestone docs
@@ -45,7 +45,7 @@ liftops/
 ```
 
 ```txt
-liftops/
+liftBattery/
   client/        React + TypeScript + Vite 前端
   api/           后续 .NET 8 Azure Functions 后端和 Service Bus 集成边界
   docs/          产品、架构和阶段文档

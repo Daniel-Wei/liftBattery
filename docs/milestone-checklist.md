@@ -1,6 +1,6 @@
-# LiftOps Milestone Checklist
+# liftBattery Milestone Checklist
 
-# LiftOps 阶段打卡清单
+# liftBattery 阶段打卡清单
 
 Legend:
 
@@ -29,7 +29,7 @@ Checklist:
 
 清单：
 
-* [x] Create `liftops` repo folder / 创建 `liftops` 项目文件夹
+* [x] Create `liftBattery` repo folder / 创建 `liftBattery` 项目文件夹
 * [x] Create `README.md` / 创建 `README.md`
 * [x] Create `docs/codex-instructions.md` / 创建 `docs/codex-instructions.md`
 * [x] Create `docs/milestone-checklist.md` / 创建 `docs/milestone-checklist.md`
