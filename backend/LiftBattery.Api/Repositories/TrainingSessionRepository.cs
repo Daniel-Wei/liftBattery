@@ -5,9 +5,9 @@ namespace LiftBattery.Api.Repositories;
 
 public sealed class TrainingLogRepository : ITrainingLogRepository
 {
-    private readonly ConcurrentDictionary<string, TrainingDay> _daysByUserAndDate = new();
+    private readonly ConcurrentDictionary<string, TrainingDayModel> _daysByUserAndDate = new();
 
-    public Task<IReadOnlyList<TrainingDay>> GetByDateRangeAsync(
+    public Task<IReadOnlyList<TrainingDayModel>> GetByDateRangeAsync(
         string userId,
         DateOnly from,
         DateOnly to,
@@ -20,13 +20,13 @@ public sealed class TrainingLogRepository : ITrainingLogRepository
             .OrderBy(day => day.Date)
             .ToList();
 
-        return Task.FromResult<IReadOnlyList<TrainingDay>>(days);
+        return Task.FromResult<IReadOnlyList<TrainingDayModel>>(days);
     }
 
-    public Task<TrainingDay> AddSessionAsync(
+    public Task<TrainingDayModel> AddSessionAsync(
         string userId,
         DateOnly date,
-        TrainingSession session,
+        TrainingSessionModel session,
         CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
@@ -35,7 +35,7 @@ public sealed class TrainingLogRepository : ITrainingLogRepository
 
         var day = _daysByUserAndDate.AddOrUpdate(
             key,
-            _ => new TrainingDay(
+            _ => new TrainingDayModel(
                 Guid.NewGuid().ToString("N"),
                 userId,
                 date,
@@ -45,13 +45,13 @@ public sealed class TrainingLogRepository : ITrainingLogRepository
             (_, existing) => existing with
             {
                 Sessions = existing.Sessions.Append(session).ToList(),
-                UpdatedAt = now,
+                UpdatedAtUtc = now,
             });
 
         return Task.FromResult(day);
     }
 
-    public Task<TrainingSession?> DeleteSessionAsync(
+    public Task<TrainingSessionModel?> DeleteSessionAsync(
         string userId,
         string sessionId,
         CancellationToken cancellationToken = default)
@@ -87,14 +87,14 @@ public sealed class TrainingLogRepository : ITrainingLogRepository
                 _daysByUserAndDate[item.Key] = day with
                 {
                     Sessions = remainingSessions,
-                    UpdatedAt = DateTimeOffset.UtcNow,
+                    UpdatedAtUtc = DateTimeOffset.UtcNow,
                 };
             }
 
-            return Task.FromResult<TrainingSession?>(session);
+            return Task.FromResult<TrainingSessionModel?>(session);
         }
 
-        return Task.FromResult<TrainingSession?>(null);
+        return Task.FromResult<TrainingSessionModel?>(null);
     }
 
     private static string GetKey(string userId, DateOnly date)

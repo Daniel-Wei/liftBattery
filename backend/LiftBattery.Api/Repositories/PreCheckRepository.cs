@@ -110,9 +110,9 @@ public sealed class PreCheckRepository : IPreCheckRepository
         return ToModel(entity);
     }
 
-    private static PreCheckEntity ToEntity(PreCheckLog log)
+    private static PreCheck ToEntity(PreCheckLog log)
     {
-        return new PreCheckEntity
+        return new PreCheck
         {
             Id = log.Id,
             UserId = log.UserId,
@@ -128,7 +128,7 @@ public sealed class PreCheckRepository : IPreCheckRepository
         };
     }
 
-    private static void Apply(PreCheckLog log, PreCheckEntity entity)
+    private static void Apply(PreCheckLog log, PreCheck entity)
     {
         entity.SleepHours = log.SleepHours;
         entity.Soreness = log.SorenessRating;
@@ -139,7 +139,7 @@ public sealed class PreCheckRepository : IPreCheckRepository
         entity.UpdatedAtUtc = log.UpdatedAtUtc;
     }
 
-    private static PreCheckLog ToModel(PreCheckEntity entity)
+    private static PreCheckLog ToModel(PreCheck entity)
     {
         return new PreCheckLog(
             entity.Id,

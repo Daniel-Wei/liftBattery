@@ -1,37 +1,41 @@
 namespace LiftBattery.Api.Models;
 
-public sealed record TrainingSet(
+public sealed record TrainingSetModel(
     string Id,
-    int SetNumber,
+    string TrainingExerciseId,
+    int SetOrder,
     int Reps,
     decimal WeightKg,
     decimal? Rpe,
     decimal? Rir,
     bool IsWarmup,
-    DateTimeOffset CreatedAt,
-    DateTimeOffset UpdatedAt);
+    DateTimeOffset CreatedAtUtc,
+    DateTimeOffset UpdatedAtUtc);
 
-public sealed record TrainingExercise(
+public sealed record TrainingExerciseModel(
     string Id,
+    string TrainingSessionId,
     string MuscleGroup,
     string ExerciseName,
-    IReadOnlyList<TrainingSet> Sets,
-    DateTimeOffset CreatedAt,
-    DateTimeOffset UpdatedAt);
+    int ExerciseOrder,
+    IReadOnlyList<TrainingSetModel> Sets,
+    DateTimeOffset CreatedAtUtc,
+    DateTimeOffset UpdatedAtUtc);
 
-public sealed record TrainingSession(
+public sealed record TrainingSessionModel(
     string Id,
+    string TrainingDayId,
     TimeOnly StartTime,
     int DurationMinutes,
     decimal SessionRpe,
-    IReadOnlyList<TrainingExercise> Exercises,
-    DateTimeOffset CreatedAt,
-    DateTimeOffset UpdatedAt);
+    IReadOnlyList<TrainingExerciseModel> Exercises,
+    DateTimeOffset CreatedAtUtc,
+    DateTimeOffset UpdatedAtUtc);
 
-public sealed record TrainingDay(
+public sealed record TrainingDayModel(
     string Id,
     string UserId,
     DateOnly Date,
-    IReadOnlyList<TrainingSession> Sessions,
-    DateTimeOffset CreatedAt,
-    DateTimeOffset UpdatedAt);
+    IReadOnlyList<TrainingSessionModel> Sessions,
+    DateTimeOffset CreatedAtUtc,
+    DateTimeOffset UpdatedAtUtc);

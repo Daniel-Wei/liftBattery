@@ -155,10 +155,10 @@ public sealed class PreCheckPersistenceTests
             65);
     }
 
-    private static PreCheckEntity CreateEntity(string id, string userId)
+    private static PreCheck CreateEntity(string id, string userId)
     {
         var now = DateTimeOffset.UtcNow;
-        return new PreCheckEntity
+        return new PreCheck
         {
             Id = id,
             UserId = userId,

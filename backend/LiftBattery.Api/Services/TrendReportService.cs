@@ -449,7 +449,7 @@ public sealed class TrendReportService : ITrendReportService
     }
 
     private static IReadOnlyList<ReportTrainingSession> ToReportSessions(
-        IReadOnlyList<TrainingDay> days)
+        IReadOnlyList<TrainingDayModel> days)
     {
         return days
             .SelectMany(day => day.Sessions.Select(session => new ReportTrainingSession(
@@ -463,7 +463,7 @@ public sealed class TrendReportService : ITrendReportService
                         set.Reps,
                         set.WeightKg,
                         set.IsWarmup))).ToList(),
-                session.UpdatedAt)))
+                session.UpdatedAtUtc)))
             .ToList();
     }
 

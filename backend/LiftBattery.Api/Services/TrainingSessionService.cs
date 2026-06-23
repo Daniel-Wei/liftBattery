@@ -108,7 +108,7 @@ public sealed class TrainingSessionService : ITrainingSessionService
 
             foreach (var set in exercise.Sets)
             {
-                if (set.SetNumber <= 0 || set.Reps <= 0 || set.WeightKg < 0)
+                if (set.SetOrder <= 0 || set.Reps <= 0 || set.WeightKg < 0)
                 {
                     throw new ArgumentException("Set number and reps must be positive, and weight cannot be negative.");
                 }

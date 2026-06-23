@@ -6,18 +6,18 @@ namespace LiftBattery.Api.Mapping;
 
 public static class TrainingMapping
 {
-    public static TrainingDayDto ToDto(TrainingDay day)
+    public static TrainingDayDto ToDto(TrainingDayModel day)
     {
         return new TrainingDayDto(
             day.Id,
             day.UserId,
             day.Date.ToString("yyyy-MM-dd"),
             day.Sessions.Select(ToDto).ToList(),
-            day.CreatedAt.ToString("O"),
-            day.UpdatedAt.ToString("O"));
+            day.CreatedAtUtc.ToString("O"),
+            day.UpdatedAtUtc.ToString("O"));
     }
 
-    public static TrainingSession ToModel(SaveTrainingSessionDto dto, DateTimeOffset now)
+    public static TrainingSessionModel ToModel(SaveTrainingSessionDto dto, DateTimeOffset now)
     {
         if (!TimeOnly.TryParseExact(
             dto.StartTime,
@@ -29,7 +29,7 @@ public static class TrainingMapping
             throw new ArgumentException("Start time must use HH:mm format.");
         }
 
-        return new TrainingSession(
+        return new TrainingSessionModel(
             Guid.NewGuid().ToString("N"),
             startTime,
             dto.DurationMinutes,
@@ -39,65 +39,69 @@ public static class TrainingMapping
             now);
     }
 
-    public static TrainingSessionDto ToDto(TrainingSession session)
+    public static TrainingSessionDto ToDto(TrainingSessionModel session)
     {
         return new TrainingSessionDto(
             session.Id,
+            session.TrainingDayId,
             session.StartTime.ToString("HH:mm", CultureInfo.InvariantCulture),
             session.DurationMinutes,
             session.SessionRpe,
             session.Exercises.Select(ToDto).ToList(),
-            session.CreatedAt.ToString("O"),
-            session.UpdatedAt.ToString("O"));
+            session.CreatedAtUtc.ToString("O"),
+            session.UpdatedAtUtc.ToString("O"));
     }
 
-    private static TrainingExerciseDto ToDto(TrainingExercise exercise)
+    private static TrainingExerciseDto ToDto(TrainingExerciseModel exercise)
     {
         return new TrainingExerciseDto(
             exercise.Id,
+            exercise.TrainingSessionId,
+            exercise.ExerciseOrder,
             exercise.MuscleGroup,
             exercise.ExerciseName,
             exercise.Sets.Select(ToDto).ToList(),
-            exercise.CreatedAt.ToString("O"),
-            exercise.UpdatedAt.ToString("O"));
+            exercise.CreatedAtUtc.ToString("O"),
+            exercise.UpdatedAtUtc.ToString("O"));
     }
 
-    private static TrainingSetDto ToDto(TrainingSet set)
+    private static TrainingSetDto ToDto(TrainingSetModel set)
     {
         return new TrainingSetDto(
             set.Id,
-            set.SetNumber,
+            set.TrainingExerciseId,
+            set.SetOrder,
             set.Reps,
             set.WeightKg,
             set.Rpe,
             set.Rir,
             set.IsWarmup,
-            set.CreatedAt.ToString("O"),
-            set.UpdatedAt.ToString("O"));
+            set.CreatedAtUtc.ToString("O"),
+            set.UpdatedAtUtc.ToString("O"));
     }
 
-    private static TrainingExercise ToModel(TrainingExerciseDto dto, DateTimeOffset now)
+    private static TrainingExerciseModel ToModel(TrainingExerciseDto dto, DateTimeOffset now)
     {
         return new TrainingExercise(
             dto.Id ?? Guid.NewGuid().ToString("N"),
             dto.MuscleGroup,
             dto.ExerciseName,
             dto.Sets.Select(set => ToModel(set, now)).ToList(),
-            TryParseDateTimeOffset(dto.CreatedAt) ?? now,
+            TryParseDateTimeOffset(dto.CreatedAtUtc) ?? now,
             now);
     }
 
-    private static TrainingSet ToModel(TrainingSetDto dto, DateTimeOffset now)
+    private static TrainingSetModel ToModel(TrainingSetDto dto, DateTimeOffset now)
     {
-        return new TrainingSet(
+        return new TrainingSetModel(
             dto.Id ?? Guid.NewGuid().ToString("N"),
-            dto.SetNumber,
+            dto.SetOrder,
             dto.Reps,
             dto.WeightKg,
             dto.Rpe,
             dto.Rir,
             dto.IsWarmup,
-            TryParseDateTimeOffset(dto.CreatedAt) ?? now,
+            TryParseDateTimeOffset(dto.CreatedAtUtc) ?? now,
             now);
     }
 
