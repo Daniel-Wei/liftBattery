@@ -34,7 +34,7 @@ function addDays(date: string, days: number) {
 
 export function getTrainingTrendWeeks(
   startWeek = presetTrainingTrendWeeks[0].startDate,
-  endWeek = presetTrainingTrendWeeks[presetTrainingTrendWeeks.length - 1].startDate,
+  endWeek = getDefaultEndWeek(),
 ) {
   if (startWeek > endWeek) {
     return [];
@@ -55,6 +55,19 @@ export function getTrainingTrendWeeks(
   return weeks;
 }
 
+function getMonday(date: string) {
+  const value = new Date(`${date}T00:00:00Z`);
+  const daysFromMonday = (value.getUTCDay() + 6) % 7;
+  value.setUTCDate(value.getUTCDate() - daysFromMonday);
+  return value.toISOString().slice(0, 10);
+}
+
+function getDefaultEndWeek() {
+  const presetEnd = presetTrainingTrendWeeks[presetTrainingTrendWeeks.length - 1].startDate;
+  const currentWeek = getMonday(new Date().toISOString().slice(0, 10));
+  return currentWeek > presetEnd ? currentWeek : presetEnd;
+}
+
 export function isSessionInTrainingTrendWeek(
   session: TrainingSessionRecord,
   week: TrainingTrendWeek,
@@ -64,11 +77,12 @@ export function isSessionInTrainingTrendWeek(
 
 export function getCurrentTrainingTrendWeek() {
   const today = new Date().toISOString().slice(0, 10);
-  const currentWeek = presetTrainingTrendWeeks.find((week) => (
+  const weeks = getTrainingTrendWeeks();
+  const currentWeek = weeks.find((week) => (
     today >= week.startDate && today <= week.endDate
   ));
 
-  return currentWeek ?? presetTrainingTrendWeeks[presetTrainingTrendWeeks.length - 1];
+  return currentWeek ?? weeks[weeks.length - 1];
 }
 
 export function formatTrainingTrendWeekLabel(week: TrainingTrendWeek) {

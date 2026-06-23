@@ -98,6 +98,130 @@
   --weight-bold: 650;
 }
 
+.training-session-form--header {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.training-session-form--exercise {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.training-exercise-stack--friendly {
+  margin-top: 1.25rem;
+}
+
+.training-inline-action {
+  justify-self: start;
+}
+
+.training-form-actions--split {
+  justify-content: space-between;
+}
+
+.saved-session-controls--three {
+  display: grid;
+  grid-template-columns: minmax(15rem, 1.5fr) repeat(2, minmax(9rem, 1fr));
+  width: min(100%, 46rem);
+}
+
+.saved-week-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin: 1rem 0;
+}
+
+.saved-session-empty {
+  margin-top: 1rem;
+}
+
+.training-day-list--calendar {
+  gap: 0.85rem;
+}
+
+.training-day-calendar-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.training-calendar-date,
+.saved-session-summary-row > div,
+.saved-training-exercise > div:first-child {
+  display: grid;
+  gap: 0.2rem;
+}
+
+.training-calendar-date strong {
+  font-size: 1.05rem;
+}
+
+.training-calendar-date span,
+.saved-session-summary-row span,
+.saved-training-exercise span {
+  color: var(--color-ink-muted);
+  font-size: 0.82rem;
+}
+
+.saved-training-session--stacked {
+  display: grid;
+  width: 100%;
+}
+
+.saved-session-summary-row,
+.saved-training-exercise {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.saved-training-exercise-list {
+  display: grid;
+  gap: 0.55rem;
+  width: 100%;
+}
+
+.saved-training-exercise {
+  border-top: 1px solid rgba(31, 72, 98, 0.1);
+  padding-top: 0.55rem;
+}
+
+.saved-set-chips {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.4rem;
+}
+
+@media (max-width: 900px) {
+  .training-session-form--header {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .saved-session-controls--three {
+    grid-template-columns: 1fr;
+    width: 100%;
+  }
+}
+
+@media (max-width: 640px) {
+  .training-session-form--header,
+  .training-session-form--exercise {
+    grid-template-columns: 1fr;
+  }
+
+  .saved-session-summary-row,
+  .saved-training-exercise {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .saved-set-chips {
+    justify-content: flex-start;
+  }
+}
+
 /* Nested TrainingDay > Session > Exercise > Set editor */
 .training-form-grid {
   display: grid;
@@ -2669,5 +2793,27 @@ textarea:focus-visible {
 
   .training-session-form {
     grid-template-columns: repeat(5, minmax(0, 1fr));
+  }
+}
+
+/* Keep the friendly training editor layout more specific than the legacy grid. */
+.training-session-form.training-session-form--header {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.training-session-form.training-session-form--exercise {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+@media (max-width: 900px) {
+  .training-session-form.training-session-form--header {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 640px) {
+  .training-session-form.training-session-form--header,
+  .training-session-form.training-session-form--exercise {
+    grid-template-columns: 1fr;
   }
 }
