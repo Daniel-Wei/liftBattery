@@ -15,12 +15,13 @@ public sealed class TrendReportServiceBusQueue : ITrendReportQueue, IAsyncDispos
     }
 
     // Creates a small message containing the job ID and sends it to the configured queue.
-    public async Task EnqueueAsync(string jobId)
+    public async Task EnqueueAsync(int jobId)
     {
         var sender = GetSender();
-        var message = new ServiceBusMessage(jobId)
+        var jobIdText = jobId.ToString();
+        var message = new ServiceBusMessage(jobIdText)
         {
-            MessageId = jobId,
+            MessageId = jobIdText,
             ContentType = "text/plain",
             Subject = "TrendReportRequested",
         };

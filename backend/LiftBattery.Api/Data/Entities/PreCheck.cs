@@ -2,8 +2,8 @@ namespace LiftBattery.Api.Data.Entities;
 
 public sealed class PreCheck
 {
-    public required string Id { get; set; }
-    public required string UserId { get; set; }
+    public int Id { get; set; }
+    public int UserId { get; set; }
     public DateOnly PreCheckDate { get; set; }
     public decimal SleepHours { get; set; }
     public int Soreness { get; set; }

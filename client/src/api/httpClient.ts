@@ -1,5 +1,5 @@
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "/api";
-const USER_ID = import.meta.env.VITE_LIFTBATTERY_USER_ID ?? "demo-user";
+const USER_ID = import.meta.env.VITE_LIFTBATTERY_USER_ID ?? "1";
 
 type HttpRequestOptions = {
   method?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";

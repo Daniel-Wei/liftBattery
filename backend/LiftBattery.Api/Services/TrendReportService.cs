@@ -40,15 +40,15 @@ public sealed class TrendReportService : ITrendReportService
     };
 
     private readonly ITrendReportJobRepository _jobRepository;
-    private readonly ITrainingLogRepository _trainingRepository;
+    private readonly ITrainingRepository _trainingRepository;
     private readonly IPreCheckRepository _preCheckRepository;
     private readonly ITrendReportQueue _queue;
     private readonly int _demoDelayMilliseconds;
-    private readonly string _defaultUserId;
+    private readonly int _defaultUserId;
 
     public TrendReportService(
         ITrendReportJobRepository jobRepository,
-        ITrainingLogRepository trainingRepository,
+        ITrainingRepository trainingRepository,
         IPreCheckRepository preCheckRepository,
         ITrendReportQueue queue,
         IConfiguration configuration)
@@ -62,7 +62,9 @@ public sealed class TrendReportService : ITrendReportService
             out var configuredDelay)
                 ? Math.Clamp(configuredDelay, 0, 10_000)
                 : 0;
-        _defaultUserId = configuration["PreCheck:DefaultUserId"] ?? "demo-user";
+        _defaultUserId = int.TryParse(configuration["PreCheck:DefaultUserId"], out var defaultUserId)
+            ? defaultUserId
+            : 1;
     }
 
     // Synchronous producer path:
@@ -85,7 +87,7 @@ public sealed class TrendReportService : ITrendReportService
             rangeEnd);
         var now = DateTimeOffset.UtcNow;
         var job = new TrendReportJob(
-            Guid.NewGuid().ToString("N"),
+            Random.Shared.Next(1, int.MaxValue),
             TrendReportJobStatuses.Queued,
             0,
             "等待后台处理",
@@ -123,7 +125,7 @@ public sealed class TrendReportService : ITrendReportService
         return ToDto(job);
     }
 
-    public async Task<TrendReportJobDto?> GetByIdAsync(string id)
+    public async Task<TrendReportJobDto?> GetByIdAsync(int id)
     {
         var job = await _jobRepository.GetByIdAsync(id);
         return job is null ? null : ToDto(job);
@@ -133,7 +135,7 @@ public sealed class TrendReportService : ITrendReportService
     // 1. atomically claim an eligible job and mark it Processing
     // 2. update progress, calculate the report, and persist the completed result
     // 3. on failure, persist Failed and rethrow so Service Bus can redeliver the message
-    public async Task ProcessAsync(string jobId)
+    public async Task ProcessAsync(int jobId)
     {
         var job = await _jobRepository.TryStartProcessingAsync(jobId, DateTimeOffset.UtcNow);
 
@@ -320,8 +322,8 @@ public sealed class TrendReportService : ITrendReportService
         string seriesLabel,
         string variant,
         IReadOnlyList<ReportWeek> weeks,
-        IReadOnlyList<PreCheckLog> logs,
-        Func<PreCheckLog, decimal> getValue)
+        IReadOnlyList<PreCheckModel> logs,
+        Func<PreCheckModel, decimal> getValue)
     {
         var points = weeks.SelectMany(week =>
         {
@@ -467,7 +469,7 @@ public sealed class TrendReportService : ITrendReportService
             .ToList();
     }
 
-    private static decimal GetReadinessScore(PreCheckLog log)
+    private static decimal GetReadinessScore(PreCheckModel log)
     {
         var recoverySoreness = 6 - log.Soreness;
         var recoveryStress = 6 - log.Stress;

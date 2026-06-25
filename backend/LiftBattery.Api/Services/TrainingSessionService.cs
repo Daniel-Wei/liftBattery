@@ -7,15 +7,15 @@ namespace LiftBattery.Api.Services;
 
 public sealed class TrainingSessionService : ITrainingSessionService
 {
-    private readonly ITrainingLogRepository _repository;
+    private readonly ITrainingRepository _repository;
 
-    public TrainingSessionService(ITrainingLogRepository repository)
+    public TrainingSessionService(ITrainingRepository repository)
     {
         _repository = repository;
     }
 
     public async Task<IReadOnlyList<TrainingDayDto>> GetByDateRangeAsync(
-        string userId,
+        int userId,
         DateOnly from,
         DateOnly to,
         CancellationToken cancellationToken = default)
@@ -32,7 +32,7 @@ public sealed class TrainingSessionService : ITrainingSessionService
     }
 
     public async Task<TrainingDayDto> SaveSessionAsync(
-        string userId,
+        int userId,
         SaveTrainingSessionDto dto,
         CancellationToken cancellationToken = default)
     {
@@ -55,15 +55,15 @@ public sealed class TrainingSessionService : ITrainingSessionService
     }
 
     public async Task<TrainingSessionDto?> DeleteSessionAsync(
-        string userId,
-        string id,
+        int userId,
+        int id,
         CancellationToken cancellationToken = default)
     {
         ValidateUserId(userId);
 
-        if (string.IsNullOrWhiteSpace(id))
+        if (id <= 0)
         {
-            throw new ArgumentException("Training session id is required.");
+            throw new ArgumentException("Training session id must be positive.");
         }
 
         var deleted = await _repository.DeleteSessionAsync(userId, id, cancellationToken);
@@ -121,11 +121,11 @@ public sealed class TrainingSessionService : ITrainingSessionService
         }
     }
 
-    private static void ValidateUserId(string userId)
+    private static void ValidateUserId(int userId)
     {
-        if (string.IsNullOrWhiteSpace(userId))
+        if (userId <= 0)
         {
-            throw new ArgumentException("User id is required.");
+            throw new ArgumentException("User id must be positive.");
         }
     }
 }

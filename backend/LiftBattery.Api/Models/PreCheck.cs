@@ -1,8 +1,8 @@
 namespace LiftBattery.Api.Models;
 
-public sealed record PreCheckLog(
-    string Id,
-    string UserId,
+public sealed record PreCheckModel(
+    int Id,
+    int UserId,
     DateOnly Date,
     decimal SleepHours,
     int SorenessRating,

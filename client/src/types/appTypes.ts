@@ -62,7 +62,7 @@ export type ReadinessResult = {
 
 // DailyPreCheckLog stores pre-workout readiness check-ins from TodayPage.
 export type PreCheckLog = {
-  id: string;
+  id: number;
   date: string;
   input: PreCheckDetailsLog;
 };
@@ -81,47 +81,51 @@ export type MuscleGroup =
   | "All";
 
 export type TrainingSet = {
-  id: string;
-  setNumber: number;
+  id: number;
+  trainingExerciseId?: number;
+  setOrder: number;
   reps: number;
   weightKg: number;
   rpe?: number;
   rir?: number;
   isWarmup: boolean;
-  createdAt: string;
-  updatedAt: string;
+  createdAtUtc: string;
+  updatedAtUtc: string;
 };
 
 export type TrainingExercise = {
-  id: string;
+  id: number;
+  trainingSessionId?: number;
+  exerciseOrder: number;
   muscleGroup: MuscleGroup;
   exerciseName: string;
   sets: TrainingSet[];
-  createdAt: string;
-  updatedAt: string;
+  createdAtUtc: string;
+  updatedAtUtc: string;
 };
 
 export type TrainingSession = {
-  id: string;
+  id: number;
+  trainingDayId?: number;
   startTime: string;
   durationMinutes: number;
   sessionRpe: number;
   exercises: TrainingExercise[];
-  createdAt: string;
-  updatedAt: string;
+  createdAtUtc: string;
+  updatedAtUtc: string;
 };
 
 export type TrainingDay = {
-  id: string;
-  userId: string;
+  id: number;
+  userId: number;
   date: string;
   sessions: TrainingSession[];
-  createdAt: string;
-  updatedAt: string;
+  createdAtUtc: string;
+  updatedAtUtc: string;
 };
 
 export type TrainingSetDraft = {
-  id: string;
+  id: number;
   reps: number;
   weightKg: number;
   rpe?: number;
@@ -130,7 +134,7 @@ export type TrainingSetDraft = {
 };
 
 export type TrainingExerciseDraft = {
-  id: string;
+  id: number;
   muscleGroup: Exclude<MuscleGroup, "All">;
   exerciseName: string;
   sets: TrainingSetDraft[];
@@ -151,14 +155,14 @@ export type SetEntry = TrainingSet & {
 };
 
 export type TrainingSessionRecord = TrainingSession & {
-  userId: string;
+  userId: number;
   date: string;
   sets: SetEntry[];
 };
 
 // BodyweightEntry stores scale-weight data for weight trend calculations.
 export type BodyweightEntry = {
-  id: string;
+  id: number;
   date: string;
   weightKg: number;
   createdAt: string;
@@ -167,7 +171,7 @@ export type BodyweightEntry = {
 
 // NutritionEntry stores optional nutrition context for cut-pressure interpretation.
 export type NutritionEntry = {
-  id: string;
+  id: number;
   date: string;
   calories?: number;
   carbsGrams?: number;

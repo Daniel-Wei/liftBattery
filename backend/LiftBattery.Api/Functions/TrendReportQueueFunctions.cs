@@ -18,6 +18,8 @@ public sealed class TrendReportQueueFunctions
     public Task ProcessTrendReportJob(
         [ServiceBusTrigger("%TrendReportQueueName%", Connection = "ServiceBusConnection")] string jobId)
     {
-        return _service.ProcessAsync(jobId);
+        return int.TryParse(jobId, out var id)
+            ? _service.ProcessAsync(id)
+            : Task.CompletedTask;
     }
 }

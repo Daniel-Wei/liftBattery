@@ -14,15 +14,12 @@ public sealed class TrainingExerciseEntityConfiguration
         builder.HasKey(entity => entity.Id);
 
         builder.Property(entity => entity.Id)
-            .HasMaxLength(32)
-            .IsRequired();
+            .ValueGeneratedOnAdd();
 
         builder.Property(entity => entity.TrainingSessionId)
-            .HasMaxLength(32)
             .IsRequired();
 
         builder.Property(entity => entity.ExerciseOrder)
-            .HasMaxLength(32)
             .IsRequired();
 
         builder.Property(entity => entity.MuscleGroup)
@@ -54,4 +51,3 @@ public sealed class TrainingExerciseEntityConfiguration
                 "UX_TrainingExercises_TrainingSessionId_ExerciseId");
     }
 }
-

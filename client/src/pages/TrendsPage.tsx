@@ -175,9 +175,9 @@ export function TrendsPage() {
 
   // execute any remaining job
   useEffect(() => {
-    const savedJobId = localStorage.getItem(TREND_REPORT_JOB_ID_STORAGE_KEY);
+    const savedJobId = Number(localStorage.getItem(TREND_REPORT_JOB_ID_STORAGE_KEY));
 
-    if (savedJobId) {
+    if (savedJobId > 0) {
       void dispatch(fetchTrendReportJob(savedJobId));
     }
   }, [dispatch]);
@@ -188,7 +188,7 @@ export function TrendsPage() {
       return;
     }
 
-    localStorage.setItem(TREND_REPORT_JOB_ID_STORAGE_KEY, job.id);
+    localStorage.setItem(TREND_REPORT_JOB_ID_STORAGE_KEY, job.id.toString());
 
     if (job.status !== "Queued" && job.status !== "Processing") {
       return;

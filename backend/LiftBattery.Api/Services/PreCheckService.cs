@@ -17,17 +17,17 @@ public sealed class PreCheckService : IPreCheckService
     }
 
     public async Task<PreCheckDto?> GetByDateAsync(
-        string userId,
+        int userId,
         DateOnly date,
         CancellationToken cancellationToken = default)
     {
         ValidateUserId(userId);
-        var log = await _repository.GetByDateAsync(userId.Trim(), date, cancellationToken);
+        var log = await _repository.GetByDateAsync(userId, date, cancellationToken);
         return log is null ? null : PreCheckMapping.ToDto(log);
     }
 
     public async Task<IReadOnlyList<PreCheckDto>> GetByDateRangeAsync(
-        string userId,
+        int userId,
         DateOnly from,
         DateOnly to,
         CancellationToken cancellationToken = default)
@@ -45,7 +45,7 @@ public sealed class PreCheckService : IPreCheckService
         }
 
         var logs = await _repository.GetByDateRangeAsync(
-            userId.Trim(),
+            userId,
             from,
             to,
             cancellationToken);
@@ -53,14 +53,14 @@ public sealed class PreCheckService : IPreCheckService
     }
 
     public async Task<PreCheckDto> SaveAsync(
-        string userId,
+        int userId,
         PreCheckDto dto,
         CancellationToken cancellationToken = default)
     {
         ValidateUserId(userId);
         var date = ParseDate(dto.Date);
         ValidateRatings(dto);
-        var normalizedUserId = userId.Trim();
+        var normalizedUserId = userId;
         var existing = await _repository.GetByDateAsync(
             normalizedUserId,
             date,
@@ -72,19 +72,19 @@ public sealed class PreCheckService : IPreCheckService
     }
 
     public async Task<PreCheckDto?> DeleteAsync(
-        string userId,
-        string id,
+        int userId,
+        int id,
         CancellationToken cancellationToken = default)
     {
         ValidateUserId(userId);
 
-        if (string.IsNullOrWhiteSpace(id))
+        if (id <= 0)
         {
-            throw new ArgumentException("Pre-check id is required.");
+            throw new ArgumentException("Pre-check id must be positive.");
         }
 
         var deletedLog = await _repository.DeleteByIdAsync(
-            userId.Trim(),
+            userId,
             id,
             cancellationToken);
         return deletedLog is null ? null : PreCheckMapping.ToDto(deletedLog);
@@ -105,11 +105,11 @@ public sealed class PreCheckService : IPreCheckService
         return date;
     }
 
-    private static void ValidateUserId(string userId)
+    private static void ValidateUserId(int userId)
     {
-        if (string.IsNullOrWhiteSpace(userId) || userId.Trim().Length > 100)
+        if (userId <= 0)
         {
-            throw new ArgumentException("User id is required and cannot exceed 100 characters.");
+            throw new ArgumentException("User id must be positive.");
         }
     }
 

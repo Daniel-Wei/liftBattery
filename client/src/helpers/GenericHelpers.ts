@@ -6,12 +6,10 @@ export function getLocalDateString() {
   return new Date().toISOString().slice(0, 10);
 }
 
-export function createId(prefix: string) {
-  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
-    return `${prefix}-${crypto.randomUUID()}`;
-  }
+let nextLocalId = -1;
 
-  return `${prefix}-${Date.now()}-${Math.round(Math.random() * 100000)}`;
+export function createId(_prefix: string) {
+  return nextLocalId--;
 }
 
 export function getOptionalNumber(value: string) {

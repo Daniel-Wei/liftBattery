@@ -30,11 +30,14 @@ public static class TrainingMapping
         }
 
         return new TrainingSessionModel(
-            Guid.NewGuid().ToString("N"),
+            0,
+            0,
             startTime,
             dto.DurationMinutes,
             dto.SessionRpe,
-            dto.Exercises.Select(exercise => ToModel(exercise, now)).ToList(),
+            dto.Exercises
+                .Select(exercise => ToModel(exercise, 0, now))
+                .ToList(),
             now,
             now);
     }
@@ -47,7 +50,7 @@ public static class TrainingMapping
             session.StartTime.ToString("HH:mm", CultureInfo.InvariantCulture),
             session.DurationMinutes,
             session.SessionRpe,
-            session.Exercises.Select(ToDto).ToList(),
+            session.Exercises.OrderBy(exercise => exercise.ExerciseOrder).Select(ToDto).ToList(),
             session.CreatedAtUtc.ToString("O"),
             session.UpdatedAtUtc.ToString("O"));
     }
@@ -60,7 +63,7 @@ public static class TrainingMapping
             exercise.ExerciseOrder,
             exercise.MuscleGroup,
             exercise.ExerciseName,
-            exercise.Sets.Select(ToDto).ToList(),
+            exercise.Sets.OrderBy(set => set.SetOrder).Select(ToDto).ToList(),
             exercise.CreatedAtUtc.ToString("O"),
             exercise.UpdatedAtUtc.ToString("O"));
     }
@@ -80,21 +83,34 @@ public static class TrainingMapping
             set.UpdatedAtUtc.ToString("O"));
     }
 
-    private static TrainingExerciseModel ToModel(TrainingExerciseDto dto, DateTimeOffset now)
+    private static TrainingExerciseModel ToModel(
+        TrainingExerciseDto dto,
+        int trainingSessionId,
+        DateTimeOffset now)
     {
-        return new TrainingExercise(
-            dto.Id ?? Guid.NewGuid().ToString("N"),
+        var exerciseId = dto.Id ?? 0;
+
+        return new TrainingExerciseModel(
+            exerciseId,
+            trainingSessionId,
             dto.MuscleGroup,
             dto.ExerciseName,
-            dto.Sets.Select(set => ToModel(set, now)).ToList(),
+            dto.ExerciseOrder,
+            dto.Sets
+                .Select(set => ToModel(set, exerciseId, now))
+                .ToList(),
             TryParseDateTimeOffset(dto.CreatedAtUtc) ?? now,
             now);
     }
 
-    private static TrainingSetModel ToModel(TrainingSetDto dto, DateTimeOffset now)
+    private static TrainingSetModel ToModel(
+        TrainingSetDto dto,
+        int trainingExerciseId,
+        DateTimeOffset now)
     {
         return new TrainingSetModel(
-            dto.Id ?? Guid.NewGuid().ToString("N"),
+            dto.Id ?? 0,
+            trainingExerciseId,
             dto.SetOrder,
             dto.Reps,
             dto.WeightKg,

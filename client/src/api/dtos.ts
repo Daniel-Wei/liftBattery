@@ -1,7 +1,7 @@
 import type { MuscleGroup, TrendReportType } from "../types/appTypes";
 
 export type PreCheckDto = {
-  id?: string;
+  id?: number;
   date: string;
   sleepQuality: number;
   soreness: number;
@@ -17,46 +17,53 @@ export type PreCheckDto = {
 };
 
 export type TrainingSetDto = {
-  id?: string;
-  setNumber: number;
+  id?: number;
+  trainingExerciseId?: number;
+  setOrder: number;
   reps: number;
   weightKg: number;
   rpe?: number;
   rir?: number;
   isWarmup: boolean;
-  createdAt?: string;
-  updatedAt?: string;
+  createdAtUtc?: string;
+  updatedAtUtc?: string;
 };
 
 export type TrainingExerciseDto = {
-  id?: string;
+  id?: number;
+  trainingSessionId?: number;
+  exerciseOrder: number;
   muscleGroup: MuscleGroup;
   exerciseName: string;
   sets: TrainingSetDto[];
-  createdAt?: string;
-  updatedAt?: string;
+  createdAtUtc?: string;
+  updatedAtUtc?: string;
 };
 
 export type TrainingSessionDto = {
-  id?: string;
+  id?: number;
+  trainingDayId?: number;
   startTime: string;
   durationMinutes: number;
   sessionRpe: number;
   exercises: TrainingExerciseDto[];
-  createdAt?: string;
-  updatedAt?: string;
+  createdAtUtc?: string;
+  updatedAtUtc?: string;
 };
 
 export type TrainingDayDto = {
-  id: string;
-  userId: string;
+  id: number;
+  userId: number;
   date: string;
   sessions: TrainingSessionDto[];
-  createdAt: string;
-  updatedAt: string;
+  createdAtUtc: string;
+  updatedAtUtc: string;
 };
 
-export type SaveTrainingSessionDto = Omit<TrainingSessionDto, "id" | "createdAt" | "updatedAt"> & {
+export type SaveTrainingSessionDto = Omit<
+  TrainingSessionDto,
+  "id" | "trainingDayId" | "createdAtUtc" | "updatedAtUtc"
+> & {
   date: string;
 };
 
@@ -106,7 +113,7 @@ export type TrendReportJobStatus =
   | "Cancelled";
 
 export type TrendReportJobDto = {
-  id: string;
+  id: number;
   status: TrendReportJobStatus;
   progressPercent: number;
   currentStage: string;

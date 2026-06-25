@@ -33,7 +33,7 @@ public sealed record TrendReportResultDto(
     IReadOnlyList<TrendReportChartDto> Charts);
 
 public sealed record TrendReportJobDto(
-    string Id,
+    int Id,
     string Status,
     int ProgressPercent,
     string CurrentStage,

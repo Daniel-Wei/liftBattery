@@ -5,18 +5,18 @@ namespace LiftBattery.Api.Services;
 public interface ITrainingSessionService
 {
     Task<IReadOnlyList<TrainingDayDto>> GetByDateRangeAsync(
-        string userId,
+        int userId,
         DateOnly from,
         DateOnly to,
         CancellationToken cancellationToken = default);
 
     Task<TrainingDayDto> SaveSessionAsync(
-        string userId,
+        int userId,
         SaveTrainingSessionDto dto,
         CancellationToken cancellationToken = default);
 
     Task<TrainingSessionDto?> DeleteSessionAsync(
-        string userId,
-        string id,
+        int userId,
+        int id,
         CancellationToken cancellationToken = default);
 }

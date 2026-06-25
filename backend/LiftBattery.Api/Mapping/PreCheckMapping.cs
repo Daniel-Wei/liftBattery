@@ -5,7 +5,7 @@ namespace LiftBattery.Api.Mapping;
 
 public static class PreCheckMapping
 {
-    public static PreCheckDto ToDto(PreCheckLog log)
+    public static PreCheckDto ToDto(PreCheckModel log)
     {
         return new PreCheckDto(
             log.Id,
@@ -23,15 +23,15 @@ public static class PreCheckMapping
             log.PreviousSessionDurationMinutes);
     }
 
-    public static PreCheckLog ToModel(
+    public static PreCheckModel ToModel(
         PreCheckDto dto,
-        string userId,
+        int userId,
         DateOnly date,
         DateTimeOffset now,
-        PreCheckLog? existingLog)
+        PreCheckModel? existingLog)
     {
-        return new PreCheckLog(
-            existingLog?.Id ?? Guid.NewGuid().ToString("N"),
+        return new PreCheckModel(
+            existingLog?.Id ?? dto.Id ?? 0,
             userId,
             date,
             dto.SleepHours ?? GetSleepHours(dto.SleepQuality),

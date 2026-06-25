@@ -148,8 +148,8 @@ export const savePreCheck = createAsyncThunk<
 );
 
 export const deletePreCheckLog = createAsyncThunk<
-  string,
-  string,
+  number,
+  number,
   { rejectValue: string }
 >(
   "preCheck/deletePreCheck",

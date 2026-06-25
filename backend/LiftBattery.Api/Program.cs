@@ -29,15 +29,17 @@ var host = new HostBuilder()
 
         services.Configure<PreCheckOptions>(
             context.Configuration.GetSection(PreCheckOptions.SectionName));
+        services.Configure<TrainingOptions>(
+            context.Configuration.GetSection(TrainingOptions.SectionName));
         services.AddDbContext<LiftBatteryDbContext>(options =>
             options.UseSqlServer(databaseConnection, sqlOptions => sqlOptions.EnableRetryOnFailure()));
         services.AddSingleton(TimeProvider.System);
         services.AddScoped<IPreCheckRepository, PreCheckRepository>();
-        services.AddSingleton<ITrainingLogRepository, TrainingLogRepository>();
+        services.AddScoped<ITrainingRepository, TrainingRepository>();
         services.AddScoped<IPreCheckService, PreCheckService>();
-        services.AddSingleton<ITrainingSessionService, TrainingSessionService>();
-        services.AddSingleton<ITrendReportJobRepository, TrendReportJobRepository>();
-        services.AddSingleton<ITrendReportQueue, TrendReportServiceBusQueue>();
+        services.AddScoped<ITrainingSessionService, TrainingSessionService>();
+        services.AddScoped<ITrendReportJobRepository, TrendReportJobRepository>();
+        services.AddScoped<ITrendReportQueue, TrendReportServiceBusQueue>();
         services.AddScoped<ITrendReportService, TrendReportService>();
     })
     .Build();

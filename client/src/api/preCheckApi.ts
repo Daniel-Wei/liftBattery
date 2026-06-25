@@ -17,7 +17,7 @@ export function savePreCheck(dto: PreCheckDto) {
   });
 }
 
-export function deletePreCheck(id: string) {
+export function deletePreCheck(id: number) {
   return requestJson<PreCheckDto>(`/precheck/${encodeURIComponent(id)}`, {
     method: "DELETE",
   });

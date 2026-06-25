@@ -14,7 +14,7 @@ public sealed class TrainingLogFunctions
     private const string UserIdHeader = "X-LiftBattery-User-Id";
 
     private readonly ITrainingSessionService _service;
-    private readonly string _defaultUserId;
+    private readonly int _defaultUserId;
 
     public TrainingLogFunctions(
         ITrainingSessionService service,
@@ -81,7 +81,7 @@ public sealed class TrainingLogFunctions
     [Function("DeleteTrainingSession")]
     public async Task<HttpResponseData> DeleteTrainingSession(
         [HttpTrigger(AuthorizationLevel.Anonymous, "delete", Route = "trainingsessions/{id}")] HttpRequestData request,
-        string id,
+        int id,
         CancellationToken cancellationToken)
     {
         try
@@ -107,15 +107,15 @@ public sealed class TrainingLogFunctions
         }
     }
 
-    private string GetUserId(HttpRequestData request)
+    private int GetUserId(HttpRequestData request)
     {
         if (request.Headers.TryGetValues(UserIdHeader, out var values))
         {
             var value = values.FirstOrDefault();
 
-            if (!string.IsNullOrWhiteSpace(value))
+            if (int.TryParse(value, out var userId) && userId > 0)
             {
-                return value;
+                return userId;
             }
         }
 

@@ -32,14 +32,14 @@ public sealed class TrendReportJobRepository : ITrendReportJobRepository
 
     // Atomically claims an eligible job by marking it Processing; the ETag prevents concurrent claims.
     public async Task<TrendReportJob?> TryStartProcessingAsync(
-        string id,
+        int id,
         DateTimeOffset startedAtUtc)
     {
         await EnsureTableAsync();
 
         try
         {
-            var response = await _tableClient.GetEntityAsync<TrendReportJobEntity>(PartitionKeyValue, id);
+            var response = await _tableClient.GetEntityAsync<TrendReportJobEntity>(PartitionKeyValue, id.ToString());
             var entity = response.Value;
             var processingIsFresh = entity.Status == TrendReportJobStatuses.Processing
                 && entity.UpdatedAtUtc > startedAtUtc.AddMinutes(-10);
@@ -65,13 +65,13 @@ public sealed class TrendReportJobRepository : ITrendReportJobRepository
         }
     }
 
-    public async Task<TrendReportJob?> GetByIdAsync(string id)
+    public async Task<TrendReportJob?> GetByIdAsync(int id)
     {
         await EnsureTableAsync();
 
         try
         {
-            var response = await _tableClient.GetEntityAsync<TrendReportJobEntity>(PartitionKeyValue, id);
+            var response = await _tableClient.GetEntityAsync<TrendReportJobEntity>(PartitionKeyValue, id.ToString());
             return ToModel(response.Value);
         }
         catch (RequestFailedException exception) when (exception.Status == 404)
@@ -98,7 +98,7 @@ public sealed class TrendReportJobRepository : ITrendReportJobRepository
         return new TrendReportJobEntity
         {
             PartitionKey = PartitionKeyValue,
-            RowKey = job.Id,
+            RowKey = job.Id.ToString(),
             Status = job.Status,
             ProgressPercent = job.ProgressPercent,
             CurrentStage = job.CurrentStage,
@@ -126,7 +126,7 @@ public sealed class TrendReportJobRepository : ITrendReportJobRepository
             : JsonSerializer.Deserialize<TrendReportResultDto>(entity.ResultJson, _jsonOptions);
 
         return new TrendReportJob(
-            entity.RowKey,
+            int.Parse(entity.RowKey),
             entity.Status,
             entity.ProgressPercent,
             entity.CurrentStage,

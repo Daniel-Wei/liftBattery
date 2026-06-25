@@ -2,8 +2,8 @@ namespace LiftBattery.Api.Data.Entities.Training;
 
 public sealed class TrainingSet
 {
-    public required string Id { get; set; }
-    public required string TrainingExerciseId { get; set; }
+    public int Id { get; set; }
+    public int TrainingExerciseId { get; set; }
     public required int SetOrder { get; set; }
     public required int Reps { get; set; }
     public required decimal WeightKg { get; set; }

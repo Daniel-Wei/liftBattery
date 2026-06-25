@@ -49,7 +49,7 @@ public sealed class TrendReportFunctions
     [Function("GetTrendReport")]
     public async Task<HttpResponseData> GetTrendReport(
         [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "trendreports/{id}")] HttpRequestData request,
-        string id)
+        int id)
     {
         var job = await _service.GetByIdAsync(id);
 

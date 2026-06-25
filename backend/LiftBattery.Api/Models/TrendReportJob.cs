@@ -19,10 +19,10 @@ public sealed record TrendReportRequest(
 
 public sealed record TrendReportSnapshot(
     IReadOnlyList<TrainingDayModel> TrainingDays,
-    IReadOnlyList<PreCheckLog> PreCheckLogs);
+    IReadOnlyList<PreCheckModel> PreCheckLogs);
 
 public sealed record TrendReportJob(
-    string Id,
+    int Id,
     string Status,
     int ProgressPercent,
     string CurrentStage,

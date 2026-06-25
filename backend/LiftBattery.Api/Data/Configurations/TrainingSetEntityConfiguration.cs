@@ -14,8 +14,8 @@ public sealed class TrainingSetEntityConfiguration
             table =>
             {
                 table.HasCheckConstraint(
-                    "CK_TrainingSets_SetNumber",
-                    "[SetNumber] > 0");
+                    "CK_TrainingSets_SetOrder",
+                    "[SetOrder] > 0");
 
                 table.HasCheckConstraint(
                     "CK_TrainingSets_Reps",
@@ -37,11 +37,9 @@ public sealed class TrainingSetEntityConfiguration
         builder.HasKey(entity => entity.Id);
 
         builder.Property(entity => entity.Id)
-            .HasMaxLength(32)
-            .IsRequired();
+            .ValueGeneratedOnAdd();
 
         builder.Property(entity => entity.TrainingExerciseId)
-            .HasMaxLength(32)
             .IsRequired();
 
         builder.Property(entity => entity.SetOrder)
@@ -83,6 +81,6 @@ public sealed class TrainingSetEntityConfiguration
             })
             .IsUnique()
             .HasDatabaseName(
-                "UX_TrainingSets_TrainingExerciseId_SetNumber");
+                "UX_TrainingSets_TrainingExerciseId_SetOrder");
     }
 }

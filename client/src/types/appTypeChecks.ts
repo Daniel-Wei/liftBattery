@@ -128,7 +128,7 @@ export function isSetEntry(value: unknown): value is SetEntry {
 
   return (
     isString(value.id)
-    && isNumber(value.setNumber)
+    && isNumber(value.setOrder)
     && isString(value.exerciseName)
     && isMuscleGroup(value.muscleGroup)
     && isNumber(value.reps)
@@ -136,8 +136,8 @@ export function isSetEntry(value: unknown): value is SetEntry {
     && (value.rpe === undefined || isNumber(value.rpe))
     && (value.rir === undefined || isNumber(value.rir))
     && isBoolean(value.isWarmup)
-    && isString(value.createdAt)
-    && isString(value.updatedAt)
+    && isString(value.createdAtUtc)
+    && isString(value.updatedAtUtc)
   );
 }
 

@@ -15,7 +15,7 @@ public sealed class PreCheckFunctions
     private const string UserIdHeader = "X-LiftBattery-User-Id";
 
     private readonly IPreCheckService _service;
-    private readonly string _defaultUserId;
+    private readonly int _defaultUserId;
 
     public PreCheckFunctions(
         IPreCheckService service,
@@ -149,7 +149,7 @@ public sealed class PreCheckFunctions
     [Function("DeletePreCheck")]
     public async Task<HttpResponseData> DeletePreCheck(
         [HttpTrigger(AuthorizationLevel.Anonymous, "delete", Route = "precheck/{id}")] HttpRequestData request,
-        string id,
+        int id,
         CancellationToken cancellationToken)
     {
         try
@@ -182,15 +182,15 @@ public sealed class PreCheckFunctions
         }
     }
 
-    private string GetUserId(HttpRequestData request)
+    private int GetUserId(HttpRequestData request)
     {
         if (request.Headers.TryGetValues(UserIdHeader, out var values))
         {
             var headerValue = values.FirstOrDefault();
 
-            if (!string.IsNullOrWhiteSpace(headerValue))
+            if (int.TryParse(headerValue, out var userId) && userId > 0)
             {
-                return headerValue;
+                return userId;
             }
         }
 

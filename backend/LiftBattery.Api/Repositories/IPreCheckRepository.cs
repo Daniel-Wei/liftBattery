@@ -4,28 +4,28 @@ namespace LiftBattery.Api.Repositories;
 
 public interface IPreCheckRepository
 {
-    Task<PreCheckLog?> GetByDateAsync(
-        string userId,
+    Task<PreCheckModel?> GetByDateAsync(
+        int userId,
         DateOnly date,
         CancellationToken cancellationToken = default);
 
-    Task<IReadOnlyList<PreCheckLog>> GetByDateRangeAsync(
-        string userId,
+    Task<IReadOnlyList<PreCheckModel>> GetByDateRangeAsync(
+        int userId,
         DateOnly from,
         DateOnly to,
         CancellationToken cancellationToken = default);
 
-    Task<IReadOnlyList<PreCheckLog>> GetByDateRangeAsync(
+    Task<IReadOnlyList<PreCheckModel>> GetByDateRangeAsync(
         DateOnly from,
         DateOnly to,
         CancellationToken cancellationToken = default);
 
-    Task<PreCheckLog> UpsertAsync(
-        PreCheckLog log,
+    Task<PreCheckModel> UpsertAsync(
+        PreCheckModel log,
         CancellationToken cancellationToken = default);
 
-    Task<PreCheckLog?> DeleteByIdAsync(
-        string userId,
-        string id,
+    Task<PreCheckModel?> DeleteByIdAsync(
+        int userId,
+        int id,
         CancellationToken cancellationToken = default);
 }

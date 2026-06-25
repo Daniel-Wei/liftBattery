@@ -2,22 +2,22 @@ using LiftBattery.Api.Models;
 
 namespace LiftBattery.Api.Repositories;
 
-public interface ITrainingLogRepository
+public interface ITrainingRepository
 {
     Task<IReadOnlyList<TrainingDayModel>> GetByDateRangeAsync(
-        string userId,
+        int userId,
         DateOnly from,
         DateOnly to,
         CancellationToken cancellationToken = default);
 
     Task<TrainingDayModel> AddSessionAsync(
-        string userId,
+        int userId,
         DateOnly date,
         TrainingSessionModel session,
         CancellationToken cancellationToken = default);
 
     Task<TrainingSessionModel?> DeleteSessionAsync(
-        string userId,
-        string sessionId,
+        int userId,
+        int sessionId,
         CancellationToken cancellationToken = default);
 }

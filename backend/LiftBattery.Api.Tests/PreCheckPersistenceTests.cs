@@ -30,7 +30,7 @@ public sealed class PreCheckPersistenceTests
         await using var database = await TestDatabase.CreateAsync();
         var service = database.CreateService();
 
-        var saved = await service.SaveAsync("user-a", CreateDto());
+        var saved = await service.SaveAsync(1, CreateDto());
 
         Assert.NotNull(saved.Id);
         Assert.Equal(1, await database.Context.PreChecks.CountAsync());
@@ -41,10 +41,10 @@ public sealed class PreCheckPersistenceTests
     {
         await using var database = await TestDatabase.CreateAsync();
         var service = database.CreateService();
-        var first = await service.SaveAsync("user-a", CreateDto());
+        var first = await service.SaveAsync(1, CreateDto());
         var changedDto = CreateDto() with { SleepHours = 9, MotivationRating = 9 };
 
-        var updated = await service.SaveAsync("user-a", changedDto);
+        var updated = await service.SaveAsync(1, changedDto);
 
         Assert.Equal(first.Id, updated.Id);
         Assert.Equal(9, updated.SleepHours);
@@ -57,8 +57,8 @@ public sealed class PreCheckPersistenceTests
     {
         await using var database = await TestDatabase.CreateAsync();
         database.Context.PreChecks.AddRange(
-            CreateEntity("first", "user-a"),
-            CreateEntity("second", "user-a"));
+            CreateEntity(1, 1),
+            CreateEntity(2, 1));
 
         await Assert.ThrowsAsync<DbUpdateException>(
             () => database.Context.SaveChangesAsync());
@@ -70,8 +70,8 @@ public sealed class PreCheckPersistenceTests
         await using var database = await TestDatabase.CreateAsync();
         var service = database.CreateService();
 
-        await service.SaveAsync("user-a", CreateDto());
-        await service.SaveAsync("user-b", CreateDto());
+        await service.SaveAsync(1, CreateDto());
+        await service.SaveAsync(2, CreateDto());
 
         Assert.Equal(2, await database.Context.PreChecks.CountAsync());
     }
@@ -81,10 +81,10 @@ public sealed class PreCheckPersistenceTests
     {
         await using var database = await TestDatabase.CreateAsync();
         var service = database.CreateService();
-        await service.SaveAsync("user-a", CreateDto());
+        await service.SaveAsync(1, CreateDto());
 
-        var found = await service.GetByDateAsync("user-a", TestDate);
-        var missingForOtherUser = await service.GetByDateAsync("user-b", TestDate);
+        var found = await service.GetByDateAsync(1, TestDate);
+        var missingForOtherUser = await service.GetByDateAsync(2, TestDate);
 
         Assert.NotNull(found);
         Assert.Null(missingForOtherUser);
@@ -94,14 +94,14 @@ public sealed class PreCheckPersistenceTests
     public async Task SavedDataCanBeReadFromANewDbContext()
     {
         await using var database = await TestDatabase.CreateAsync();
-        await database.CreateService().SaveAsync("user-a", CreateDto());
+        await database.CreateService().SaveAsync(1, CreateDto());
 
         await using var secondContext = new LiftBatteryDbContext(database.Options);
         var secondRepository = new PreCheckRepository(
             secondContext,
             Microsoft.Extensions.Options.Options.Create(new PreCheckOptions()));
         var secondService = new PreCheckService(secondRepository, TimeProvider.System);
-        var reloaded = await secondService.GetByDateAsync("user-a", TestDate);
+        var reloaded = await secondService.GetByDateAsync(1, TestDate);
 
         Assert.NotNull(reloaded);
         Assert.Equal(7.5m, reloaded.SleepHours);
@@ -115,7 +115,7 @@ public sealed class PreCheckPersistenceTests
         var invalidDto = CreateDto() with { SleepHours = 13 };
 
         var exception = await Assert.ThrowsAsync<ArgumentException>(
-            () => database.CreateService().SaveAsync("user-a", invalidDto));
+            () => database.CreateService().SaveAsync(1, invalidDto));
 
         Assert.Contains("SleepHours", exception.Message);
     }
@@ -155,7 +155,7 @@ public sealed class PreCheckPersistenceTests
             65);
     }
 
-    private static PreCheck CreateEntity(string id, string userId)
+    private static PreCheck CreateEntity(int id, int userId)
     {
         var now = DateTimeOffset.UtcNow;
         return new PreCheck

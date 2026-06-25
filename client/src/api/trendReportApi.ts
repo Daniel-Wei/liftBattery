@@ -11,6 +11,6 @@ export function createTrendReport(request: CreateTrendReportRequestDto) {
   });
 }
 
-export function getTrendReportJob(jobId: string) {
+export function getTrendReportJob(jobId: number) {
   return requestJson<TrendReportJobDto>(`/trendreports/${encodeURIComponent(jobId)}`);
 }

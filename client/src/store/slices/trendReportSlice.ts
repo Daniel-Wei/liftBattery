@@ -39,7 +39,7 @@ export const createTrendReport = createAsyncThunk<
 
 export const fetchTrendReportJob = createAsyncThunk<
   TrendReportJobDto,
-  string,
+  number,
   { rejectValue: string }
 >(
   "trendReport/fetchJob",

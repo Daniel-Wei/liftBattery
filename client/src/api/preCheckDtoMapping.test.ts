@@ -14,15 +14,15 @@ describe("preCheckDtoMapping", () => {
     };
 
     const dto = toPreCheckDto(input);
-    const restored = fromPreCheckDto({ ...dto, id: "saved-id" });
+    const restored = fromPreCheckDto({ ...dto, id: 1 });
 
-    expect(restored.id).toBe("saved-id");
+    expect(restored.id).toBe(1);
     expect(restored.input).toEqual(input);
   });
 
   it("still reads the legacy score-only DTO contract", () => {
     const restored = fromPreCheckDto({
-      id: "legacy-id",
+      id: 2,
       date: "2026-06-21",
       sleepQuality: 4,
       soreness: 2,

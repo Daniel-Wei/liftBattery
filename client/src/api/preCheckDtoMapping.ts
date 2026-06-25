@@ -79,6 +79,12 @@ function getDtoNumber(dto: PreCheckDto, camelKey: keyof PreCheckDto, pascalKey: 
   return typeof value === "number" ? value : undefined;
 }
 
+function getDtoId(dto: PreCheckDto) {
+  const dtoRecord = dto as unknown as Record<string, unknown>;
+  const value = dtoRecord.id ?? dtoRecord.Id;
+  return typeof value === "number" ? value : 0;
+}
+
 export function toPreCheckDto(input: PreCheckDetailsLog, savedLog?: PreCheckLog): PreCheckDto {
   return {
     id: savedLog?.id,
@@ -123,7 +129,7 @@ export function fromPreCheckDto(dto: PreCheckDto, fallbackInput = initialPreChec
   };
 
   return {
-    id: getDtoString(dto, "id", "Id") ?? `precheck-${dtoDate}`,
+    id: getDtoId(dto),
     date: dtoDate,
     input,
   };

@@ -13,7 +13,7 @@ export function saveTrainingSession(dto: SaveTrainingSessionDto) {
   });
 }
 
-export function deleteTrainingSession(id: string) {
+export function deleteTrainingSession(id: number) {
   return requestJson<TrainingSessionDto>(`/trainingsessions/${encodeURIComponent(id)}`, {
     method: "DELETE",
   });

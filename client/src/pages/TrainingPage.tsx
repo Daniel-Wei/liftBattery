@@ -294,7 +294,7 @@ export function TrainingPage() {
                         <div className="saved-training-exercise" key={exercise.id}>
                           <div><strong>{getExerciseDisplayLabel(exercise.exerciseName)}</strong><span>{getMuscleGroupDisplayLabel(exercise.muscleGroup)}</span></div>
                           <div className="saved-set-chips">
-                            {exercise.sets.map((set) => <span className="signal-chip signal-chip--muted" key={set.id}>{set.setNumber} · {set.weightKg}kg × {set.reps}{set.isWarmup ? " · 热身" : ""}</span>)}
+                            {exercise.sets.map((set) => <span className="signal-chip signal-chip--muted" key={set.id}>{set.setOrder} · {set.weightKg}kg × {set.reps}{set.isWarmup ? " · 热身" : ""}</span>)}
                           </div>
                         </div>
                       ))}

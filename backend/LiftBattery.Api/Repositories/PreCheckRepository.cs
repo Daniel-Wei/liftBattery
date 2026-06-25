@@ -10,7 +10,7 @@ namespace LiftBattery.Api.Repositories;
 public sealed class PreCheckRepository : IPreCheckRepository
 {
     private readonly LiftBatteryDbContext _dbContext;
-    private readonly string _defaultUserId;
+    private readonly int _defaultUserId;
 
     public PreCheckRepository(
         LiftBatteryDbContext dbContext,
@@ -20,8 +20,8 @@ public sealed class PreCheckRepository : IPreCheckRepository
         _defaultUserId = options.Value.DefaultUserId;
     }
 
-    public async Task<PreCheckLog?> GetByDateAsync(
-        string userId,
+    public async Task<PreCheckModel?> GetByDateAsync(
+        int userId,
         DateOnly date,
         CancellationToken cancellationToken = default)
     {
@@ -33,8 +33,8 @@ public sealed class PreCheckRepository : IPreCheckRepository
         return entity is null ? null : ToModel(entity);
     }
 
-    public async Task<IReadOnlyList<PreCheckLog>> GetByDateRangeAsync(
-        string userId,
+    public async Task<IReadOnlyList<PreCheckModel>> GetByDateRangeAsync(
+        int userId,
         DateOnly from,
         DateOnly to,
         CancellationToken cancellationToken = default)
@@ -48,7 +48,7 @@ public sealed class PreCheckRepository : IPreCheckRepository
         return entities.Select(ToModel).ToList();
     }
 
-    public Task<IReadOnlyList<PreCheckLog>> GetByDateRangeAsync(
+    public Task<IReadOnlyList<PreCheckModel>> GetByDateRangeAsync(
         DateOnly from,
         DateOnly to,
         CancellationToken cancellationToken = default)
@@ -56,8 +56,8 @@ public sealed class PreCheckRepository : IPreCheckRepository
         return GetByDateRangeAsync(_defaultUserId, from, to, cancellationToken);
     }
 
-    public async Task<PreCheckLog> UpsertAsync(
-        PreCheckLog log,
+    public async Task<PreCheckModel> UpsertAsync(
+        PreCheckModel log,
         CancellationToken cancellationToken = default)
     {
         var entity = await _dbContext.PreChecks.SingleOrDefaultAsync(
@@ -91,9 +91,9 @@ public sealed class PreCheckRepository : IPreCheckRepository
         return ToModel(entity);
     }
 
-    public async Task<PreCheckLog?> DeleteByIdAsync(
-        string userId,
-        string id,
+    public async Task<PreCheckModel?> DeleteByIdAsync(
+        int userId,
+        int id,
         CancellationToken cancellationToken = default)
     {
         var entity = await _dbContext.PreChecks.SingleOrDefaultAsync(
@@ -110,7 +110,7 @@ public sealed class PreCheckRepository : IPreCheckRepository
         return ToModel(entity);
     }
 
-    private static PreCheck ToEntity(PreCheckLog log)
+    private static PreCheck ToEntity(PreCheckModel log)
     {
         return new PreCheck
         {
@@ -128,7 +128,7 @@ public sealed class PreCheckRepository : IPreCheckRepository
         };
     }
 
-    private static void Apply(PreCheckLog log, PreCheck entity)
+    private static void Apply(PreCheckModel log, PreCheck entity)
     {
         entity.SleepHours = log.SleepHours;
         entity.Soreness = log.SorenessRating;
@@ -139,9 +139,9 @@ public sealed class PreCheckRepository : IPreCheckRepository
         entity.UpdatedAtUtc = log.UpdatedAtUtc;
     }
 
-    private static PreCheckLog ToModel(PreCheck entity)
+    private static PreCheckModel ToModel(PreCheck entity)
     {
-        return new PreCheckLog(
+        return new PreCheckModel(
             entity.Id,
             entity.UserId,
             entity.PreCheckDate,

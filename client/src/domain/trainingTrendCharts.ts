@@ -103,7 +103,7 @@ function getLatestSessionRecordPerTrainingDay(trainingSessions: TrainingSessionR
   trainingSessions.forEach((session) => {
     const existingSession = sessionByDate.get(session.date);
 
-    if (!existingSession || session.updatedAt > existingSession.updatedAt) {
+    if (!existingSession || session.updatedAtUtc > existingSession.updatedAtUtc) {
       sessionByDate.set(session.date, session);
     }
   });

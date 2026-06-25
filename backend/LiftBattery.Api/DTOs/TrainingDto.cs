@@ -1,8 +1,8 @@
 namespace LiftBattery.Api.DTOs;
 
 public sealed record TrainingSetDto(
-    string? Id,
-    string? TrainingExerciseId,
+    int? Id,
+    int? TrainingExerciseId,
     int SetOrder,
     int Reps,
     decimal WeightKg,
@@ -13,8 +13,8 @@ public sealed record TrainingSetDto(
     string? UpdatedAtUtc);
 
 public sealed record TrainingExerciseDto(
-    string? Id,
-    string? TrainingSessionId,
+    int? Id,
+    int? TrainingSessionId,
     int ExerciseOrder,
     string MuscleGroup,
     string ExerciseName,
@@ -23,8 +23,8 @@ public sealed record TrainingExerciseDto(
     string? UpdatedAtUtc);
 
 public sealed record TrainingSessionDto(
-    string? Id,
-    string? TrainingDayId,
+    int? Id,
+    int? TrainingDayId,
     string StartTime,
     int DurationMinutes,
     decimal SessionRpe,
@@ -33,8 +33,8 @@ public sealed record TrainingSessionDto(
     string? UpdatedAtUtc);
 
 public sealed record TrainingDayDto(
-    string Id,
-    string UserId,
+    int Id,
+    int UserId,
     string Date,
     IReadOnlyList<TrainingSessionDto> Sessions,
     string CreatedAtUtc,

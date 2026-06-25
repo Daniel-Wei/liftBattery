@@ -63,8 +63,8 @@ export const saveTrainingSession = createAsyncThunk<
 });
 
 export const deleteTrainingSession = createAsyncThunk<
-  string,
-  string,
+  number,
+  number,
   { rejectValue: string }
 >("training/deleteTrainingSession", async (id, thunkApi) => {
   try {
@@ -108,7 +108,7 @@ const trainingSlice = createSlice({
         }],
       });
     },
-    removeTrainingExercise: (state, action: PayloadAction<string>) => {
+    removeTrainingExercise: (state, action: PayloadAction<number>) => {
       if (state.trainingSessionDraft.exercises.length > 1) {
         state.trainingSessionDraft.exercises = state.trainingSessionDraft.exercises
           .filter((exercise) => exercise.id !== action.payload);
@@ -117,7 +117,7 @@ const trainingSlice = createSlice({
     updateTrainingExercise: (
       state,
       action: PayloadAction<{
-        exerciseId: string;
+        exerciseId: number;
         field: "muscleGroup" | "exerciseName";
         value: string;
       }>,
@@ -135,7 +135,7 @@ const trainingSlice = createSlice({
         exercise.exerciseName = action.payload.value;
       }
     },
-    addTrainingSet: (state, action: PayloadAction<string>) => {
+    addTrainingSet: (state, action: PayloadAction<number>) => {
       const exercise = state.trainingSessionDraft.exercises
         .find((candidate) => candidate.id === action.payload);
 
@@ -153,7 +153,7 @@ const trainingSlice = createSlice({
     },
     removeTrainingSet: (
       state,
-      action: PayloadAction<{ exerciseId: string; setId: string }>,
+      action: PayloadAction<{ exerciseId: number; setId: number }>,
     ) => {
       const exercise = state.trainingSessionDraft.exercises
         .find((candidate) => candidate.id === action.payload.exerciseId);
@@ -165,8 +165,8 @@ const trainingSlice = createSlice({
     updateTrainingSet: (
       state,
       action: PayloadAction<{
-        exerciseId: string;
-        setId: string;
+        exerciseId: number;
+        setId: number;
         field: keyof Omit<TrainingSetDraft, "id">;
         value: number | boolean | undefined;
       }>,

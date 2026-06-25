@@ -23,11 +23,12 @@ export function toSaveTrainingSessionDto(input: TrainingSessionDraft): SaveTrain
     startTime: input.startTime,
     durationMinutes: input.durationMinutes,
     sessionRpe: input.sessionRpe,
-    exercises: input.exercises.map((exercise) => ({
+    exercises: input.exercises.map((exercise, exerciseIndex) => ({
+      exerciseOrder: exerciseIndex + 1,
       muscleGroup: exercise.muscleGroup,
       exerciseName: exercise.exerciseName,
       sets: exercise.sets.map((set, index) => ({
-        setNumber: index + 1,
+        setOrder: index + 1,
         reps: set.reps,
         weightKg: set.weightKg,
         rpe: set.rpe,
@@ -41,37 +42,43 @@ export function toSaveTrainingSessionDto(input: TrainingSessionDraft): SaveTrain
 function fromSetDto(dto: TrainingSetDto): TrainingSet {
   return {
     id: dto.id ?? createId("set"),
-    setNumber: dto.setNumber,
+    trainingExerciseId: dto.trainingExerciseId,
+    setOrder: dto.setOrder,
     reps: dto.reps,
     weightKg: dto.weightKg,
     rpe: dto.rpe,
     rir: dto.rir,
     isWarmup: dto.isWarmup,
-    createdAt: dto.createdAt ?? nowFallback,
-    updatedAt: dto.updatedAt ?? nowFallback,
+    createdAtUtc: dto.createdAtUtc ?? nowFallback,
+    updatedAtUtc: dto.updatedAtUtc ?? nowFallback,
   };
 }
 
 function fromExerciseDto(dto: TrainingExerciseDto): TrainingExercise {
   return {
     id: dto.id ?? createId("exercise"),
+    trainingSessionId: dto.trainingSessionId,
+    exerciseOrder: dto.exerciseOrder,
     muscleGroup: dto.muscleGroup,
     exerciseName: dto.exerciseName,
-    sets: dto.sets.map(fromSetDto),
-    createdAt: dto.createdAt ?? nowFallback,
-    updatedAt: dto.updatedAt ?? nowFallback,
+    sets: [...dto.sets].sort((left, right) => left.setOrder - right.setOrder).map(fromSetDto),
+    createdAtUtc: dto.createdAtUtc ?? nowFallback,
+    updatedAtUtc: dto.updatedAtUtc ?? nowFallback,
   };
 }
 
 function fromSessionDto(dto: TrainingSessionDto): TrainingSession {
   return {
     id: dto.id ?? createId("session"),
+    trainingDayId: dto.trainingDayId,
     startTime: dto.startTime,
     durationMinutes: dto.durationMinutes,
     sessionRpe: dto.sessionRpe,
-    exercises: dto.exercises.map(fromExerciseDto),
-    createdAt: dto.createdAt ?? nowFallback,
-    updatedAt: dto.updatedAt ?? nowFallback,
+    exercises: [...dto.exercises]
+      .sort((left, right) => left.exerciseOrder - right.exerciseOrder)
+      .map(fromExerciseDto),
+    createdAtUtc: dto.createdAtUtc ?? nowFallback,
+    updatedAtUtc: dto.updatedAtUtc ?? nowFallback,
   };
 }
 
@@ -81,8 +88,8 @@ export function fromTrainingDayDto(dto: TrainingDayDto): TrainingDay {
     userId: dto.userId,
     date: dto.date,
     sessions: dto.sessions.map(fromSessionDto),
-    createdAt: dto.createdAt,
-    updatedAt: dto.updatedAt,
+    createdAtUtc: dto.createdAtUtc,
+    updatedAtUtc: dto.updatedAtUtc,
   };
 }
 

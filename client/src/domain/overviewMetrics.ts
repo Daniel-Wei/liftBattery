@@ -38,7 +38,7 @@ function getDateTime(date: string) {
 function sortTrainingSessionsNewestFirst(trainingSessions: TrainingSessionRecord[]) {
   return [...trainingSessions].sort((firstSession, secondSession) => (
     secondSession.date.localeCompare(firstSession.date)
-    || secondSession.updatedAt.localeCompare(firstSession.updatedAt)
+    || secondSession.updatedAtUtc.localeCompare(firstSession.updatedAtUtc)
   ));
 }
 

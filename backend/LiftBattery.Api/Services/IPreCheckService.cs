@@ -5,23 +5,23 @@ namespace LiftBattery.Api.Services;
 public interface IPreCheckService
 {
     Task<PreCheckDto?> GetByDateAsync(
-        string userId,
+        int userId,
         DateOnly date,
         CancellationToken cancellationToken = default);
 
     Task<IReadOnlyList<PreCheckDto>> GetByDateRangeAsync(
-        string userId,
+        int userId,
         DateOnly from,
         DateOnly to,
         CancellationToken cancellationToken = default);
 
     Task<PreCheckDto> SaveAsync(
-        string userId,
+        int userId,
         PreCheckDto dto,
         CancellationToken cancellationToken = default);
 
     Task<PreCheckDto?> DeleteAsync(
-        string userId,
-        string id,
+        int userId,
+        int id,
         CancellationToken cancellationToken = default);
 }

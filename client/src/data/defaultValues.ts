@@ -30,12 +30,12 @@ export const initialTrainingSessionDetailsInput: TrainingSessionDraft = {
   sessionRpe: 7,
   exercises: [
     {
-      id: "draft-exercise-1",
+      id: -1,
       exerciseName: "Bench Press",
       muscleGroup: "Chest",
       sets: [
         {
-          id: "draft-set-1",
+          id: -2,
           isWarmup: false,
           reps: 8,
           weightKg: 60,

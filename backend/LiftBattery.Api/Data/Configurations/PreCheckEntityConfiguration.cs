@@ -13,10 +13,9 @@ public sealed class PreCheckEntityConfiguration : IEntityTypeConfiguration<PreCh
         builder.HasKey(entity => entity.Id);
         
         builder.Property(entity => entity.Id)
-            .HasMaxLength(32);
-        
+            .ValueGeneratedOnAdd();
+
         builder.Property(entity => entity.UserId)
-            .HasMaxLength(100)
             .IsRequired();
         
         builder.Property(entity => entity.SleepHours)

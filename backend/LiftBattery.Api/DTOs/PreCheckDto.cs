@@ -1,7 +1,7 @@
 namespace LiftBattery.Api.DTOs;
 
 public sealed record PreCheckDto(
-    string? Id,
+    int? Id,
     string Date,
     int SleepQuality,
     int Soreness,

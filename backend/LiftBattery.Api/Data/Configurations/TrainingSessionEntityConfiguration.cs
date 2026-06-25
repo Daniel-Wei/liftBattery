@@ -25,11 +25,9 @@ public sealed class TrainingSessionEntityConfiguration
         builder.HasKey(entity => entity.Id);
 
         builder.Property(entity => entity.Id)
-            .HasMaxLength(32)
-            .IsRequired();
+            .ValueGeneratedOnAdd();
 
         builder.Property(entity => entity.TrainingDayId)
-            .HasMaxLength(32)
             .IsRequired();
 
         builder.Property(entity => entity.StartTime)
