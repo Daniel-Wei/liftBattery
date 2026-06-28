@@ -1,27 +1,26 @@
 using System.Globalization;
 using System.Net;
 using LiftBattery.Api.DTOs;
-using LiftBattery.Api.Options;
 using LiftBattery.Api.Services;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Azure.Functions.Worker.Http;
-using Microsoft.Extensions.Options;
 
 namespace LiftBattery.Api.Functions;
 
 public sealed class TrainingLogFunctions
 {
-    private const string UserIdHeader = "X-LiftBattery-User-Id";
-
     private readonly ITrainingSessionService _service;
-    private readonly int _defaultUserId;
+    private readonly IAuthService _authService;
+    private readonly AuthCookieHelper _cookieHelper;
 
     public TrainingLogFunctions(
         ITrainingSessionService service,
-        IOptions<PreCheckOptions> options)
+        IAuthService authService,
+        AuthCookieHelper cookieHelper)
     {
         _service = service;
-        _defaultUserId = options.Value.DefaultUserId;
+        _authService = authService;
+        _cookieHelper = cookieHelper;
     }
 
     [Function("GetTrainingDays")]
@@ -31,11 +30,14 @@ public sealed class TrainingLogFunctions
     {
         try
         {
+            var userId = await GetRequiredUserIdAsync(request, cancellationToken);
+            if (userId is null) return await WriteUnauthorizedAsync(request, cancellationToken);
+
             var query = System.Web.HttpUtility.ParseQueryString(request.Url.Query);
             var from = ParseDate(query["from"], "from");
             var to = ParseDate(query["to"], "to");
             var days = await _service.GetByDateRangeAsync(
-                GetUserId(request),
+                userId.Value,
                 from,
                 to,
                 cancellationToken);
@@ -56,6 +58,9 @@ public sealed class TrainingLogFunctions
     {
         try
         {
+            var userId = await GetRequiredUserIdAsync(request, cancellationToken);
+            if (userId is null) return await WriteUnauthorizedAsync(request, cancellationToken);
+
             var dto = await request.ReadFromJsonAsync<SaveTrainingSessionDto>(cancellationToken);
 
             if (dto is null)
@@ -67,7 +72,7 @@ public sealed class TrainingLogFunctions
                     cancellationToken);
             }
 
-            var savedDay = await _service.SaveSessionAsync(GetUserId(request), dto, cancellationToken);
+            var savedDay = await _service.SaveSessionAsync(userId.Value, dto, cancellationToken);
             var response = request.CreateResponse(HttpStatusCode.OK);
             await response.WriteAsJsonAsync(savedDay, cancellationToken);
             return response;
@@ -86,7 +91,10 @@ public sealed class TrainingLogFunctions
     {
         try
         {
-            var deleted = await _service.DeleteSessionAsync(GetUserId(request), id, cancellationToken);
+            var userId = await GetRequiredUserIdAsync(request, cancellationToken);
+            if (userId is null) return await WriteUnauthorizedAsync(request, cancellationToken);
+
+            var deleted = await _service.DeleteSessionAsync(userId.Value, id, cancellationToken);
 
             if (deleted is null)
             {
@@ -107,19 +115,13 @@ public sealed class TrainingLogFunctions
         }
     }
 
-    private int GetUserId(HttpRequestData request)
+    private Task<int?> GetRequiredUserIdAsync(
+        HttpRequestData request,
+        CancellationToken cancellationToken)
     {
-        if (request.Headers.TryGetValues(UserIdHeader, out var values))
-        {
-            var value = values.FirstOrDefault();
-
-            if (int.TryParse(value, out var userId) && userId > 0)
-            {
-                return userId;
-            }
-        }
-
-        return _defaultUserId;
+        return _authService.GetCurrentUserIdAsync(
+            _cookieHelper.ReadSessionToken(request),
+            cancellationToken);
     }
 
     private static DateOnly ParseDate(string? value, string name)
@@ -146,5 +148,16 @@ public sealed class TrainingLogFunctions
         var response = request.CreateResponse(statusCode);
         await response.WriteAsJsonAsync(new { message }, cancellationToken);
         return response;
+    }
+
+    private static Task<HttpResponseData> WriteUnauthorizedAsync(
+        HttpRequestData request,
+        CancellationToken cancellationToken)
+    {
+        return WriteErrorAsync(
+            request,
+            HttpStatusCode.Unauthorized,
+            "Authentication is required.",
+            cancellationToken);
     }
 }

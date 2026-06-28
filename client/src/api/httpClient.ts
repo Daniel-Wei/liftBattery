@@ -1,5 +1,4 @@
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "/api";
-const USER_ID = import.meta.env.VITE_LIFTBATTERY_USER_ID ?? "1";
 
 type HttpRequestOptions = {
   method?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
@@ -8,7 +7,6 @@ type HttpRequestOptions = {
 
 function buildHeaders(hasBody: boolean) {
   const headers = new Headers();
-  headers.set("X-LiftBattery-User-Id", USER_ID);
 
   if (hasBody) {
     headers.set("Content-Type", "application/json");
@@ -48,10 +46,15 @@ export async function requestJson<TResponse>(
     method: options.method ?? "GET",
     headers: buildHeaders(hasBody),
     body: hasBody ? JSON.stringify(options.body) : undefined,
+    credentials: "include",
   });
 
   if (!response.ok) {
     throw new Error(await readErrorMessage(response));
+  }
+
+  if (response.status === 204) {
+    return undefined as TResponse;
   }
 
   return response.json() as Promise<TResponse>;

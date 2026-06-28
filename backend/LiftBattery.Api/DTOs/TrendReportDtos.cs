@@ -26,11 +26,26 @@ public sealed record TrendReportChartDto(
     string Title,
     IReadOnlyList<TrendReportSeriesDto> Series);
 
+public sealed record MuscleStimulationItemDto(
+    string Muscle,
+    decimal Score,
+    decimal Percentage,
+    decimal Change,
+    string Level);
+
+public sealed record MuscleStimulationReportDto(
+    decimal TotalScore,
+    decimal ChangeFromPreviousPeriod,
+    int HighStimulusMuscleCount,
+    int LowStimulusMuscleCount,
+    IReadOnlyList<MuscleStimulationItemDto> Muscles);
+
 public sealed record TrendReportResultDto(
     string StartWeek,
     string EndWeek,
     IReadOnlyList<string> WeekLabels,
-    IReadOnlyList<TrendReportChartDto> Charts);
+    IReadOnlyList<TrendReportChartDto> Charts,
+    MuscleStimulationReportDto? MuscleStimulation);
 
 public sealed record TrendReportJobDto(
     int Id,

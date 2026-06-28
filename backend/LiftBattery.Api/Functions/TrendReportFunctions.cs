@@ -9,19 +9,30 @@ namespace LiftBattery.Api.Functions;
 public sealed class TrendReportFunctions
 {
     private readonly ITrendReportService _service;
+    private readonly IAuthService _authService;
+    private readonly AuthCookieHelper _cookieHelper;
 
-    public TrendReportFunctions(ITrendReportService service)
+    public TrendReportFunctions(
+        ITrendReportService service,
+        IAuthService authService,
+        AuthCookieHelper cookieHelper)
     {
         _service = service;
+        _authService = authService;
+        _cookieHelper = cookieHelper;
     }
 
     // Passes the request DTO to the service to persist and enqueue a report job.
     // Returns 202 with the initial job state after enqueueing; the report is calculated later.
     [Function("CreateTrendReport")]
     public async Task<HttpResponseData> CreateTrendReport(
-        [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "trendreports")] HttpRequestData request)
+        [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "trendreports")] HttpRequestData request,
+        CancellationToken cancellationToken)
     {
-        var dto = await request.ReadFromJsonAsync<CreateTrendReportRequestDto>();
+        var userId = await GetRequiredUserIdAsync(request, cancellationToken);
+        if (userId is null) return await WriteUnauthorizedAsync(request);
+
+        var dto = await request.ReadFromJsonAsync<CreateTrendReportRequestDto>(cancellationToken);
 
         if (dto is null)
         {
@@ -30,7 +41,7 @@ public sealed class TrendReportFunctions
 
         try
         {
-            var job = await _service.CreateAsync(dto);
+            var job = await _service.CreateAsync(userId.Value, dto);
             var response = request.CreateResponse(HttpStatusCode.Accepted);
             response.Headers.Add("Location", $"/api/trendreports/{job.Id}");
             await response.WriteAsJsonAsync(job);
@@ -49,9 +60,13 @@ public sealed class TrendReportFunctions
     [Function("GetTrendReport")]
     public async Task<HttpResponseData> GetTrendReport(
         [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "trendreports/{id}")] HttpRequestData request,
-        int id)
+        int id,
+        CancellationToken cancellationToken)
     {
-        var job = await _service.GetByIdAsync(id);
+        var userId = await GetRequiredUserIdAsync(request, cancellationToken);
+        if (userId is null) return await WriteUnauthorizedAsync(request);
+
+        var job = await _service.GetByIdAsync(userId.Value, id);
 
         if (job is null)
         {
@@ -71,5 +86,22 @@ public sealed class TrendReportFunctions
         var response = request.CreateResponse(statusCode);
         await response.WriteAsJsonAsync(new { message });
         return response;
+    }
+
+    private Task<int?> GetRequiredUserIdAsync(
+        HttpRequestData request,
+        CancellationToken cancellationToken)
+    {
+        return _authService.GetCurrentUserIdAsync(
+            _cookieHelper.ReadSessionToken(request),
+            cancellationToken);
+    }
+
+    private static Task<HttpResponseData> WriteUnauthorizedAsync(HttpRequestData request)
+    {
+        return WriteErrorAsync(
+            request,
+            HttpStatusCode.Unauthorized,
+            "Authentication is required.");
     }
 }

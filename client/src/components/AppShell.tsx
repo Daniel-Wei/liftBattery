@@ -1,16 +1,25 @@
 import type { ReactNode } from "react";
-import { PageKey, type NavItem } from "../types/appTypes";
+import { PageKey, type AuthUser, type NavItem } from "../types/appTypes";
 
 type AppShellProps = {
   navItems: NavItem[];
   currentPage: PageKey;
   onNavigate: (page: PageKey) => void;
+  user: AuthUser | null;
+  onLogout: () => void;
   children: ReactNode;
 };
 
-export function AppShell({ navItems, currentPage, onNavigate, children }: AppShellProps) {
-  // Landing is a standalone first screen, so it skips the dashboard sidebar and topbar.
-  if (currentPage === PageKey.Landing) {
+export function AppShell({
+  navItems,
+  currentPage,
+  onNavigate,
+  user,
+  onLogout,
+  children,
+}: AppShellProps) {
+  // Public entry screens are standalone, so they skip the dashboard sidebar and topbar.
+  if ([PageKey.Landing, PageKey.Login, PageKey.Register].includes(currentPage)) {
     return <>{children}</>;
   }
 
@@ -64,6 +73,23 @@ export function AppShell({ navItems, currentPage, onNavigate, children }: AppShe
           >
             首页
           </button>
+          {user ? (
+            <div className="user-menu">
+              <button type="button" className="user-chip" onClick={() => onNavigate(PageKey.Profile)}>
+                <span>{user.displayName.slice(0, 1).toUpperCase()}</span>
+                {user.displayName}
+              </button>
+              <button type="button" className="text-button" onClick={onLogout}>退出</button>
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={() => onNavigate(PageKey.Login)}
+              className="button-secondary topbar-login-button"
+            >
+              登录
+            </button>
+          )}
         </div>
       </header>
 

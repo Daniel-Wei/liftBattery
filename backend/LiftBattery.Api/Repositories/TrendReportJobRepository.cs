@@ -100,6 +100,7 @@ public sealed class TrendReportJobRepository : ITrendReportJobRepository
             PartitionKey = PartitionKeyValue,
             RowKey = job.Id.ToString(),
             Status = job.Status,
+            UserId = job.UserId,
             ProgressPercent = job.ProgressPercent,
             CurrentStage = job.CurrentStage,
             RequestJson = JsonSerializer.Serialize(job.Request, _jsonOptions),
@@ -127,6 +128,7 @@ public sealed class TrendReportJobRepository : ITrendReportJobRepository
 
         return new TrendReportJob(
             int.Parse(entity.RowKey),
+            entity.UserId,
             entity.Status,
             entity.ProgressPercent,
             entity.CurrentStage,
@@ -147,6 +149,7 @@ public sealed class TrendReportJobRepository : ITrendReportJobRepository
         public DateTimeOffset? Timestamp { get; set; }
         public ETag ETag { get; set; }
         public string Status { get; set; } = TrendReportJobStatuses.Queued;
+        public int UserId { get; set; }
         public int ProgressPercent { get; set; }
         public string CurrentStage { get; set; } = string.Empty;
         public string RequestJson { get; set; } = string.Empty;

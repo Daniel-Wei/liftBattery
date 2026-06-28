@@ -37,5 +37,10 @@ public sealed class TrainingDayEntityConfiguration
             })
             .IsUnique()
             .HasDatabaseName("UX_TrainingDays_UserId_Date");
+
+        builder.HasOne<LiftBattery.Api.Data.Entities.User>()
+            .WithMany()
+            .HasForeignKey(entity => entity.UserId)
+            .OnDelete(DeleteBehavior.Restrict);
     }
 }

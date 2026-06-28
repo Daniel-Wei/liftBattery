@@ -2,27 +2,26 @@ using System.Globalization;
 using System.Net;
 using System.Text.Json;
 using LiftBattery.Api.DTOs;
-using LiftBattery.Api.Options;
 using LiftBattery.Api.Services;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Azure.Functions.Worker.Http;
-using Microsoft.Extensions.Options;
 
 namespace LiftBattery.Api.Functions;
 
 public sealed class PreCheckFunctions
 {
-    private const string UserIdHeader = "X-LiftBattery-User-Id";
-
     private readonly IPreCheckService _service;
-    private readonly int _defaultUserId;
+    private readonly IAuthService _authService;
+    private readonly AuthCookieHelper _cookieHelper;
 
     public PreCheckFunctions(
         IPreCheckService service,
-        IOptions<PreCheckOptions> options)
+        IAuthService authService,
+        AuthCookieHelper cookieHelper)
     {
         _service = service;
-        _defaultUserId = options.Value.DefaultUserId;
+        _authService = authService;
+        _cookieHelper = cookieHelper;
     }
 
     [Function("GetTodayPreCheck")]
@@ -32,8 +31,11 @@ public sealed class PreCheckFunctions
     {
         try
         {
+            var userId = await GetRequiredUserIdAsync(request, cancellationToken);
+            if (userId is null) return await WriteUnauthorizedAsync(request, cancellationToken);
+
             var todayLog = await _service.GetByDateAsync(
-                GetUserId(request),
+                userId.Value,
                 DateOnly.FromDateTime(DateTime.UtcNow),
                 cancellationToken);
             var response = request.CreateResponse(HttpStatusCode.OK);
@@ -57,8 +59,11 @@ public sealed class PreCheckFunctions
     {
         try
         {
+            var userId = await GetRequiredUserIdAsync(request, cancellationToken);
+            if (userId is null) return await WriteUnauthorizedAsync(request, cancellationToken);
+
             var date = ParseDate(GetQueryParameter(request.Url, "date"), "date");
-            var log = await _service.GetByDateAsync(GetUserId(request), date, cancellationToken);
+            var log = await _service.GetByDateAsync(userId.Value, date, cancellationToken);
 
             var response = request.CreateResponse(HttpStatusCode.OK);
             await response.WriteAsJsonAsync(log, cancellationToken);
@@ -81,10 +86,13 @@ public sealed class PreCheckFunctions
     {
         try
         {
+            var userId = await GetRequiredUserIdAsync(request, cancellationToken);
+            if (userId is null) return await WriteUnauthorizedAsync(request, cancellationToken);
+
             var from = ParseDate(GetQueryParameter(request.Url, "from"), "from");
             var to = ParseDate(GetQueryParameter(request.Url, "to"), "to");
             var logs = await _service.GetByDateRangeAsync(
-                GetUserId(request),
+                userId.Value,
                 from,
                 to,
                 cancellationToken);
@@ -109,6 +117,9 @@ public sealed class PreCheckFunctions
     {
         try
         {
+            var userId = await GetRequiredUserIdAsync(request, cancellationToken);
+            if (userId is null) return await WriteUnauthorizedAsync(request, cancellationToken);
+
             var dto = await request.ReadFromJsonAsync<PreCheckDto>(cancellationToken);
 
             if (dto is null)
@@ -121,7 +132,7 @@ public sealed class PreCheckFunctions
             }
 
             var savedLog = await _service.SaveAsync(
-                GetUserId(request),
+                userId.Value,
                 dto,
                 cancellationToken);
             var response = request.CreateResponse(HttpStatusCode.OK);
@@ -154,8 +165,11 @@ public sealed class PreCheckFunctions
     {
         try
         {
+            var userId = await GetRequiredUserIdAsync(request, cancellationToken);
+            if (userId is null) return await WriteUnauthorizedAsync(request, cancellationToken);
+
             var deletedLog = await _service.DeleteAsync(
-                GetUserId(request),
+                userId.Value,
                 id,
                 cancellationToken);
 
@@ -182,19 +196,13 @@ public sealed class PreCheckFunctions
         }
     }
 
-    private int GetUserId(HttpRequestData request)
+    private Task<int?> GetRequiredUserIdAsync(
+        HttpRequestData request,
+        CancellationToken cancellationToken)
     {
-        if (request.Headers.TryGetValues(UserIdHeader, out var values))
-        {
-            var headerValue = values.FirstOrDefault();
-
-            if (int.TryParse(headerValue, out var userId) && userId > 0)
-            {
-                return userId;
-            }
-        }
-
-        return _defaultUserId;
+        return _authService.GetCurrentUserIdAsync(
+            _cookieHelper.ReadSessionToken(request),
+            cancellationToken);
     }
 
     private static DateOnly ParseDate(string? value, string name)
@@ -247,5 +255,16 @@ public sealed class PreCheckFunctions
         var response = request.CreateResponse(statusCode);
         await response.WriteAsJsonAsync(new { message }, cancellationToken);
         return response;
+    }
+
+    private static Task<HttpResponseData> WriteUnauthorizedAsync(
+        HttpRequestData request,
+        CancellationToken cancellationToken)
+    {
+        return WriteErrorAsync(
+            request,
+            HttpStatusCode.Unauthorized,
+            "Authentication is required.",
+            cancellationToken);
     }
 }

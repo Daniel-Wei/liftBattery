@@ -7,6 +7,8 @@ namespace LiftBattery.Api.Data;
 public sealed class LiftBatteryDbContext(DbContextOptions<LiftBatteryDbContext> options)
     : DbContext(options)
 {
+    public DbSet<User> Users => Set<User>();
+    public DbSet<AuthSession> AuthSessions => Set<AuthSession>();
     public DbSet<PreCheck> PreChecks => Set<PreCheck>();
     public DbSet<TrainingSet> TrainingSets => Set<TrainingSet>();
     public DbSet<TrainingExercise> TrainingExercises => Set<TrainingExercise>();

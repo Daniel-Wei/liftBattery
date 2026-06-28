@@ -31,9 +31,14 @@ var host = new HostBuilder()
             context.Configuration.GetSection(PreCheckOptions.SectionName));
         services.Configure<TrainingOptions>(
             context.Configuration.GetSection(TrainingOptions.SectionName));
+        services.Configure<AuthOptions>(
+            context.Configuration.GetSection(AuthOptions.SectionName));
         services.AddDbContext<LiftBatteryDbContext>(options =>
             options.UseSqlServer(databaseConnection, sqlOptions => sqlOptions.EnableRetryOnFailure()));
         services.AddSingleton(TimeProvider.System);
+        services.AddSingleton<PasswordHashingService>();
+        services.AddScoped<AuthCookieHelper>();
+        services.AddScoped<IAuthService, AuthService>();
         services.AddScoped<IPreCheckRepository, PreCheckRepository>();
         services.AddScoped<ITrainingRepository, TrainingRepository>();
         services.AddScoped<IPreCheckService, PreCheckService>();

@@ -3,6 +3,7 @@ import { preCheckSliceReducer } from "./slices/preCheckSlice";
 import { trainingSliceReducer } from "./slices/trainingSlice";
 import { programSettingsSliceReducer } from "./slices/programSettingsSlice";
 import { trendReportSliceReducer } from "./slices/trendReportSlice";
+import { authSliceReducer } from "./slices/authSlice";
 
 export const liftBatteryStore = configureStore({
   reducer: {
@@ -10,6 +11,7 @@ export const liftBatteryStore = configureStore({
     training: trainingSliceReducer,
     programSettings: programSettingsSliceReducer,
     trendReport: trendReportSliceReducer,
+    auth: authSliceReducer,
   },
 });
 

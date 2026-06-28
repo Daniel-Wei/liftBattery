@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { CheckboxDropdown } from "../components/CheckboxDropdown";
+import { MuscleStimulationReport } from "../components/MuscleStimulationReport";
 import { TrendsReportChart } from "../components/TrendsReportChart";
 import type { CreateTrendReportRequestDto } from "../api/dtos";
 import {
@@ -322,6 +323,9 @@ export function TrendsPage() {
 
       {job?.status === "Completed" && job.result ? (
         <div className="trend-report-results">
+          {job.result.muscleStimulation ? (
+            <MuscleStimulationReport report={job.result.muscleStimulation} />
+          ) : null}
           {job.result.charts.map((chart) => (
             <TrendsReportChart
               key={chart.type}

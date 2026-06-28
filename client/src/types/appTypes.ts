@@ -1,9 +1,12 @@
 export enum PageKey {
   Landing = "landing",
+  Login = "login",
+  Register = "register",
   Overview = "overview",
   PreCheck = "preCheck",
   Training = "training",
   Trends = "trends",
+  Profile = "profile",
 }
 
 export type NavItem = {
@@ -396,7 +399,40 @@ export type TrendReportType =
   | "sleep"
   | "sessionLoad"
   | "volume"
-  | "estimatedPr";
+  | "estimatedPr"
+  | "muscleStimulation";
+
+export type MuscleMapKey =
+  | "chest"
+  | "back"
+  | "frontDeltoid"
+  | "sideDeltoid"
+  | "rearDeltoid"
+  | "biceps"
+  | "triceps"
+  | "abs"
+  | "glutes"
+  | "quads"
+  | "hamstrings"
+  | "calves";
+
+export type MuscleActivationRole = "primary" | "secondary" | "supporting";
+
+export type MuscleActivation = {
+  muscle: MuscleMapKey;
+  role: MuscleActivationRole;
+  contribution: number;
+};
+
+export type AuthUser = {
+  id: number;
+  displayName: string;
+  email: string;
+  trainingGoal?: string;
+  weeklyTargetTrainingDays: number;
+  preferredUnit: "kg" | "lb";
+  createdAtUtc: string;
+};
 
 export type ExerciseSummary = {
   key: string;

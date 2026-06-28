@@ -14,6 +14,7 @@ public sealed class TrendReportService : ITrendReportService
         "sessionLoad",
         "volume",
         "estimatedPr",
+        "muscleStimulation",
     };
 
     private static readonly HashSet<string> SupportedMuscleGroups = new(StringComparer.Ordinal)
@@ -44,7 +45,6 @@ public sealed class TrendReportService : ITrendReportService
     private readonly IPreCheckRepository _preCheckRepository;
     private readonly ITrendReportQueue _queue;
     private readonly int _demoDelayMilliseconds;
-    private readonly int _defaultUserId;
 
     public TrendReportService(
         ITrendReportJobRepository jobRepository,
@@ -62,32 +62,36 @@ public sealed class TrendReportService : ITrendReportService
             out var configuredDelay)
                 ? Math.Clamp(configuredDelay, 0, 10_000)
                 : 0;
-        _defaultUserId = int.TryParse(configuration["PreCheck:DefaultUserId"], out var defaultUserId)
-            ? defaultUserId
-            : 1;
     }
 
     // Synchronous producer path:
     // 1. validate the request and capture a submission-time data snapshot
     // 2. persist the initial Queued job in Azure Table Storage
     // 3. enqueue the job ID for background processing
-    public async Task<TrendReportJobDto> CreateAsync(CreateTrendReportRequestDto request)
+    public async Task<TrendReportJobDto> CreateAsync(int userId, CreateTrendReportRequestDto request)
     {
+        ValidateUserId(userId);
         // Validate and normalize the request DTO.
         var validatedRequest = ValidateRequest(request);
 
         // Load the database records used for the submission-time snapshot.
+        var reportDayCount = validatedRequest.EndWeek.AddDays(6).DayNumber
+            - validatedRequest.StartWeek.DayNumber
+            + 1;
+        var snapshotStart = validatedRequest.StartWeek.AddDays(-reportDayCount);
         var rangeEnd = validatedRequest.EndWeek.AddDays(6);
         var trainingDays = await _trainingRepository.GetByDateRangeAsync(
-            _defaultUserId,
-            validatedRequest.StartWeek,
+            userId,
+            snapshotStart,
             rangeEnd);
         var preCheckLogs = await _preCheckRepository.GetByDateRangeAsync(
-            validatedRequest.StartWeek,
+            userId,
+            snapshotStart,
             rangeEnd);
         var now = DateTimeOffset.UtcNow;
         var job = new TrendReportJob(
             Random.Shared.Next(1, int.MaxValue),
+            userId,
             TrendReportJobStatuses.Queued,
             0,
             "等待后台处理",
@@ -125,10 +129,11 @@ public sealed class TrendReportService : ITrendReportService
         return ToDto(job);
     }
 
-    public async Task<TrendReportJobDto?> GetByIdAsync(int id)
+    public async Task<TrendReportJobDto?> GetByIdAsync(int userId, int id)
     {
+        ValidateUserId(userId);
         var job = await _jobRepository.GetByIdAsync(id);
-        return job is null ? null : ToDto(job);
+        return job is null || job.UserId != userId ? null : ToDto(job);
     }
 
     // Asynchronous consumer path:
@@ -269,6 +274,7 @@ public sealed class TrendReportService : ITrendReportService
             .Where(session => session.Sets.Count > 0)
             .ToList();
         var charts = new List<TrendReportChartDto>();
+        MuscleStimulationReportDto? muscleStimulation = null;
 
         if (request.ReportTypes.Contains("readiness", StringComparer.Ordinal))
         {
@@ -309,11 +315,20 @@ public sealed class TrendReportService : ITrendReportService
             charts.Add(CreateEstimatedPrChart(weeks, trainingSessions, request.Selections));
         }
 
+        if (request.ReportTypes.Contains("muscleStimulation", StringComparer.Ordinal))
+        {
+            muscleStimulation = CreateMuscleStimulationReport(
+                request.StartWeek,
+                request.EndWeek,
+                filteredSessions);
+        }
+
         return new TrendReportResultDto(
             request.StartWeek.ToString("yyyy-MM-dd"),
             request.EndWeek.ToString("yyyy-MM-dd"),
             weeks.Select(week => week.Label).ToList(),
-            charts);
+            charts,
+            muscleStimulation);
     }
 
     private static TrendReportChartDto CreatePreCheckChart(
@@ -464,9 +479,174 @@ public sealed class TrendReportService : ITrendReportService
                         exercise.ExerciseName,
                         set.Reps,
                         set.WeightKg,
+                        set.Rpe,
+                        set.Rir,
                         set.IsWarmup))).ToList(),
                 session.UpdatedAtUtc)))
             .ToList();
+    }
+
+    private static MuscleStimulationReportDto CreateMuscleStimulationReport(
+        DateOnly startDate,
+        DateOnly endWeek,
+        IReadOnlyList<ReportTrainingSession> sessions)
+    {
+        var endDate = endWeek.AddDays(6);
+        var days = Math.Max(1, endDate.DayNumber - startDate.DayNumber + 1);
+        var previousStart = startDate.AddDays(-days);
+        var previousEnd = startDate.AddDays(-1);
+        var currentScores = CalculateMuscleScores(sessions, startDate, endDate);
+        var previousScores = CalculateMuscleScores(sessions, previousStart, previousEnd);
+        var total = currentScores.Values.Sum();
+
+        var muscles = currentScores
+            .OrderByDescending(item => item.Value)
+            .Select(item =>
+            {
+                previousScores.TryGetValue(item.Key, out var previousScore);
+                var change = previousScore == 0
+                    ? item.Value > 0 ? 100m : 0m
+                    : ((item.Value - previousScore) / previousScore) * 100m;
+                var percentage = total == 0 ? 0 : (item.Value / total) * 100m;
+
+                return new MuscleStimulationItemDto(
+                    item.Key,
+                    Math.Round(item.Value, 0),
+                    Math.Round(percentage, 0),
+                    Math.Round(change, 0),
+                    GetStimulusLevel(percentage));
+            })
+            .ToList();
+
+        var previousTotal = previousScores.Values.Sum();
+        var totalChange = previousTotal == 0
+            ? total > 0 ? 100m : 0m
+            : ((total - previousTotal) / previousTotal) * 100m;
+
+        return new MuscleStimulationReportDto(
+            Math.Round(total, 0),
+            Math.Round(totalChange, 1),
+            muscles.Count(muscle => muscle.Level == "high"),
+            muscles.Count(muscle => muscle.Level == "low"),
+            muscles);
+    }
+
+    private static Dictionary<string, decimal> CalculateMuscleScores(
+        IReadOnlyList<ReportTrainingSession> sessions,
+        DateOnly startDate,
+        DateOnly endDate)
+    {
+        var scores = new Dictionary<string, decimal>(StringComparer.Ordinal);
+
+        foreach (var set in sessions
+            .Where(session => session.Date >= startDate && session.Date <= endDate)
+            .SelectMany(session => session.Sets)
+            .Where(set => !set.IsWarmup))
+        {
+            foreach (var contribution in GetMuscleContributions(set.MuscleGroup, set.ExerciseName))
+            {
+                var rirFactor = set.Rir.HasValue
+                    ? Math.Clamp((5m - set.Rir.Value) / 5m, 0.2m, 1.2m)
+                    : 1m;
+                var rpeFactor = set.Rpe.HasValue
+                    ? Math.Clamp(set.Rpe.Value / 8m, 0.6m, 1.25m)
+                    : 1m;
+                var setScore = Math.Max(1, set.Reps)
+                    * Math.Max(1m, set.WeightKg)
+                    * contribution.Contribution
+                    * rirFactor
+                    * rpeFactor
+                    / 10m;
+
+                scores[contribution.Muscle] = scores.GetValueOrDefault(contribution.Muscle) + setScore;
+            }
+        }
+
+        foreach (var muscle in SupportedMuscleGroups)
+        {
+            scores.TryAdd(muscle, 0);
+        }
+
+        return scores;
+    }
+
+    private static IReadOnlyList<MuscleContribution> GetMuscleContributions(
+        string muscleGroup,
+        string exerciseName)
+    {
+        var normalizedExercise = exerciseName.ToLowerInvariant();
+
+        if (normalizedExercise.Contains("bench", StringComparison.Ordinal)
+            || normalizedExercise.Contains("push-up", StringComparison.Ordinal)
+            || normalizedExercise.Contains("dip", StringComparison.Ordinal))
+        {
+            return new[]
+            {
+                new MuscleContribution("Chest", 1.0m),
+                new MuscleContribution("Triceps", 0.45m),
+                new MuscleContribution("Shoulders", 0.35m),
+            };
+        }
+
+        if (normalizedExercise.Contains("row", StringComparison.Ordinal)
+            || normalizedExercise.Contains("pull", StringComparison.Ordinal))
+        {
+            return new[]
+            {
+                new MuscleContribution("Back", 1.0m),
+                new MuscleContribution("Biceps", 0.45m),
+                new MuscleContribution("Shoulders", 0.2m),
+            };
+        }
+
+        if (normalizedExercise.Contains("squat", StringComparison.Ordinal)
+            || normalizedExercise.Contains("leg press", StringComparison.Ordinal)
+            || normalizedExercise.Contains("lunge", StringComparison.Ordinal))
+        {
+            return new[]
+            {
+                new MuscleContribution("Quads", 1.0m),
+                new MuscleContribution("Glutes", 0.55m),
+                new MuscleContribution("Hamstrings", 0.25m),
+            };
+        }
+
+        if (normalizedExercise.Contains("deadlift", StringComparison.Ordinal)
+            || normalizedExercise.Contains("leg curl", StringComparison.Ordinal)
+            || normalizedExercise.Contains("good morning", StringComparison.Ordinal))
+        {
+            return new[]
+            {
+                new MuscleContribution("Hamstrings", 1.0m),
+                new MuscleContribution("Glutes", 0.65m),
+                new MuscleContribution("Back", 0.35m),
+            };
+        }
+
+        if (normalizedExercise.Contains("press", StringComparison.Ordinal)
+            || normalizedExercise.Contains("raise", StringComparison.Ordinal)
+            || normalizedExercise.Contains("delt", StringComparison.Ordinal))
+        {
+            return new[]
+            {
+                new MuscleContribution("Shoulders", 1.0m),
+                new MuscleContribution("Triceps", 0.35m),
+                new MuscleContribution("Chest", 0.2m),
+            };
+        }
+
+        return new[]
+        {
+            new MuscleContribution(muscleGroup, 1.0m),
+        };
+    }
+
+    private static string GetStimulusLevel(decimal percentage)
+    {
+        if (percentage >= 22) return "high";
+        if (percentage >= 10) return "medium";
+        if (percentage > 0) return "low";
+        return "none";
     }
 
     private static decimal GetReadinessScore(PreCheckModel log)
@@ -496,6 +676,14 @@ public sealed class TrendReportService : ITrendReportService
     private static string GetSelectionKey(string muscleGroup, string exerciseName)
     {
         return $"{muscleGroup}::{exerciseName}";
+    }
+
+    private static void ValidateUserId(int userId)
+    {
+        if (userId <= 0)
+        {
+            throw new ArgumentException("User id must be positive.");
+        }
     }
 
     private static TrendReportJobDto ToDto(TrendReportJob job)
@@ -530,5 +718,9 @@ public sealed class TrendReportService : ITrendReportService
         string ExerciseName,
         int Reps,
         decimal WeightKg,
+        decimal? Rpe,
+        decimal? Rir,
         bool IsWarmup);
+
+    private sealed record MuscleContribution(string Muscle, decimal Contribution);
 }

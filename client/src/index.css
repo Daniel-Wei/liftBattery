@@ -194,6 +194,480 @@
   gap: 0.4rem;
 }
 
+.training-exercise-editor--with-preview {
+  grid-template-columns: minmax(0, 3fr) minmax(18rem, 2fr);
+  align-items: start;
+}
+
+.training-exercise-input-panel {
+  display: grid;
+  gap: 1rem;
+  min-width: 0;
+}
+
+.muscle-viewer,
+.muscle-stimulation-report,
+.profile-card,
+.auth-card {
+  border: 1px solid var(--color-border);
+  border-radius: 1rem;
+  background: var(--gradient-card);
+  box-shadow: var(--shadow-card);
+}
+
+.muscle-viewer {
+  display: grid;
+  gap: 1rem;
+  padding: 1rem;
+}
+
+.muscle-viewer-header,
+.muscle-stimulation-header,
+.profile-actions,
+.auth-switch,
+.user-menu {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.muscle-viewer-header h3 {
+  margin: 0.2rem 0 0;
+  font-size: 1rem;
+}
+
+.muscle-view-toggle {
+  display: inline-flex;
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  background: var(--color-surface);
+  padding: 0.2rem;
+}
+
+.muscle-view-toggle button {
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--color-ink-muted);
+  font-size: 0.78rem;
+  font-weight: var(--weight-semibold);
+  padding: 0.45rem 0.7rem;
+}
+
+.muscle-view-toggle button.active {
+  background: var(--color-accent-strong);
+  color: var(--color-inverse);
+}
+
+.muscle-viewer-body,
+.muscle-stimulation-grid {
+  display: grid;
+  gap: 1rem;
+}
+
+.muscle-figure-panel,
+.stimulation-figure-panel {
+  display: grid;
+  place-items: center;
+  gap: 0.75rem;
+  min-height: 20rem;
+  border-radius: 0.9rem;
+  background:
+    radial-gradient(circle at 50% 42%, rgba(255, 255, 255, 0.95), transparent 42%),
+    radial-gradient(circle at 50% 48%, rgba(142, 210, 244, 0.18), transparent 68%),
+    var(--color-surface-soft);
+  padding: 0.75rem;
+}
+
+.muscle-figure-panel--dual {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+.muscle-svg-viewer {
+  display: grid;
+  gap: 0.4rem;
+  justify-items: center;
+  min-height: 18rem;
+  width: 100%;
+}
+
+.muscle-svg-toolbar {
+  display: inline-flex;
+  justify-self: end;
+  overflow: hidden;
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.72);
+  box-shadow: 0 8px 18px rgba(45, 104, 140, 0.1);
+}
+
+.muscle-svg-toolbar button {
+  min-width: 2rem;
+  border: 0;
+  background: transparent;
+  color: var(--color-ink-muted);
+  font-size: 0.78rem;
+  font-weight: var(--weight-semibold);
+  padding: 0.32rem 0.55rem;
+}
+
+.muscle-svg-toolbar button:hover {
+  background: var(--color-accent-wash);
+  color: var(--color-accent-strong);
+}
+
+.muscle-svg-canvas {
+  display: grid;
+  width: 100%;
+  max-height: 23rem;
+  overflow: auto;
+  place-items: start center;
+  scrollbar-width: thin;
+}
+
+.muscle-svg-canvas svg {
+  display: block;
+  height: auto;
+  overflow: visible;
+  max-width: none;
+  width: calc(17rem * var(--muscle-zoom, 1));
+  filter:
+    drop-shadow(0 18px 24px rgba(45, 104, 140, 0.16))
+    drop-shadow(0 2px 2px rgba(255, 255, 255, 0.8));
+}
+
+.muscle-svg-viewer--muted {
+  opacity: 0.72;
+}
+
+.muscle-model-viewer {
+  display: grid;
+  gap: 0.4rem;
+  justify-items: center;
+  min-height: 18rem;
+  width: 100%;
+}
+
+.muscle-model-viewer--muted {
+  opacity: 0.72;
+}
+
+.muscle-model-canvas {
+  position: relative;
+  width: 100%;
+  height: 21rem;
+  overflow: hidden;
+  border-radius: 0.85rem;
+  background:
+    radial-gradient(circle at 50% 42%, rgba(255, 255, 255, 0.92), transparent 42%),
+    radial-gradient(circle at 50% 48%, rgba(142, 210, 244, 0.2), transparent 72%);
+}
+
+.muscle-model-canvas canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.muscle-model-canvas .muscle-svg-loading,
+.muscle-model-canvas .muscle-svg-empty {
+  position: absolute;
+  inset: 0.75rem;
+}
+
+.muscle-model-selected {
+  margin: 0;
+  color: var(--color-ink-muted);
+  font-size: 0.78rem;
+  text-align: center;
+}
+
+.muscle-svg-path {
+  cursor: pointer;
+  mix-blend-mode: multiply;
+  stroke: rgba(36, 47, 56, 0.52);
+  stroke-linejoin: round;
+  transition:
+    fill 160ms ease,
+    fill-opacity 160ms ease,
+    filter 160ms ease,
+    stroke 160ms ease,
+    stroke-width 160ms ease;
+  vector-effect: non-scaling-stroke;
+}
+
+.muscle-svg-path:hover,
+.muscle-svg-path:focus {
+  filter: brightness(1.08) saturate(1.06);
+  outline: none;
+  stroke: rgba(15, 45, 73, 0.82);
+}
+
+.muscle-svg-path.is-selected {
+  filter: brightness(1.1) saturate(1.08);
+  stroke: var(--color-accent-strong);
+  stroke-width: 2;
+}
+
+.muscle-svg-loading,
+.muscle-svg-empty {
+  display: grid;
+  min-height: 15rem;
+  place-items: center;
+  text-align: center;
+}
+
+.muscle-svg-empty {
+  align-content: center;
+  border: 1px dashed rgba(45, 104, 140, 0.32);
+  border-radius: 0.9rem;
+  color: var(--color-ink-muted);
+  gap: 0.4rem;
+  padding: 1rem;
+  width: 100%;
+}
+
+.muscle-svg-empty strong {
+  color: var(--color-ink);
+  font-size: 0.95rem;
+}
+
+.muscle-svg-empty small {
+  color: var(--color-accent-strong);
+  font-weight: var(--weight-semibold);
+}
+
+.muscle-svg-empty p {
+  margin: 0;
+  max-width: 18rem;
+}
+
+.muscle-svg-dev-note {
+  margin: 0;
+  border: 1px dashed rgba(148, 113, 16, 0.28);
+  border-radius: 0.7rem;
+  background: rgba(250, 204, 21, 0.1);
+  color: #805b10;
+  font-size: 0.78rem;
+  padding: 0.45rem 0.65rem;
+  text-align: center;
+}
+
+.muscle-svg-empty-icon {
+  display: grid;
+  width: 2.4rem;
+  height: 2.4rem;
+  place-items: center;
+  border-radius: 999px;
+  background: var(--color-accent-wash);
+  color: var(--color-accent-strong);
+  font-size: 1.4rem;
+  font-weight: var(--weight-bold);
+}
+
+.muscle-legend {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.45rem 0.8rem;
+  color: var(--color-ink-muted);
+  font-size: 0.78rem;
+}
+
+.muscle-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.muscle-legend i {
+  display: inline-block;
+  width: 0.62rem;
+  height: 0.62rem;
+  border-radius: 999px;
+}
+
+.muscle-legend .is-primary {
+  background: #dc2626;
+}
+
+.muscle-legend .is-secondary {
+  background: #f97316;
+}
+
+.muscle-legend .is-supporting {
+  background: #facc15;
+}
+
+.muscle-legend .is-inactive {
+  background: #e5e7eb;
+  border: 1px solid var(--color-border);
+}
+
+.stimulation-empty-note {
+  margin: 0.4rem 0 0;
+  color: var(--color-ink-muted);
+  font-size: 0.82rem;
+  text-align: center;
+}
+
+.muscle-activation-list,
+.stimulation-ranking,
+.stimulation-summary,
+.auth-form {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.muscle-activation-row,
+.stimulation-ranking-row {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  gap: 0.5rem;
+  align-items: center;
+  color: var(--color-ink-muted);
+  font-size: 0.82rem;
+}
+
+.muscle-activation-row {
+  width: 100%;
+  border: 1px solid transparent;
+  border-radius: 0.75rem;
+  background: transparent;
+  text-align: left;
+  padding: 0.35rem 0.45rem;
+}
+
+.muscle-activation-row:hover,
+.muscle-activation-row.is-selected {
+  border-color: rgba(37, 99, 235, 0.18);
+  background: var(--color-accent-wash);
+  color: var(--color-ink);
+}
+
+.muscle-activation-row i,
+.stimulation-ranking-row i {
+  grid-column: 1 / -1;
+  display: block;
+  height: 0.42rem;
+  border-radius: 999px;
+  background: var(--color-accent-strong);
+}
+
+.muscle-tip,
+.muscle-stimulation-note {
+  margin: 0;
+  border-radius: 0.8rem;
+  background: var(--color-accent-wash);
+  color: var(--color-ink-muted);
+  font-size: 0.82rem;
+  padding: 0.75rem;
+}
+
+.muscle-stimulation-report {
+  display: grid;
+  gap: 1rem;
+  padding: 1.1rem;
+}
+
+.muscle-stimulation-grid {
+  grid-template-columns: minmax(18rem, 1.25fr) minmax(16rem, 1.2fr) minmax(12rem, 0.9fr);
+}
+
+.stimulation-summary {
+  align-content: start;
+}
+
+.stimulation-summary > div {
+  border: 1px solid var(--color-border);
+  border-radius: 0.85rem;
+  background: var(--color-surface);
+  padding: 0.85rem;
+}
+
+.stimulation-summary span {
+  display: block;
+  color: var(--color-ink-muted);
+  font-size: 0.78rem;
+}
+
+.stimulation-summary strong {
+  display: block;
+  margin-top: 0.25rem;
+  font-size: 1.45rem;
+}
+
+.auth-page {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  background: var(--gradient-page);
+  padding: 1rem;
+}
+
+.auth-card {
+  width: min(100%, 30rem);
+  padding: 1.4rem;
+}
+
+.auth-card--wide {
+  width: min(100%, 44rem);
+}
+
+.auth-form {
+  margin-top: 1rem;
+}
+
+.auth-form--grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.auth-form-span {
+  grid-column: 1 / -1;
+}
+
+.auth-switch {
+  margin-top: 1rem;
+}
+
+.profile-card {
+  padding: 1.2rem;
+}
+
+.success-text {
+  margin: 0;
+  color: var(--color-good-text);
+  font-weight: var(--weight-semibold);
+}
+
+.user-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  background: var(--color-surface);
+  color: var(--color-ink);
+  font-weight: var(--weight-semibold);
+  padding: 0.45rem 0.75rem;
+}
+
+.user-chip span {
+  display: inline-grid;
+  width: 1.7rem;
+  height: 1.7rem;
+  place-items: center;
+  border-radius: 999px;
+  background: var(--color-accent-strong);
+  color: var(--color-inverse);
+}
+
+.topbar-login-button {
+  color: var(--color-ink);
+}
+
 @media (max-width: 900px) {
   .training-session-form--header {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -202,6 +676,21 @@
   .saved-session-controls--three {
     grid-template-columns: 1fr;
     width: 100%;
+  }
+
+  .training-exercise-editor--with-preview,
+  .muscle-stimulation-grid,
+  .auth-form--grid {
+    grid-template-columns: 1fr;
+  }
+
+  .muscle-viewer-header,
+  .muscle-stimulation-header,
+  .profile-actions,
+  .auth-switch,
+  .user-menu {
+    align-items: flex-start;
+    flex-direction: column;
   }
 }
 

@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { SectionCard } from "../components/SectionCard";
 import { StatusBadge } from "../components/StatusBadge";
+import { MuscleViewer } from "../components/MuscleViewer";
+import { getExerciseMuscleContribution } from "../domain/exerciseMuscleMap";
 import { getOptionalNumber } from "../helpers/GenericHelpers";
 import {
   getExerciseDisplayLabel,
@@ -178,57 +180,68 @@ export function TrainingPage() {
         <div className="training-exercise-stack training-exercise-stack--friendly">
           {trainingSessionDraft.exercises.map((exercise, exerciseIndex) => {
             const exerciseOptions = getExerciseOptionsForMuscleGroup(exercise.muscleGroup);
+            const muscleContribution = getExerciseMuscleContribution(
+              exercise.exerciseName,
+              exercise.muscleGroup,
+            );
 
             return (
-              <article className="training-exercise-editor" key={exercise.id}>
-                <div className="training-editor-heading">
-                  <div>
-                    <p className="section-eyebrow">动作 {exerciseIndex + 1}</p>
-                    <h3>{getExerciseDisplayLabel(exercise.exerciseName)}</h3>
+              <article className="training-exercise-editor training-exercise-editor--with-preview" key={exercise.id}>
+                <div className="training-exercise-input-panel">
+                  <div className="training-editor-heading">
+                    <div>
+                      <p className="section-eyebrow">动作 {exerciseIndex + 1}</p>
+                      <h3>{getExerciseDisplayLabel(exercise.exerciseName)}</h3>
+                    </div>
+                    <button type="button" className="text-button" disabled={trainingSessionDraft.exercises.length === 1} onClick={() => dispatch(removeTrainingExercise(exercise.id))}>
+                      删除动作
+                    </button>
                   </div>
-                  <button type="button" className="text-button" disabled={trainingSessionDraft.exercises.length === 1} onClick={() => dispatch(removeTrainingExercise(exercise.id))}>
-                    删除动作
-                  </button>
-                </div>
 
-                <div className="training-session-form training-session-form--exercise">
-                  <label className="training-form-field">
-                    <span className="training-form-label">主要肌群</span>
-                    <select className="training-input" value={exercise.muscleGroup} onChange={(event) => dispatch(updateTrainingExercise({ exerciseId: exercise.id, field: "muscleGroup", value: event.target.value }))}>
-                      {muscleGroupOptions.map((muscleGroup) => <option key={muscleGroup} value={muscleGroup}>{getMuscleGroupDisplayLabel(muscleGroup)}</option>)}
-                    </select>
-                  </label>
-                  <label className="training-form-field">
-                    <span className="training-form-label">动作</span>
-                    <select className="training-input" value={exercise.exerciseName} onChange={(event) => dispatch(updateTrainingExercise({ exerciseId: exercise.id, field: "exerciseName", value: event.target.value }))}>
-                      {exerciseOptions.map((exerciseName) => <option key={exerciseName} value={exerciseName}>{getExerciseDisplayLabel(exerciseName)}</option>)}
-                    </select>
-                  </label>
-                </div>
+                  <div className="training-session-form training-session-form--exercise">
+                    <label className="training-form-field">
+                      <span className="training-form-label">主要肌群</span>
+                      <select className="training-input" value={exercise.muscleGroup} onChange={(event) => dispatch(updateTrainingExercise({ exerciseId: exercise.id, field: "muscleGroup", value: event.target.value }))}>
+                        {muscleGroupOptions.map((muscleGroup) => <option key={muscleGroup} value={muscleGroup}>{getMuscleGroupDisplayLabel(muscleGroup)}</option>)}
+                      </select>
+                    </label>
+                    <label className="training-form-field">
+                      <span className="training-form-label">动作</span>
+                      <select className="training-input" value={exercise.exerciseName} onChange={(event) => dispatch(updateTrainingExercise({ exerciseId: exercise.id, field: "exerciseName", value: event.target.value }))}>
+                        {exerciseOptions.map((exerciseName) => <option key={exerciseName} value={exerciseName}>{getExerciseDisplayLabel(exerciseName)}</option>)}
+                      </select>
+                    </label>
+                  </div>
 
-                <div className="training-set-table-wrap">
-                  <table className="training-set-table">
-                    <thead><tr><th>组</th><th>次数</th><th>重量 kg</th><th>单组难度</th><th>剩余次数</th><th>类型</th><th /></tr></thead>
-                    <tbody>
-                      {exercise.sets.map((set, setIndex) => (
-                        <tr key={set.id}>
-                          <td className="training-set-number">{setIndex + 1}</td>
-                          <td><input aria-label={`动作 ${exerciseIndex + 1} 第 ${setIndex + 1} 组次数`} type="number" min="1" value={set.reps} onChange={(event) => dispatch(updateTrainingSet({ exerciseId: exercise.id, setId: set.id, field: "reps", value: Number(event.target.value) }))} /></td>
-                          <td><input aria-label={`动作 ${exerciseIndex + 1} 第 ${setIndex + 1} 组重量`} type="number" min="0" step="0.5" value={set.weightKg} onChange={(event) => dispatch(updateTrainingSet({ exerciseId: exercise.id, setId: set.id, field: "weightKg", value: Number(event.target.value) }))} /></td>
-                          <td><input aria-label={`动作 ${exerciseIndex + 1} 第 ${setIndex + 1} 组难度`} type="number" min="1" max="10" step="0.5" value={set.rpe ?? ""} onChange={(event) => dispatch(updateTrainingSet({ exerciseId: exercise.id, setId: set.id, field: "rpe", value: getOptionalNumber(event.target.value) }))} /></td>
-                          <td><input aria-label={`动作 ${exerciseIndex + 1} 第 ${setIndex + 1} 组剩余次数`} type="number" min="0" step="1" value={set.rir ?? ""} onChange={(event) => dispatch(updateTrainingSet({ exerciseId: exercise.id, setId: set.id, field: "rir", value: getOptionalNumber(event.target.value) }))} /></td>
-                          <td>
-                            <select aria-label={`动作 ${exerciseIndex + 1} 第 ${setIndex + 1} 组类型`} value={set.isWarmup ? "warmup" : "working"} onChange={(event) => dispatch(updateTrainingSet({ exerciseId: exercise.id, setId: set.id, field: "isWarmup", value: event.target.value === "warmup" }))}>
-                              <option value="working">正式组</option><option value="warmup">热身组</option>
-                            </select>
-                          </td>
-                          <td><button type="button" className="text-button" disabled={exercise.sets.length === 1} onClick={() => dispatch(removeTrainingSet({ exerciseId: exercise.id, setId: set.id }))}>删除</button></td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                  <div className="training-set-table-wrap">
+                    <table className="training-set-table">
+                      <thead><tr><th>组</th><th>次数</th><th>重量 kg</th><th>单组难度</th><th>剩余次数</th><th>类型</th><th /></tr></thead>
+                      <tbody>
+                        {exercise.sets.map((set, setIndex) => (
+                          <tr key={set.id}>
+                            <td className="training-set-number">{setIndex + 1}</td>
+                            <td><input aria-label={`动作 ${exerciseIndex + 1} 第 ${setIndex + 1} 组次数`} type="number" min="1" value={set.reps} onChange={(event) => dispatch(updateTrainingSet({ exerciseId: exercise.id, setId: set.id, field: "reps", value: Number(event.target.value) }))} /></td>
+                            <td><input aria-label={`动作 ${exerciseIndex + 1} 第 ${setIndex + 1} 组重量`} type="number" min="0" step="0.5" value={set.weightKg} onChange={(event) => dispatch(updateTrainingSet({ exerciseId: exercise.id, setId: set.id, field: "weightKg", value: Number(event.target.value) }))} /></td>
+                            <td><input aria-label={`动作 ${exerciseIndex + 1} 第 ${setIndex + 1} 组难度`} type="number" min="1" max="10" step="0.5" value={set.rpe ?? ""} onChange={(event) => dispatch(updateTrainingSet({ exerciseId: exercise.id, setId: set.id, field: "rpe", value: getOptionalNumber(event.target.value) }))} /></td>
+                            <td><input aria-label={`动作 ${exerciseIndex + 1} 第 ${setIndex + 1} 组剩余次数`} type="number" min="0" step="1" value={set.rir ?? ""} onChange={(event) => dispatch(updateTrainingSet({ exerciseId: exercise.id, setId: set.id, field: "rir", value: getOptionalNumber(event.target.value) }))} /></td>
+                            <td>
+                              <select aria-label={`动作 ${exerciseIndex + 1} 第 ${setIndex + 1} 组类型`} value={set.isWarmup ? "warmup" : "working"} onChange={(event) => dispatch(updateTrainingSet({ exerciseId: exercise.id, setId: set.id, field: "isWarmup", value: event.target.value === "warmup" }))}>
+                                <option value="working">正式组</option><option value="warmup">热身组</option>
+                              </select>
+                            </td>
+                            <td><button type="button" className="text-button" disabled={exercise.sets.length === 1} onClick={() => dispatch(removeTrainingSet({ exerciseId: exercise.id, setId: set.id }))}>删除</button></td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  <button type="button" className="button-secondary training-inline-action" onClick={() => dispatch(addTrainingSet(exercise.id))}>+ 添加一组</button>
                 </div>
-                <button type="button" className="button-secondary training-inline-action" onClick={() => dispatch(addTrainingSet(exercise.id))}>+ 添加一组</button>
+                <MuscleViewer
+                  title={`动作肌群预览：${getExerciseDisplayLabel(exercise.exerciseName)}`}
+                  activations={muscleContribution?.muscles ?? []}
+                  tip={muscleContribution?.tip}
+                />
               </article>
             );
           })}

@@ -23,6 +23,7 @@ public sealed record TrendReportSnapshot(
 
 public sealed record TrendReportJob(
     int Id,
+    int UserId,
     string Status,
     int ProgressPercent,
     string CurrentStage,

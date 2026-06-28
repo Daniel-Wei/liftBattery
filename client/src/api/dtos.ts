@@ -1,4 +1,4 @@
-import type { MuscleGroup, TrendReportType } from "../types/appTypes";
+import type { AuthUser, MuscleGroup, TrendReportType } from "../types/appTypes";
 
 export type PreCheckDto = {
   id?: number;
@@ -93,9 +93,25 @@ export type TrendReportSeriesDto = {
 };
 
 export type TrendReportChartDto = {
-  type: TrendReportType;
+  type: Exclude<TrendReportType, "muscleStimulation">;
   title: string;
   series: TrendReportSeriesDto[];
+};
+
+export type MuscleStimulationItemDto = {
+  muscle: MuscleGroup;
+  score: number;
+  percentage: number;
+  change: number;
+  level: "high" | "medium" | "low" | "none";
+};
+
+export type MuscleStimulationReportDto = {
+  totalScore: number;
+  changeFromPreviousPeriod: number;
+  highStimulusMuscleCount: number;
+  lowStimulusMuscleCount: number;
+  muscles: MuscleStimulationItemDto[];
 };
 
 export type TrendReportResultDto = {
@@ -103,6 +119,7 @@ export type TrendReportResultDto = {
   endWeek: string;
   weekLabels: string[];
   charts: TrendReportChartDto[];
+  muscleStimulation?: MuscleStimulationReportDto;
 };
 
 export type TrendReportJobStatus =
@@ -123,4 +140,28 @@ export type TrendReportJobDto = {
   completedAtUtc?: string;
   updatedAtUtc: string;
   result?: TrendReportResultDto;
+};
+
+export type RegisterRequestDto = {
+  displayName: string;
+  email: string;
+  password: string;
+  confirmPassword: string;
+  betaInviteCode: string;
+};
+
+export type LoginRequestDto = {
+  email: string;
+  password: string;
+};
+
+export type UpdateProfileRequestDto = {
+  displayName: string;
+  trainingGoal?: string;
+  weeklyTargetTrainingDays: number;
+  preferredUnit: "kg" | "lb";
+};
+
+export type AuthResultDto = {
+  user: AuthUser;
 };

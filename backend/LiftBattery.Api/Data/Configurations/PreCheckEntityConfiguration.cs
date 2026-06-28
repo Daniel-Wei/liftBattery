@@ -35,5 +35,10 @@ public sealed class PreCheckEntityConfiguration : IEntityTypeConfiguration<PreCh
             .IsUnique()
             .HasDatabaseName(
                 "UX_PreChecks_UserId_PreCheckDate");
+
+        builder.HasOne<User>()
+            .WithMany()
+            .HasForeignKey(entity => entity.UserId)
+            .OnDelete(DeleteBehavior.Restrict);
     }
 }

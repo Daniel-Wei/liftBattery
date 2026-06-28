@@ -126,7 +126,8 @@ public sealed class PreCheckPersistenceTests
         await using var database = await TestDatabase.CreateAsync();
         var functions = new PreCheckFunctions(
             database.CreateService(),
-            Microsoft.Extensions.Options.Options.Create(new PreCheckOptions()));
+            new TestAuthService(),
+            new AuthCookieHelper(Microsoft.Extensions.Options.Options.Create(new AuthOptions())));
         var request = TestHttpRequestData.Create("{");
 
         var response = await functions.SavePreCheck(request, CancellationToken.None);
@@ -201,7 +202,39 @@ public sealed class PreCheckPersistenceTests
                 .Options;
             var context = new LiftBatteryDbContext(options);
             await context.Database.EnsureCreatedAsync();
+            SeedUsers(context);
             return new TestDatabase(connection, options, context);
+        }
+
+        private static void SeedUsers(LiftBatteryDbContext context)
+        {
+            var now = DateTimeOffset.UtcNow;
+            context.Users.AddRange(
+                new User
+                {
+                    Id = 1,
+                    DisplayName = "Test User 1",
+                    Email = "test1@example.com",
+                    NormalizedEmail = "TEST1@EXAMPLE.COM",
+                    PasswordHash = "test-password-hash",
+                    WeeklyTargetTrainingDays = 4,
+                    PreferredUnit = "kg",
+                    CreatedAtUtc = now,
+                    UpdatedAtUtc = now,
+                },
+                new User
+                {
+                    Id = 2,
+                    DisplayName = "Test User 2",
+                    Email = "test2@example.com",
+                    NormalizedEmail = "TEST2@EXAMPLE.COM",
+                    PasswordHash = "test-password-hash",
+                    WeeklyTargetTrainingDays = 4,
+                    PreferredUnit = "kg",
+                    CreatedAtUtc = now,
+                    UpdatedAtUtc = now,
+                });
+            context.SaveChanges();
         }
 
         public PreCheckService CreateService()
@@ -216,6 +249,64 @@ public sealed class PreCheckPersistenceTests
         {
             await Context.DisposeAsync();
             await _connection.DisposeAsync();
+        }
+    }
+
+    private sealed class TestAuthService : IAuthService
+    {
+        public Task<(AuthUserDto User, string SessionToken, DateTimeOffset ExpiresAtUtc)> RegisterAsync(
+            RegisterRequestDto request,
+            CancellationToken cancellationToken = default)
+        {
+            throw new NotSupportedException();
+        }
+
+        public Task<(AuthUserDto User, string SessionToken, DateTimeOffset ExpiresAtUtc)> LoginAsync(
+            LoginRequestDto request,
+            CancellationToken cancellationToken = default)
+        {
+            throw new NotSupportedException();
+        }
+
+        public Task<AuthUserDto?> GetCurrentUserAsync(
+            string? sessionToken,
+            CancellationToken cancellationToken = default)
+        {
+            return Task.FromResult<AuthUserDto?>(CreateUser());
+        }
+
+        public Task<int?> GetCurrentUserIdAsync(
+            string? sessionToken,
+            CancellationToken cancellationToken = default)
+        {
+            return Task.FromResult<int?>(1);
+        }
+
+        public Task<AuthUserDto?> UpdateProfileAsync(
+            string? sessionToken,
+            UpdateProfileRequestDto request,
+            CancellationToken cancellationToken = default)
+        {
+            return Task.FromResult<AuthUserDto?>(CreateUser());
+        }
+
+        public Task LogoutAsync(
+            string? sessionToken,
+            CancellationToken cancellationToken = default)
+        {
+            return Task.CompletedTask;
+        }
+
+        private static AuthUserDto CreateUser()
+        {
+            return new AuthUserDto(
+                1,
+                "Test User",
+                "test@example.com",
+                null,
+                4,
+                "kg",
+                DateTimeOffset.UtcNow);
         }
     }
 

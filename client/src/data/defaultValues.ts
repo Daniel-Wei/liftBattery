@@ -51,4 +51,5 @@ export const defaultReportTypeOptions: Array<{ value: TrendReportType; label: st
   { value: "sessionLoad", label: "每周训练负荷" },
   { value: "volume", label: "每周训练量" },
   { value: "estimatedPr", label: "动作预计单次最大重量趋势" },
+  { value: "muscleStimulation", label: "肌群刺激分布" },
 ];

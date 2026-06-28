@@ -22,6 +22,46 @@ namespace LiftBattery.Api.Data.Migrations
 
             SqlServerModelBuilderExtensions.UseIdentityColumns(modelBuilder);
 
+            modelBuilder.Entity("LiftBattery.Api.Data.Entities.AuthSession", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTimeOffset>("CreatedAtUtc")
+                        .HasPrecision(7)
+                        .HasColumnType("datetimeoffset(7)");
+
+                    b.Property<DateTimeOffset>("ExpiresAtUtc")
+                        .HasPrecision(7)
+                        .HasColumnType("datetimeoffset(7)");
+
+                    b.Property<DateTimeOffset?>("RevokedAtUtc")
+                        .HasPrecision(7)
+                        .HasColumnType("datetimeoffset(7)");
+
+                    b.Property<string>("TokenHash")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("nvarchar(128)");
+
+                    b.Property<int>("UserId")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TokenHash")
+                        .IsUnique()
+                        .HasDatabaseName("UX_AuthSessions_TokenHash");
+
+                    b.HasIndex("UserId", "ExpiresAtUtc")
+                        .HasDatabaseName("IX_AuthSessions_UserId_ExpiresAtUtc");
+
+                    b.ToTable("AuthSessions", (string)null);
+                });
+
             modelBuilder.Entity("LiftBattery.Api.Data.Entities.PreCheck", b =>
                 {
                     b.Property<int>("Id")
@@ -245,6 +285,97 @@ namespace LiftBattery.Api.Data.Migrations
                         });
                 });
 
+            modelBuilder.Entity("LiftBattery.Api.Data.Entities.User", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTimeOffset>("CreatedAtUtc")
+                        .HasPrecision(7)
+                        .HasColumnType("datetimeoffset(7)");
+
+                    b.Property<string>("DisplayName")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("nvarchar(80)");
+
+                    b.Property<string>("Email")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)");
+
+                    b.Property<string>("NormalizedEmail")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)");
+
+                    b.Property<string>("PasswordHash")
+                        .IsRequired()
+                        .HasMaxLength(512)
+                        .HasColumnType("nvarchar(512)");
+
+                    b.Property<string>("PreferredUnit")
+                        .IsRequired()
+                        .HasMaxLength(8)
+                        .HasColumnType("nvarchar(8)");
+
+                    b.Property<string>("TrainingGoal")
+                        .HasMaxLength(240)
+                        .HasColumnType("nvarchar(240)");
+
+                    b.Property<DateTimeOffset>("UpdatedAtUtc")
+                        .HasPrecision(7)
+                        .HasColumnType("datetimeoffset(7)");
+
+                    b.Property<int>("WeeklyTargetTrainingDays")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("NormalizedEmail")
+                        .IsUnique()
+                        .HasDatabaseName("UX_Users_NormalizedEmail");
+
+                    b.ToTable("Users", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_Users_PreferredUnit", "[PreferredUnit] IN ('kg', 'lb')");
+
+                            t.HasCheckConstraint("CK_Users_WeeklyTargetTrainingDays", "[WeeklyTargetTrainingDays] >= 1 AND [WeeklyTargetTrainingDays] <= 14");
+                        });
+                });
+
+            modelBuilder.Entity("LiftBattery.Api.Data.Entities.AuthSession", b =>
+                {
+                    b.HasOne("LiftBattery.Api.Data.Entities.User", "User")
+                        .WithMany("AuthSessions")
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("User");
+                });
+
+            modelBuilder.Entity("LiftBattery.Api.Data.Entities.PreCheck", b =>
+                {
+                    b.HasOne("LiftBattery.Api.Data.Entities.User", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("LiftBattery.Api.Data.Entities.Training.TrainingDay", b =>
+                {
+                    b.HasOne("LiftBattery.Api.Data.Entities.User", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("LiftBattery.Api.Data.Entities.Training.TrainingExercise", b =>
                 {
                     b.HasOne("LiftBattery.Api.Data.Entities.Training.TrainingSession", "TrainingSession")
@@ -291,6 +422,11 @@ namespace LiftBattery.Api.Data.Migrations
             modelBuilder.Entity("LiftBattery.Api.Data.Entities.Training.TrainingSession", b =>
                 {
                     b.Navigation("Exercises");
+                });
+
+            modelBuilder.Entity("LiftBattery.Api.Data.Entities.User", b =>
+                {
+                    b.Navigation("AuthSessions");
                 });
 #pragma warning restore 612, 618
         }
