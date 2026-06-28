@@ -8,6 +8,7 @@ import {
   getSessionLoad,
   getTrainingSessionsInLast7Days,
 } from "../domain/overviewMetrics";
+import { getCurrentTrainingCycle } from "../domain/trainingTrendCharts";
 import { useAppSelector } from "../store/hooks";
 import { EvidenceType, MetricStatus, ReadinessStatus, TrendDirection, type Metric } from "../types/appTypes";
 import { getPreCheckData, selectCurrentReadiness } from "../store/selectors/preCheckSelector";
@@ -41,6 +42,7 @@ export function OverviewPage() {
   const latestLog = latest7Logs?.[0] ?? null;
   const trainingSessions = useAppSelector(selectTrainingSessions);
   const programSettings = useAppSelector(selectProgramSettings);
+  const currentTrainingCycle = getCurrentTrainingCycle(programSettings);
   const recentTrainingSessions = getTrainingSessionsInLast7Days(trainingSessions);
   const latestSession = getLatestTrainingSession(trainingSessions);
   const latestSessionLoad = latestSession ? getSessionLoad(latestSession) : null;
@@ -65,7 +67,7 @@ export function OverviewPage() {
             <p className="landing-eyebrow">训练科学总览</p>
             <h1 className="page-title">训练计划总览</h1>
             <p className="page-subtitle">
-              第 {programSettings.currentWeek} 周：根据你的练前状态和已保存训练记录实时更新。
+              {currentTrainingCycle.label}：根据你的练前状态和已保存训练记录实时更新。
             </p>
           </div>
         </div>
@@ -87,9 +89,9 @@ export function OverviewPage() {
 
           <div className="battery-focus-meta">
             <div>
-              <p className="battery-meta-label">当前周</p>
+              <p className="battery-meta-label">当前训练周期</p>
               <p className="battery-meta-value">
-                {programSettings.currentWeek} / {programSettings.totalWeeks}
+                {currentTrainingCycle.cycleNumber} · {programSettings.weeksPerCycle} 周/周期
               </p>
             </div>
             <div>
@@ -102,7 +104,7 @@ export function OverviewPage() {
         <div className="hero-badge-row">
           <StatusBadge
             status={MetricStatus.Neutral}
-            label={`第 ${programSettings.currentWeek} 周 / 共 ${programSettings.totalWeeks} 周`}
+            label={`${currentTrainingCycle.startDate} 至 ${currentTrainingCycle.endDate}`}
           />
           <StatusBadge
             status={currentReadiness.badgeStatus}
@@ -110,7 +112,7 @@ export function OverviewPage() {
           />
           <StatusBadge
             status={latestSessionLoad !== null && latestSessionLoad >= 600 ? MetricStatus.Watch : MetricStatus.Neutral}
-            label={latestSessionLoad === null ? "暂无训练课负荷" : `最近训练负荷 ${Math.round(latestSessionLoad)}`}
+            label={latestSessionLoad === null ? "暂无" : `最近训练负荷 ${Math.round(latestSessionLoad)}`}
           />
           <StatusBadge
             status={MetricStatus.Neutral}

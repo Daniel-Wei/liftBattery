@@ -88,7 +88,6 @@ export type TrainingSet = {
   setOrder: number;
   reps: number;
   weightKg: number;
-  rpe?: number;
   rir?: number;
   isWarmup: boolean;
   createdAtUtc: string;
@@ -130,7 +129,6 @@ export type TrainingSetDraft = {
   id: number;
   reps: number;
   weightKg: number;
-  rpe?: number;
   rir?: number;
   isWarmup: boolean;
 };
@@ -184,8 +182,8 @@ export type NutritionEntry = {
 
 // ProgramSettings gives Overview metrics their target context.
 export type ProgramSettings = {
-  currentWeek: number;
-  totalWeeks: number;
+  cycleStartDate: string;
+  weeksPerCycle: number;
   mode: string;
   priorityMuscles: MuscleGroup[];
   weeklyPriorityHardSetTarget: number;
@@ -272,8 +270,8 @@ export type TrendPoint = {
 export type TrainingBlock = {
   name: string;
   subtitle: string;
-  currentWeek: number;
-  totalWeeks: number;
+  cycleStartDate: string;
+  weeksPerCycle: number;
   mode: string;
   trainingMode: string;
 };

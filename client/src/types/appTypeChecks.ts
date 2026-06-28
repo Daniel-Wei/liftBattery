@@ -38,8 +38,8 @@ export function isProgramSettings(value: unknown): value is ProgramSettings {
   }
 
   return (
-    isNumber(value.currentWeek)
-    && isNumber(value.totalWeeks)
+    isString(value.cycleStartDate)
+    && isNumber(value.weeksPerCycle)
     && isString(value.mode)
     && Array.isArray(value.priorityMuscles)
     && value.priorityMuscles.every(isMuscleGroup)
@@ -133,7 +133,6 @@ export function isSetEntry(value: unknown): value is SetEntry {
     && isMuscleGroup(value.muscleGroup)
     && isNumber(value.reps)
     && isNumber(value.weightKg)
-    && (value.rpe === undefined || isNumber(value.rpe))
     && (value.rir === undefined || isNumber(value.rir))
     && isBoolean(value.isWarmup)
     && isString(value.createdAtUtc)

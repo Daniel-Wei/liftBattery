@@ -75,11 +75,12 @@ public sealed class TrendReportService : ITrendReportService
         var validatedRequest = ValidateRequest(request);
 
         // Load the database records used for the submission-time snapshot.
-        var reportDayCount = validatedRequest.EndWeek.AddDays(6).DayNumber
-            - validatedRequest.StartWeek.DayNumber
-            + 1;
-        var snapshotStart = validatedRequest.StartWeek.AddDays(-reportDayCount);
-        var rangeEnd = validatedRequest.EndWeek.AddDays(6);
+        var snapshotStart = validatedRequest.ComparisonStartWeek.HasValue
+            ? Min(validatedRequest.StartWeek, validatedRequest.ComparisonStartWeek.Value)
+            : validatedRequest.StartWeek;
+        var rangeEnd = validatedRequest.ComparisonEndWeek.HasValue
+            ? Max(validatedRequest.EndWeek, validatedRequest.ComparisonEndWeek.Value).AddDays(6)
+            : validatedRequest.EndWeek.AddDays(6);
         var trainingDays = await _trainingRepository.GetByDateRangeAsync(
             userId,
             snapshotStart,
@@ -156,7 +157,7 @@ public sealed class TrendReportService : ITrendReportService
             job = job with
             {
                 ProgressPercent = 45,
-                CurrentStage = "正在计算周趋势",
+                CurrentStage = "正在计算训练周期报告",
                 UpdatedAtUtc = DateTimeOffset.UtcNow,
             };
             await _jobRepository.UpdateAsync(job);
@@ -231,6 +232,40 @@ public sealed class TrendReportService : ITrendReportService
             throw new ArgumentException("A report can contain at most 52 weeks.");
         }
 
+        DateOnly? comparisonStartWeek = null;
+        DateOnly? comparisonEndWeek = null;
+
+        if (!string.IsNullOrWhiteSpace(request.ComparisonStartWeek)
+            || !string.IsNullOrWhiteSpace(request.ComparisonEndWeek))
+        {
+            if (!DateOnly.TryParse(request.ComparisonStartWeek, out var parsedComparisonStartWeek)
+                || !DateOnly.TryParse(request.ComparisonEndWeek, out var parsedComparisonEndWeek))
+            {
+                throw new ArgumentException("Comparison start week and end week must use yyyy-MM-dd format.");
+            }
+
+            if (parsedComparisonStartWeek.DayOfWeek != DayOfWeek.Monday
+                || parsedComparisonEndWeek.DayOfWeek != DayOfWeek.Monday)
+            {
+                throw new ArgumentException("Comparison start week and end week must both be Mondays.");
+            }
+
+            if (parsedComparisonStartWeek > parsedComparisonEndWeek)
+            {
+                throw new ArgumentException("Comparison start week must not be after comparison end week.");
+            }
+
+            var comparisonWeekCount = ((parsedComparisonEndWeek.DayNumber - parsedComparisonStartWeek.DayNumber) / 7) + 1;
+
+            if (comparisonWeekCount != weekCount)
+            {
+                throw new ArgumentException("Comparison period must contain the same number of weeks as the selected training cycle.");
+            }
+
+            comparisonStartWeek = parsedComparisonStartWeek;
+            comparisonEndWeek = parsedComparisonEndWeek;
+        }
+
         var selections = request.Selections
             .Where(selection => SupportedMuscleGroups.Contains(selection.MuscleGroup))
             .Where(selection => !string.IsNullOrWhiteSpace(selection.ExerciseName))
@@ -252,14 +287,14 @@ public sealed class TrendReportService : ITrendReportService
             throw new ArgumentException("At least one report type is required.");
         }
 
-        return new TrendReportRequest(startWeek, endWeek, selections, reportTypes);
+        return new TrendReportRequest(startWeek, endWeek, comparisonStartWeek, comparisonEndWeek, selections, reportTypes);
     }
 
     private static TrendReportResultDto GenerateResult(
         TrendReportRequest request,
         TrendReportSnapshot snapshot)
     {
-        var weeks = BuildWeeks(request.StartWeek, request.EndWeek);
+        var reportPeriods = BuildReportPeriods(request);
         var selectionKeys = request.Selections
             .Select(selection => GetSelectionKey(selection.MuscleGroup, selection.ExerciseName))
             .ToHashSet(StringComparer.Ordinal);
@@ -283,7 +318,7 @@ public sealed class TrendReportService : ITrendReportService
                 "练前状态分数趋势",
                 "练前状态",
                 "blue",
-                weeks,
+                reportPeriods,
                 snapshot.PreCheckLogs,
                 GetReadinessScore));
         }
@@ -295,24 +330,24 @@ public sealed class TrendReportService : ITrendReportService
                 "睡眠时长趋势",
                 "睡眠时长",
                 "green",
-                weeks,
+                reportPeriods,
                 snapshot.PreCheckLogs,
                 log => GetSleepHours(log.SleepQuality)));
         }
 
         if (request.ReportTypes.Contains("sessionLoad", StringComparer.Ordinal))
         {
-            charts.Add(CreateSessionLoadChart(weeks, filteredSessions));
+            charts.Add(CreateSessionLoadChart(reportPeriods, filteredSessions));
         }
 
         if (request.ReportTypes.Contains("volume", StringComparer.Ordinal))
         {
-            charts.Add(CreateVolumeChart(weeks, filteredSessions));
+            charts.Add(CreateVolumeChart(reportPeriods, filteredSessions));
         }
 
         if (request.ReportTypes.Contains("estimatedPr", StringComparer.Ordinal))
         {
-            charts.Add(CreateEstimatedPrChart(weeks, trainingSessions, request.Selections));
+            charts.Add(CreateEstimatedPrChart(reportPeriods, trainingSessions, request.Selections));
         }
 
         if (request.ReportTypes.Contains("muscleStimulation", StringComparer.Ordinal))
@@ -320,13 +355,17 @@ public sealed class TrendReportService : ITrendReportService
             muscleStimulation = CreateMuscleStimulationReport(
                 request.StartWeek,
                 request.EndWeek,
+                request.ComparisonStartWeek,
+                request.ComparisonEndWeek,
                 filteredSessions);
         }
 
         return new TrendReportResultDto(
             request.StartWeek.ToString("yyyy-MM-dd"),
             request.EndWeek.ToString("yyyy-MM-dd"),
-            weeks.Select(week => week.Label).ToList(),
+            request.ComparisonStartWeek?.ToString("yyyy-MM-dd"),
+            request.ComparisonEndWeek?.ToString("yyyy-MM-dd"),
+            reportPeriods.Select(period => period.Label).ToList(),
             charts,
             muscleStimulation);
     }
@@ -383,7 +422,7 @@ public sealed class TrendReportService : ITrendReportService
 
         return new TrendReportChartDto(
             "sessionLoad",
-            "所选肌群与动作的每周训练负荷",
+            "所选肌群与动作的训练周期负荷",
             new[] { new TrendReportSeriesDto("session-load", "训练负荷", null, "dark", points) });
     }
 
@@ -402,7 +441,7 @@ public sealed class TrendReportService : ITrendReportService
 
         return new TrendReportChartDto(
             "volume",
-            "所选肌群与动作的每周训练量",
+            "所选肌群与动作的训练周期训练量",
             new[] { new TrendReportSeriesDto("volume", "训练量", null, "amber", points) });
     }
 
@@ -465,6 +504,32 @@ public sealed class TrendReportService : ITrendReportService
         return weeks;
     }
 
+    private static IReadOnlyList<ReportWeek> BuildReportPeriods(TrendReportRequest request)
+    {
+        if (request.ComparisonStartWeek.HasValue && request.ComparisonEndWeek.HasValue)
+        {
+            return new[]
+            {
+                new ReportWeek(
+                    "对比周期",
+                    request.ComparisonStartWeek.Value,
+                    request.ComparisonEndWeek.Value.AddDays(6)),
+                new ReportWeek(
+                    "选定周期",
+                    request.StartWeek,
+                    request.EndWeek.AddDays(6)),
+            };
+        }
+
+        return new[]
+        {
+            new ReportWeek(
+                "选定周期",
+                request.StartWeek,
+                request.EndWeek.AddDays(6)),
+        };
+    }
+
     private static IReadOnlyList<ReportTrainingSession> ToReportSessions(
         IReadOnlyList<TrainingDayModel> days)
     {
@@ -489,14 +554,20 @@ public sealed class TrendReportService : ITrendReportService
     private static MuscleStimulationReportDto CreateMuscleStimulationReport(
         DateOnly startDate,
         DateOnly endWeek,
+        DateOnly? comparisonStartWeek,
+        DateOnly? comparisonEndWeek,
         IReadOnlyList<ReportTrainingSession> sessions)
     {
         var endDate = endWeek.AddDays(6);
-        var days = Math.Max(1, endDate.DayNumber - startDate.DayNumber + 1);
-        var previousStart = startDate.AddDays(-days);
-        var previousEnd = startDate.AddDays(-1);
         var currentScores = CalculateMuscleScores(sessions, startDate, endDate);
-        var previousScores = CalculateMuscleScores(sessions, previousStart, previousEnd);
+        var hasComparison = comparisonStartWeek.HasValue && comparisonEndWeek.HasValue;
+        var previousScores = new Dictionary<string, decimal>(StringComparer.Ordinal);
+
+        if (comparisonStartWeek is DateOnly comparisonStart
+            && comparisonEndWeek is DateOnly comparisonEnd)
+        {
+            previousScores = CalculateMuscleScores(sessions, comparisonStart, comparisonEnd.AddDays(6));
+        }
         var total = currentScores.Values.Sum();
 
         var muscles = currentScores
@@ -504,9 +575,11 @@ public sealed class TrendReportService : ITrendReportService
             .Select(item =>
             {
                 previousScores.TryGetValue(item.Key, out var previousScore);
-                var change = previousScore == 0
-                    ? item.Value > 0 ? 100m : 0m
-                    : ((item.Value - previousScore) / previousScore) * 100m;
+                var change = hasComparison
+                    ? previousScore == 0
+                        ? item.Value > 0 ? 100m : 0m
+                        : ((item.Value - previousScore) / previousScore) * 100m
+                    : 0m;
                 var percentage = total == 0 ? 0 : (item.Value / total) * 100m;
 
                 return new MuscleStimulationItemDto(
@@ -519,9 +592,11 @@ public sealed class TrendReportService : ITrendReportService
             .ToList();
 
         var previousTotal = previousScores.Values.Sum();
-        var totalChange = previousTotal == 0
-            ? total > 0 ? 100m : 0m
-            : ((total - previousTotal) / previousTotal) * 100m;
+        var totalChange = hasComparison
+            ? previousTotal == 0
+                ? total > 0 ? 100m : 0m
+                : ((total - previousTotal) / previousTotal) * 100m
+            : 0m;
 
         return new MuscleStimulationReportDto(
             Math.Round(total, 0),
@@ -548,14 +623,10 @@ public sealed class TrendReportService : ITrendReportService
                 var rirFactor = set.Rir.HasValue
                     ? Math.Clamp((5m - set.Rir.Value) / 5m, 0.2m, 1.2m)
                     : 1m;
-                var rpeFactor = set.Rpe.HasValue
-                    ? Math.Clamp(set.Rpe.Value / 8m, 0.6m, 1.25m)
-                    : 1m;
                 var setScore = Math.Max(1, set.Reps)
                     * Math.Max(1m, set.WeightKg)
                     * contribution.Contribution
                     * rirFactor
-                    * rpeFactor
                     / 10m;
 
                 scores[contribution.Muscle] = scores.GetValueOrDefault(contribution.Muscle) + setScore;
@@ -676,6 +747,16 @@ public sealed class TrendReportService : ITrendReportService
     private static string GetSelectionKey(string muscleGroup, string exerciseName)
     {
         return $"{muscleGroup}::{exerciseName}";
+    }
+
+    private static DateOnly Min(DateOnly first, DateOnly second)
+    {
+        return first <= second ? first : second;
+    }
+
+    private static DateOnly Max(DateOnly first, DateOnly second)
+    {
+        return first >= second ? first : second;
     }
 
     private static void ValidateUserId(int userId)

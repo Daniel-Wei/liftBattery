@@ -1,6 +1,9 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { logoutUser, updateCurrentUser } from "../store/slices/authSlice";
 import { useAppDispatch, useAppSelector } from "../store/hooks";
+import { selectProgramSettings } from "../store/selectors/programSettingsSelector";
+import { updateProgramSettings } from "../store/slices/programSettingsSlice";
+import { normalizeToMonday } from "../helpers/TrendsPageHelpers";
 
 type ProfilePageProps = {
   onSignedOut: () => void;
@@ -9,10 +12,13 @@ type ProfilePageProps = {
 export function ProfilePage({ onSignedOut }: ProfilePageProps) {
   const dispatch = useAppDispatch();
   const { user, status, error } = useAppSelector((state) => state.auth);
+  const programSettings = useAppSelector(selectProgramSettings);
   const [displayName, setDisplayName] = useState(user?.displayName ?? "");
   const [trainingGoal, setTrainingGoal] = useState(user?.trainingGoal ?? "");
   const [weeklyTargetTrainingDays, setWeeklyTargetTrainingDays] = useState(user?.weeklyTargetTrainingDays ?? 4);
   const [preferredUnit, setPreferredUnit] = useState<"kg" | "lb">(user?.preferredUnit ?? "kg");
+  const [cycleStartDate, setCycleStartDate] = useState(programSettings.cycleStartDate);
+  const [weeksPerCycle, setWeeksPerCycle] = useState(programSettings.weeksPerCycle);
   const [saved, setSaved] = useState(false);
 
   useEffect(() => {
@@ -20,7 +26,9 @@ export function ProfilePage({ onSignedOut }: ProfilePageProps) {
     setTrainingGoal(user?.trainingGoal ?? "");
     setWeeklyTargetTrainingDays(user?.weeklyTargetTrainingDays ?? 4);
     setPreferredUnit(user?.preferredUnit ?? "kg");
-  }, [user]);
+    setCycleStartDate(programSettings.cycleStartDate);
+    setWeeksPerCycle(programSettings.weeksPerCycle);
+  }, [programSettings.cycleStartDate, programSettings.weeksPerCycle, user]);
 
   async function handleSave(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -29,6 +37,13 @@ export function ProfilePage({ onSignedOut }: ProfilePageProps) {
       trainingGoal,
       weeklyTargetTrainingDays,
       preferredUnit,
+    }));
+    const normalizedWeeksPerCycle = Math.max(1, Math.min(12, Math.round(weeksPerCycle)));
+
+    dispatch(updateProgramSettings({
+      ...programSettings,
+      cycleStartDate: normalizeToMonday(cycleStartDate),
+      weeksPerCycle: normalizedWeeksPerCycle,
     }));
 
     setSaved(updateCurrentUser.fulfilled.match(result));
@@ -82,6 +97,14 @@ export function ProfilePage({ onSignedOut }: ProfilePageProps) {
               <option value="kg">kg</option>
               <option value="lb">lb</option>
             </select>
+          </label>
+          <label className="training-form-field">
+            <span className="training-form-label">训练周期起始周</span>
+            <input className="training-input" type="date" value={cycleStartDate} onChange={(event) => setCycleStartDate(event.target.value)} />
+          </label>
+          <label className="training-form-field">
+            <span className="training-form-label">每个周期包含周数</span>
+            <input className="training-input" type="number" min="1" max="12" value={weeksPerCycle} onChange={(event) => setWeeksPerCycle(Number(event.target.value))} />
           </label>
           <p className="muted-text auth-form-span">注册日期：{new Date(user.createdAtUtc).toLocaleDateString()}</p>
           {error ? <p className="form-error auth-form-span" role="alert">{error}</p> : null}

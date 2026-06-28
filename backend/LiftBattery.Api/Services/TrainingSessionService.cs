@@ -113,9 +113,9 @@ public sealed class TrainingSessionService : ITrainingSessionService
                     throw new ArgumentException("Set number and reps must be positive, and weight cannot be negative.");
                 }
 
-                if (set.Rpe is < 1 or > 10 || set.Rir < 0)
+                if (set.Rir < 0)
                 {
-                    throw new ArgumentException("Set RPE must be between 1 and 10, and RIR cannot be negative.");
+                    throw new ArgumentException("RIR cannot be negative.");
                 }
             }
         }

@@ -75,6 +75,8 @@ export type TrendReportSelectionDto = {
 export type CreateTrendReportRequestDto = {
   startWeek: string;
   endWeek: string;
+  comparisonStartWeek?: string;
+  comparisonEndWeek?: string;
   selections: TrendReportSelectionDto[];
   reportTypes: TrendReportType[];
 };
@@ -117,6 +119,8 @@ export type MuscleStimulationReportDto = {
 export type TrendReportResultDto = {
   startWeek: string;
   endWeek: string;
+  comparisonStartWeek?: string;
+  comparisonEndWeek?: string;
   weekLabels: string[];
   charts: TrendReportChartDto[];
   muscleStimulation?: MuscleStimulationReportDto;

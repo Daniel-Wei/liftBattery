@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { CheckboxDropdown } from "../components/CheckboxDropdown";
 import { MuscleStimulationReport } from "../components/MuscleStimulationReport";
 import { TrendsReportChart } from "../components/TrendsReportChart";
@@ -10,7 +10,11 @@ import {
   muscleGroupOptions,
 } from "../data/programValues";
 import { TREND_REPORT_JOB_ID_STORAGE_KEY } from "../data/localStorageKeys";
-import { getTrainingTrendWeeks } from "../domain/trainingTrendCharts";
+import {
+  formatTrainingCycleLabel,
+  getCurrentTrainingCycle,
+  getTrainingCycles,
+} from "../domain/trainingTrendCharts";
 import { useAppDispatch, useAppSelector } from "../store/hooks";
 import {
   createTrendReport,
@@ -18,40 +22,44 @@ import {
 } from "../store/slices/trendReportSlice";
 import type { TrainableMuscleGroup, TrendReportType } from "../types/appTypes";
 import { defaultReportTypeOptions } from "../data/defaultValues";
-import { normalizeToMonday, getJobStatusLabel } from "../helpers/TrendsPageHelpers";
+import { getJobStatusLabel } from "../helpers/TrendsPageHelpers";
+import { selectProgramSettings } from "../store/selectors/programSettingsSelector";
 
 export function TrendsPage() {
   const dispatch = useAppDispatch();
   const { job, status, error } = useAppSelector((state) => state.trendReport);
+  const programSettings = useAppSelector(selectProgramSettings);
 
   // #region: internal states
 
-  // #region: weeks
-  const defaultWeeks = getTrainingTrendWeeks();
-  const defaultStartWeek = defaultWeeks[0]?.startDate ?? "2026-04-27";
-  const defaultEndWeek = defaultWeeks[defaultWeeks.length - 1]?.startDate ?? defaultStartWeek;
-  const dateStepAnchorMonday = "2020-01-06";
-  const [startWeek, setStartWeek] = useState(defaultStartWeek);
-  const [endWeek, setEndWeek] = useState(defaultEndWeek);
-  const reportWeeks = getTrainingTrendWeeks(startWeek, endWeek);
+  // #region: training cycles
+  const trainingCycles = useMemo(() => getTrainingCycles(programSettings), [programSettings]);
+  const currentTrainingCycle = getCurrentTrainingCycle(programSettings);
+  const [selectedCycleNumber, setSelectedCycleNumber] = useState(currentTrainingCycle.cycleNumber);
+  const [comparisonCycleNumber, setComparisonCycleNumber] = useState<number | "">("");
+  const selectedCycle = trainingCycles.find((cycle) => cycle.cycleNumber === selectedCycleNumber)
+    ?? currentTrainingCycle;
+  const comparisonCycle = comparisonCycleNumber === ""
+    ? null
+    : trainingCycles.find((cycle) => cycle.cycleNumber === comparisonCycleNumber) ?? null;
 
-  function handleStartWeekChange(value: string) {
-    const monday = normalizeToMonday(value);
-    setStartWeek(monday);
-
-    if (monday > endWeek) {
-      setEndWeek(monday);
+  useEffect(() => {
+    if (!trainingCycles.some((cycle) => cycle.cycleNumber === selectedCycleNumber)) {
+      setSelectedCycleNumber(currentTrainingCycle.cycleNumber);
     }
-  }
+  }, [currentTrainingCycle.cycleNumber, selectedCycleNumber, trainingCycles]);
 
-  function handleEndWeekChange(value: string) {
-    const monday = normalizeToMonday(value);
-    setEndWeek(monday);
-
-    if (monday < startWeek) {
-      setStartWeek(monday);
+  useEffect(() => {
+    if (
+      comparisonCycleNumber !== ""
+      && (
+        comparisonCycleNumber === selectedCycleNumber
+        || !trainingCycles.some((cycle) => cycle.cycleNumber === comparisonCycleNumber)
+      )
+    ) {
+      setComparisonCycleNumber("");
     }
-  }
+  }, [comparisonCycleNumber, selectedCycleNumber, trainingCycles]);
   // #endregion
 
   // #region: muscle selections
@@ -169,7 +177,7 @@ export function TrendsPage() {
 
   // #endregion
 
-  const canGenerate = reportWeeks.length > 0
+  const canGenerate = selectedCycle !== undefined
     && selectedMuscleSelections.length > 0
     && selectedReports.length > 0
     && status !== "submitting";
@@ -208,14 +216,19 @@ export function TrendsPage() {
     }
 
     const request: CreateTrendReportRequestDto = {
-      startWeek,
-      endWeek,
+      startWeek: selectedCycle.startDate,
+      endWeek: selectedCycle.endWeekStartDate,
       selections: selectedMuscleSelections.map((selection) => ({
         muscleGroup: selection.muscleGroup,
         exerciseName: selection.exerciseName,
       })),
       reportTypes: selectedReports.map((report) => report.value),
     };
+
+    if (comparisonCycle) {
+      request.comparisonStartWeek = comparisonCycle.startDate;
+      request.comparisonEndWeek = comparisonCycle.endWeekStartDate;
+    }
 
     void dispatch(createTrendReport(request));
   }
@@ -224,39 +237,58 @@ export function TrendsPage() {
     <div className="page page-stack">
       <header className="page-header">
         <p className="eyebrow">趋势报告</p>
-        <h1 className="page-title">按训练周生成异步趋势报告</h1>
+        <h1 className="page-title">按训练周期生成异步趋势报告</h1>
         <p className="page-subtitle">
-          选择周范围、肌群与动作以及报告内容，提交后可离开页面，后台仍会继续生成。
+          选择一个目标训练周期；需要时可加一个对比周期，否则报告只展示目标周期本身。
         </p>
       </header>
 
       <section className="trend-report-builder">
         <div className="trend-report-week-row">
           <label className="trend-report-field">
-            <span className="trend-report-label">起始周</span>
-            <input
+            <span className="trend-report-label">目标训练周期</span>
+            <select
               className="trend-report-date-input"
-              type="date"
-              min={dateStepAnchorMonday}
-              step="7"
-              value={startWeek}
-              onChange={(event) => handleStartWeekChange(event.target.value)}
-            />
+              value={selectedCycleNumber}
+              onChange={(event) => setSelectedCycleNumber(Number(event.target.value))}
+            >
+              {trainingCycles.map((cycle) => (
+                <option key={cycle.cycleNumber} value={cycle.cycleNumber}>
+                  {cycle.label}
+                </option>
+              ))}
+            </select>
+            <small className="trend-report-period-meta">
+              {selectedCycle.startDate} 至 {selectedCycle.endDate}
+            </small>
           </label>
 
           <label className="trend-report-field">
-            <span className="trend-report-label">结束周</span>
-            <input
+            <span className="trend-report-label">对比周期（可选）</span>
+            <select
               className="trend-report-date-input"
-              type="date"
-              min={dateStepAnchorMonday}
-              step="7"
-              value={endWeek}
-              onChange={(event) => handleEndWeekChange(event.target.value)}
-            />
+              value={comparisonCycleNumber}
+              onChange={(event) => setComparisonCycleNumber(event.target.value === "" ? "" : Number(event.target.value))}
+            >
+              <option value="">不对比，只看目标周期</option>
+              {trainingCycles
+                .filter((cycle) => cycle.cycleNumber !== selectedCycle.cycleNumber)
+                .map((cycle) => (
+                  <option key={cycle.cycleNumber} value={cycle.cycleNumber}>
+                    {cycle.label}
+                  </option>
+                ))}
+            </select>
+            <small className="trend-report-period-meta">
+              {comparisonCycle ? `${comparisonCycle.startDate} 至 ${comparisonCycle.endDate}` : "可留空"}
+            </small>
           </label>
 
-          <p className="trend-report-week-count">共 {reportWeeks.length} 周</p>
+          <p className="trend-report-week-count">
+            {comparisonCycle
+              ? `${formatTrainingCycleLabel(selectedCycle)} 对比 ${formatTrainingCycleLabel(comparisonCycle)}`
+              : `只看 ${formatTrainingCycleLabel(selectedCycle)}`}
+          </p>
         </div>
 
         <div className="trend-report-filter-row">
@@ -324,7 +356,10 @@ export function TrendsPage() {
       {job?.status === "Completed" && job.result ? (
         <div className="trend-report-results">
           {job.result.muscleStimulation ? (
-            <MuscleStimulationReport report={job.result.muscleStimulation} />
+            <MuscleStimulationReport
+              report={job.result.muscleStimulation}
+              hasComparison={Boolean(job.result.comparisonStartWeek)}
+            />
           ) : null}
           {job.result.charts.map((chart) => (
             <TrendsReportChart

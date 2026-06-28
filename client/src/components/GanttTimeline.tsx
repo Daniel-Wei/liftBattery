@@ -14,7 +14,7 @@ export function GanttTimeline({ phases, currentWeek }: GanttTimelineProps) {
           <p className="section-eyebrow">训练周期时间线</p>
           <h2 className="section-title">甘特图计划</h2>
         </div>
-        <StatusBadge status={MetricStatus.Neutral} label={`第 ${currentWeek} 周`} />
+        <StatusBadge status={MetricStatus.Neutral} label={`第 ${currentWeek} 个训练周期`} />
       </div>
 
       <div className="gantt-body">
@@ -29,7 +29,7 @@ export function GanttTimeline({ phases, currentWeek }: GanttTimelineProps) {
               <div className="gantt-row-top">
                 <span className="gantt-phase-name">{phase.nameZh}</span>
                 <span className="gantt-week">
-                  第 {phase.startWeek} 至 {phase.endWeek} 周
+                  第 {phase.startWeek} 至 {phase.endWeek} 个训练周期
                 </span>
               </div>
               <div className="gantt-track">

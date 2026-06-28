@@ -2,7 +2,7 @@ import { createSlice, type PayloadAction } from "@reduxjs/toolkit";
 import type {
   ProgramSettings,
 } from "../../types/appTypes";
-import { loadProgramSettings } from "../../helpers/ProgramSettingsHelpers";
+import { loadProgramSettings, saveProgramSettings } from "../../helpers/ProgramSettingsHelpers";
 
 type UpdateProgramSettingsPayload = ProgramSettings;
 
@@ -23,6 +23,7 @@ const programSettingsSlice = createSlice({
   reducers: {
     updateProgramSettings: (state, action: PayloadAction<UpdateProgramSettingsPayload>) => {
       state.programSettingDetails = action.payload;
+      saveProgramSettings(action.payload);
     },
   },
 });

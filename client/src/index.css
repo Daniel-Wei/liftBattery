@@ -145,6 +145,12 @@
   justify-content: space-between;
 }
 
+.training-day-session-list {
+  display: grid;
+  gap: 0.75rem;
+  min-width: 0;
+}
+
 .training-calendar-date,
 .saved-session-summary-row > div,
 .saved-training-exercise > div:first-child {
@@ -165,15 +171,41 @@
 
 .saved-training-session--stacked {
   display: grid;
+  gap: 0.8rem;
   width: 100%;
 }
 
-.saved-session-summary-row,
-.saved-training-exercise {
+.saved-session-summary-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 1rem;
+  flex: 0 0 12.5rem;
+  max-width: 12.5rem;
+  gap: 0.75rem;
+}
+
+.saved-session-summary-row > .saved-session-meta {
+  display: grid;
+  grid-template-columns: minmax(4.75rem, max-content) minmax(4.5rem, max-content);
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.saved-session-meta > div {
+  display: grid;
+  gap: 0.2rem;
+}
+
+.saved-session-meta strong {
+  font-size: 1rem;
+}
+
+.saved-session-delete-button {
+  flex: 0 0 auto;
+  align-self: flex-start;
+  width: auto;
+  min-width: 0;
+  padding-inline: 0.85rem;
 }
 
 .saved-training-exercise-list {
@@ -183,15 +215,26 @@
 }
 
 .saved-training-exercise {
+  display: grid;
+  grid-template-columns: minmax(10rem, 0.32fr) minmax(0, 1fr);
+  gap: 0.85rem;
+  align-items: start;
   border-top: 1px solid rgba(31, 72, 98, 0.1);
-  padding-top: 0.55rem;
+  padding-top: 0.65rem;
+}
+
+.saved-training-exercise-heading {
+  display: grid;
+  gap: 0.2rem;
+  min-width: 0;
 }
 
 .saved-set-chips {
   display: flex;
   flex-wrap: wrap;
-  justify-content: flex-end;
+  justify-content: flex-start;
   gap: 0.4rem;
+  min-width: 0;
 }
 
 .training-exercise-editor--with-preview {
@@ -700,6 +743,10 @@
     grid-template-columns: 1fr;
   }
 
+  .saved-training-exercise {
+    grid-template-columns: 1fr;
+  }
+
   .saved-session-summary-row,
   .saved-training-exercise {
     align-items: flex-start;
@@ -837,6 +884,7 @@
     align-items: stretch;
     flex-direction: column;
   }
+
 }
 
 * {
@@ -1554,6 +1602,7 @@ textarea:focus-visible {
 .trend-report-field {
   display: grid;
   gap: 0.35rem;
+  min-width: 0;
 }
 
 .trend-report-label {
@@ -1563,6 +1612,8 @@ textarea:focus-visible {
 }
 
 .trend-report-date-input {
+  width: 100%;
+  min-width: 0;
   min-height: 2.6rem;
   padding: 0.55rem 0.7rem;
   border: 1px solid var(--color-border);
@@ -1572,6 +1623,12 @@ textarea:focus-visible {
   font: inherit;
 }
 
+.trend-report-period-meta {
+  color: var(--color-ink-muted);
+  font-size: 0.76rem;
+  line-height: 1.35;
+}
+
 .trend-report-date-input:focus {
   border-color: var(--color-accent-strong);
   outline: 2px solid color-mix(in srgb, var(--color-accent-strong) 18%, transparent);
@@ -1579,9 +1636,12 @@ textarea:focus-visible {
 }
 
 .trend-report-week-count {
-  align-self: end;
+  align-self: stretch;
   margin: 0;
-  padding-bottom: 0.65rem;
+  padding: 0.65rem 0.8rem;
+  border: 1px solid color-mix(in srgb, var(--color-border) 70%, transparent);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--color-accent) 8%, var(--color-surface-soft));
   color: var(--color-ink-muted);
   font-size: 0.82rem;
   font-weight: var(--weight-semibold);
@@ -3185,7 +3245,12 @@ textarea:focus-visible {
 
 @media (min-width: 768px) {
   .trend-report-week-row {
-    grid-template-columns: minmax(12rem, 16rem) minmax(12rem, 16rem) auto;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: start;
+  }
+
+  .trend-report-week-count {
+    grid-column: 1 / -1;
   }
 
   .trend-report-filter-row {

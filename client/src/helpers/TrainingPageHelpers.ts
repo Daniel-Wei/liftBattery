@@ -3,7 +3,6 @@ import type { SetEntry, TrainingSessionDraft, TrainingSessionRecord } from "../t
 export function isHardSet(set: SetEntry) {
   if (set.isWarmup) return false;
   if (set.rir !== undefined) return set.rir <= 3;
-  if (set.rpe !== undefined) return set.rpe >= 7;
   return set.reps > 0;
 }
 
@@ -25,9 +24,6 @@ export function getTrainingFormError(form: TrainingSessionDraft) {
     for (const set of exercise.sets) {
       if (!Number.isFinite(set.reps) || set.reps <= 0) return "每组次数必须大于 0。";
       if (!Number.isFinite(set.weightKg) || set.weightKg < 0) return "重量不能小于 0 kg。";
-      if (set.rpe !== undefined && (set.rpe < 1 || set.rpe > 10)) {
-        return "Set RPE 可以留空，填写时必须在 1 到 10 之间。";
-      }
       if (set.rir !== undefined && set.rir < 0) return "RIR 不能小于 0。";
     }
   }

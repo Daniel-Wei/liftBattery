@@ -146,7 +146,6 @@ const trainingSlice = createSlice({
         id: createId("draft-set"),
         reps: previous?.reps ?? 8,
         weightKg: previous?.weightKg ?? 60,
-        rpe: previous?.rpe,
         rir: previous?.rir,
         isWarmup: previous?.isWarmup ?? false,
       });
@@ -180,7 +179,7 @@ const trainingSlice = createSlice({
 
       if (field === "isWarmup") {
         set.isWarmup = Boolean(value);
-      } else if (field === "rpe" || field === "rir") {
+      } else if (field === "rir") {
         set[field] = value === undefined ? undefined : Number(value);
       } else {
         set[field] = Number(value);

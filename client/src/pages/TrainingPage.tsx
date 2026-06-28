@@ -11,9 +11,9 @@ import {
   muscleGroupOptions,
 } from "../data/programValues";
 import {
-  formatTrainingTrendWeekLabel,
-  getCurrentTrainingTrendWeek,
-  getTrainingTrendWeeks,
+  formatTrainingCycleLabel,
+  getCurrentTrainingCycle,
+  getTrainingCycles,
 } from "../domain/trainingTrendCharts";
 import { MetricStatus, type MuscleGroup } from "../types/appTypes";
 import { useAppDispatch, useAppSelector } from "../store/hooks";
@@ -33,14 +33,15 @@ import {
 } from "../store/slices/trainingSlice";
 import { getTrainingData, selectTrainingDays } from "../store/selectors/trainingSelector";
 import { getTrainingFormError } from "../helpers/TrainingPageHelpers";
+import { selectProgramSettings } from "../store/selectors/programSettingsSelector";
 
 type SavedExercise = {
   muscleGroup: MuscleGroup;
   exerciseName: string;
 };
 
-function getWeekForDate(date: string, weeks: ReturnType<typeof getTrainingTrendWeeks>) {
-  return weeks.find((week) => date >= week.startDate && date <= week.endDate);
+function getCycleForDate(date: string, cycles: ReturnType<typeof getTrainingCycles>) {
+  return cycles.find((cycle) => date >= cycle.startDate && date <= cycle.endDate);
 }
 
 function formatDate(date: string) {
@@ -58,20 +59,21 @@ export function TrainingPage() {
     successMessage,
     operationErrorMessage,
   } = useAppSelector(getTrainingData);
+  const programSettings = useAppSelector(selectProgramSettings);
   const [formError, setFormError] = useState("");
-  const weeks = useMemo(() => getTrainingTrendWeeks(), []);
-  const initialWeek = getWeekForDate(trainingSessionDraft.date, weeks) ?? getCurrentTrainingTrendWeek();
-  const [selectedWeekLabel, setSelectedWeekLabel] = useState(initialWeek.label);
+  const cycles = useMemo(() => getTrainingCycles(programSettings), [programSettings]);
+  const initialCycle = getCycleForDate(trainingSessionDraft.date, cycles) ?? getCurrentTrainingCycle(programSettings);
+  const [selectedCycleLabel, setSelectedCycleLabel] = useState(initialCycle.label);
   const [selectedMuscleGroup, setSelectedMuscleGroup] = useState<MuscleGroup>("All");
   const [selectedExercise, setSelectedExercise] = useState("All");
-  const selectedWeek = weeks.find((week) => week.label === selectedWeekLabel) ?? initialWeek;
+  const selectedCycle = cycles.find((cycle) => cycle.label === selectedCycleLabel) ?? initialCycle;
 
   useEffect(() => {
     void dispatch(fetchTrainingDays({
-      from: selectedWeek.startDate,
-      to: selectedWeek.endDate,
+      from: selectedCycle.startDate,
+      to: selectedCycle.endDate,
     }));
-  }, [dispatch, selectedWeek.endDate, selectedWeek.startDate]);
+  }, [dispatch, selectedCycle.endDate, selectedCycle.startDate]);
 
   useEffect(() => {
     if (!successMessage) return;
@@ -130,17 +132,17 @@ export function TrainingPage() {
 
   function handleDateChange(date: string) {
     dispatch(updateTrainingSessionDraft({ field: "date", value: date }));
-    const week = getWeekForDate(date, weeks);
-    if (week) setSelectedWeekLabel(week.label);
+    const cycle = getCycleForDate(date, cycles);
+    if (cycle) setSelectedCycleLabel(cycle.label);
   }
 
-  function handleWeekChange(label: string) {
-    const week = weeks.find((candidate) => candidate.label === label);
-    if (!week) return;
+  function handleCycleChange(label: string) {
+    const cycle = cycles.find((candidate) => candidate.label === label);
+    if (!cycle) return;
 
-    setSelectedWeekLabel(label);
-    if (trainingSessionDraft.date < week.startDate || trainingSessionDraft.date > week.endDate) {
-      dispatch(updateTrainingSessionDraft({ field: "date", value: week.startDate }));
+    setSelectedCycleLabel(label);
+    if (trainingSessionDraft.date < cycle.startDate || trainingSessionDraft.date > cycle.endDate) {
+      dispatch(updateTrainingSessionDraft({ field: "date", value: cycle.startDate }));
     }
   }
 
@@ -215,14 +217,13 @@ export function TrainingPage() {
 
                   <div className="training-set-table-wrap">
                     <table className="training-set-table">
-                      <thead><tr><th>组</th><th>次数</th><th>重量 kg</th><th>单组难度</th><th>剩余次数</th><th>类型</th><th /></tr></thead>
+                      <thead><tr><th>组</th><th>次数</th><th>重量 kg</th><th>剩余次数</th><th>类型</th><th /></tr></thead>
                       <tbody>
                         {exercise.sets.map((set, setIndex) => (
                           <tr key={set.id}>
                             <td className="training-set-number">{setIndex + 1}</td>
                             <td><input aria-label={`动作 ${exerciseIndex + 1} 第 ${setIndex + 1} 组次数`} type="number" min="1" value={set.reps} onChange={(event) => dispatch(updateTrainingSet({ exerciseId: exercise.id, setId: set.id, field: "reps", value: Number(event.target.value) }))} /></td>
                             <td><input aria-label={`动作 ${exerciseIndex + 1} 第 ${setIndex + 1} 组重量`} type="number" min="0" step="0.5" value={set.weightKg} onChange={(event) => dispatch(updateTrainingSet({ exerciseId: exercise.id, setId: set.id, field: "weightKg", value: Number(event.target.value) }))} /></td>
-                            <td><input aria-label={`动作 ${exerciseIndex + 1} 第 ${setIndex + 1} 组难度`} type="number" min="1" max="10" step="0.5" value={set.rpe ?? ""} onChange={(event) => dispatch(updateTrainingSet({ exerciseId: exercise.id, setId: set.id, field: "rpe", value: getOptionalNumber(event.target.value) }))} /></td>
                             <td><input aria-label={`动作 ${exerciseIndex + 1} 第 ${setIndex + 1} 组剩余次数`} type="number" min="0" step="1" value={set.rir ?? ""} onChange={(event) => dispatch(updateTrainingSet({ exerciseId: exercise.id, setId: set.id, field: "rir", value: getOptionalNumber(event.target.value) }))} /></td>
                             <td>
                               <select aria-label={`动作 ${exerciseIndex + 1} 第 ${setIndex + 1} 组类型`} value={set.isWarmup ? "warmup" : "working"} onChange={(event) => dispatch(updateTrainingSet({ exerciseId: exercise.id, setId: set.id, field: "isWarmup", value: event.target.value === "warmup" }))}>
@@ -259,9 +260,9 @@ export function TrainingPage() {
         <div className="saved-session-header">
           <div className="saved-session-controls saved-session-controls--three">
             <label className="training-form-field training-form-field--compact">
-              <span className="training-form-label">训练周</span>
-              <select className="training-input training-input--compact" value={selectedWeekLabel} onChange={(event) => handleWeekChange(event.target.value)}>
-                {weeks.map((week) => <option key={week.label} value={week.label}>{formatTrainingTrendWeekLabel(week)}</option>)}
+              <span className="training-form-label">训练周期</span>
+              <select className="training-input training-input--compact" value={selectedCycleLabel} onChange={(event) => handleCycleChange(event.target.value)}>
+                {cycles.map((cycle) => <option key={cycle.label} value={cycle.label}>{formatTrainingCycleLabel(cycle)}</option>)}
               </select>
             </label>
             <label className="training-form-field training-form-field--compact">
@@ -287,42 +288,45 @@ export function TrainingPage() {
         </div>
 
         {filteredDays.length === 0 ? (
-          <p className="muted-text saved-session-empty">本周暂无符合筛选条件的训练记录。</p>
+          <p className="muted-text saved-session-empty">本训练周期暂无符合筛选条件的训练记录。</p>
         ) : (
           <div className="training-day-list training-day-list--calendar">
             {filteredDays.map((day) => (
               <article className="training-day-card" key={day.id}>
-                <div className="training-day-record-layout">
-                  <div className="training-day-calendar-heading">
-                    <div className="training-calendar-date"><strong>{formatDate(day.date)}</strong><span>{day.sessions.length} 次训练</span></div>
-                  </div>
-                  <div className="training-day-session-list">
-                    {day.sessions.map((session) => (
-                      <div className="saved-training-session saved-training-session--stacked" key={session.id}>
-                        <div className="saved-session-summary-row">
-                          <div className="saved-session-meta">
+                <div className="training-day-calendar-heading">
+                  <div className="training-calendar-date"><strong>{formatDate(day.date)}</strong><span>{day.sessions.length} 次训练</span></div>
+                </div>
+                <div className="training-day-session-list">
+                  {day.sessions.map((session) => (
+                    <div className="saved-training-session saved-training-session--stacked" key={session.id}>
+                      <div className="saved-session-summary-row">
+                        <div className="saved-session-meta">
+                          <div>
                             <strong>{session.startTime}</strong>
                             <span>{session.durationMinutes} 分钟</span>
-                            <span>总体难度 {session.sessionRpe}</span>
                           </div>
-                          <button type="button" className="text-button saved-session-delete-button" onClick={() => void dispatch(deleteTrainingSession(session.id))}>删除</button>
+                          <div>
+                            <span>总体难度</span>
+                            <strong>{session.sessionRpe}</strong>
+                          </div>
                         </div>
-                        <div className="saved-training-exercise-list">
-                          {session.exercises.map((exercise) => (
-                            <div className="saved-training-exercise" key={exercise.id}>
-                              <div className="saved-training-exercise-heading">
-                                <strong>{getExerciseDisplayLabel(exercise.exerciseName)}</strong>
-                                <span>{getMuscleGroupDisplayLabel(exercise.muscleGroup)}</span>
-                              </div>
-                              <div className="saved-set-chips">
-                                {exercise.sets.map((set) => <span className="signal-chip signal-chip--muted" key={set.id}>{set.setOrder} · {set.weightKg}kg × {set.reps}{set.rir !== undefined ? ` · RIR ${set.rir}` : ""}{set.rpe !== undefined ? ` · RPE ${set.rpe}` : ""}{set.isWarmup ? " · 热身" : ""}</span>)}
-                              </div>
-                            </div>
-                          ))}
-                        </div>
+                        <button type="button" className="text-button saved-session-delete-button" onClick={() => void dispatch(deleteTrainingSession(session.id))}>删除</button>
                       </div>
-                    ))}
-                  </div>
+                      <div className="saved-training-exercise-list">
+                        {session.exercises.map((exercise) => (
+                          <div className="saved-training-exercise" key={exercise.id}>
+                            <div className="saved-training-exercise-heading">
+                              <strong>{getExerciseDisplayLabel(exercise.exerciseName)}</strong>
+                              <span>{getMuscleGroupDisplayLabel(exercise.muscleGroup)}</span>
+                            </div>
+                            <div className="saved-set-chips">
+                              {exercise.sets.map((set) => <span className="signal-chip signal-chip--muted" key={set.id}>{set.setOrder} · {set.weightKg}kg × {set.reps}{set.rir !== undefined ? ` · RIR ${set.rir}` : ""}{set.isWarmup ? " · 热身" : ""}</span>)}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
                 </div>
               </article>
             ))}

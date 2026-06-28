@@ -7,8 +7,8 @@ import type {
 import { getLocalDateString } from "../helpers/GenericHelpers";
 
 export const defaultProgramSettings: ProgramSettings = {
-  currentWeek: 1,
-  totalWeeks: 12,
+  cycleStartDate: "2026-04-27",
+  weeksPerCycle: 4,
   mode: "Strength / hypertrophy",
   priorityMuscles: ["Back", "Glutes", "Quads"],
   weeklyPriorityHardSetTarget: 50,
@@ -48,8 +48,8 @@ export const initialTrainingSessionDetailsInput: TrainingSessionDraft = {
 export const defaultReportTypeOptions: Array<{ value: TrendReportType; label: string }> = [
   { value: "readiness", label: "练前状态分数趋势" },
   { value: "sleep", label: "睡眠时长趋势" },
-  { value: "sessionLoad", label: "每周训练负荷" },
-  { value: "volume", label: "每周训练量" },
+  { value: "sessionLoad", label: "训练周期负荷" },
+  { value: "volume", label: "训练周期训练量" },
   { value: "estimatedPr", label: "动作预计单次最大重量趋势" },
   { value: "muscleStimulation", label: "肌群刺激分布" },
 ];

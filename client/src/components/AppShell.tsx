@@ -66,13 +66,6 @@ export function AppShell({
             <p className="topbar-eyebrow">训练电量</p>
             <h1 className="topbar-title">{activeItem?.labelZh}</h1>
           </div>
-          <button
-            type="button"
-            onClick={() => onNavigate(PageKey.Overview)}
-            className="button-dark"
-          >
-            首页
-          </button>
           {user ? (
             <div className="user-menu">
               <button type="button" className="user-chip" onClick={() => onNavigate(PageKey.Profile)}>

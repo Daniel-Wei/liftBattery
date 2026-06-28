@@ -46,7 +46,7 @@ function formatWholeNumber(value: number) {
   return Math.round(value).toLocaleString("zh-CN");
 }
 
-function formatRpe(value: number) {
+function formatDecimal(value: number) {
   return Number.isInteger(value) ? value.toString() : value.toFixed(1);
 }
 
@@ -85,10 +85,6 @@ function isHardSet(set: SetEntry) {
     return set.rir <= 3;
   }
 
-  if (set.rpe !== undefined) {
-    return set.rpe >= 7;
-  }
-
   return set.reps > 0;
 }
 
@@ -105,43 +101,30 @@ export function getPriorityHardSetCount(
   }, 0);
 }
 
-export function getTopSetEffort(trainingSessions: TrainingSessionRecord[]) {
+export function getLowestRirEffort(trainingSessions: TrainingSessionRecord[]) {
   const allSets = trainingSessions.flatMap((session) => session.sets);
-  const rpeValues = allSets
-    .filter((set) => !set.isWarmup && set.rpe !== undefined)
-    .map((set) => set.rpe ?? 0);
-
-  if (rpeValues.length > 0) {
-    return `单组难度 ${formatRpe(Math.max(...rpeValues))}`;
-  }
-
   const rirValues = allSets
     .filter((set) => !set.isWarmup && set.rir !== undefined)
     .map((set) => set.rir ?? 0);
 
   if (rirValues.length > 0) {
     const lowestRir = Math.min(...rirValues);
-    return lowestRir <= 1 ? "力竭前剩余 0 至 1 次" : `力竭前剩余 ${formatRpe(lowestRir)} 次`;
+    return lowestRir <= 1 ? "力竭前剩余 0 至 1 次" : `力竭前剩余 ${formatDecimal(lowestRir)} 次`;
   }
 
-  return "暂无顶组数据";
+  return "暂无";
 }
 
-function getTopSetEffortStatus(topSetEffort: string) {
-  if (topSetEffort === "暂无顶组数据") {
+function getLowestRirEffortStatus(lowestRirEffort: string) {
+  if (lowestRirEffort === "暂无") {
     return MetricStatus.Neutral;
   }
 
-  if (topSetEffort.includes("力竭前剩余 0 至 1 次")) {
+  if (lowestRirEffort.includes("力竭前剩余 0 至 1 次")) {
     return MetricStatus.Watch;
   }
 
-  if (topSetEffort.startsWith("单组难度")) {
-    const rpeValue = Number(topSetEffort.replace("单组难度", "").trim());
-    return rpeValue >= 9 ? MetricStatus.Watch : MetricStatus.Good;
-  }
-
-  return MetricStatus.Neutral;
+  return MetricStatus.Good;
 }
 
 function getReadinessTrendDirection(currentReadiness: ReadinessResult) {
@@ -188,10 +171,10 @@ export function getWatchStateMetric(args: WatchStateMetricArgs): Metric {
     currentReadiness.badgeStatus === MetricStatus.Good
     && priorityHardSetCount >= weeklyPriorityHardSetTarget
   ) {
-    return {
-      label: "Watch State",
-      labelZh: "观察状态",
-      value: "本周进展良好",
+      return {
+        label: "Watch State",
+        labelZh: "观察状态",
+        value: "本周期进展良好",
       trend: TrendDirection.Up,
       status: MetricStatus.Good,
       evidenceType: EvidenceType.Watch,
@@ -225,13 +208,13 @@ export function getDerivedOverviewMetrics(args: DerivedOverviewMetricArgs): Metr
     recentTrainingSessions,
     programSettings.priorityMuscles,
   );
-  const topSetEffort = getTopSetEffort(recentTrainingSessions);
+  const lowestRirEffort = getLowestRirEffort(recentTrainingSessions);
 
   return [
     {
       label: "Session Load",
       labelZh: "训练课负荷",
-      value: latestSessionLoad === null ? "暂无训练记录" : `${formatWholeNumber(latestSessionLoad)} 负荷单位`,
+      value: latestSessionLoad === null ? "暂无" : `${formatWholeNumber(latestSessionLoad)} AU`,
       trend: latestSessionLoad !== null && latestSessionLoad >= HIGH_SESSION_LOAD_THRESHOLD
         ? TrendDirection.Up
         : TrendDirection.Stable,
@@ -257,14 +240,14 @@ export function getDerivedOverviewMetrics(args: DerivedOverviewMetricArgs): Metr
       explanationZh: "统计最近 7 天重点肌群的非热身高强度组。",
     },
     {
-      label: "Top Set Effort",
-      labelZh: "顶组努力程度",
-      value: topSetEffort,
-      trend: topSetEffort === "暂无顶组数据" ? TrendDirection.Stable : TrendDirection.Up,
-      status: getTopSetEffortStatus(topSetEffort),
+      label: "Lowest RIR",
+      labelZh: "最低剩余次数",
+      value: lowestRirEffort,
+      trend: lowestRirEffort === "暂无" ? TrendDirection.Stable : TrendDirection.Up,
+      status: getLowestRirEffortStatus(lowestRirEffort),
       evidenceType: EvidenceType.Established,
-      explanation: "Uses the highest set RPE in the latest 7 days, then falls back to lowest RIR.",
-      explanationZh: "优先使用最近 7 天最高单组难度；没有单组难度时使用最低的力竭前剩余次数。",
+      explanation: "Uses the lowest set RIR in the latest 7-day window.",
+      explanationZh: "使用最近 7 天非热身组里最低的力竭前剩余次数。",
     },
     {
       label: "Wellness Readiness",

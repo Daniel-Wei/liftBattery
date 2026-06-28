@@ -11,6 +11,7 @@ import type { MuscleGroup, MuscleMapKey } from "../types/appTypes";
 
 type MuscleStimulationReportProps = {
   report: MuscleStimulationReportDto;
+  hasComparison?: boolean;
 };
 
 const muscleGroupToFigureMuscles: Record<Exclude<MuscleGroup, "All">, MuscleMapKey[]> = {
@@ -56,7 +57,7 @@ function getFigureActivations(report: MuscleStimulationReportDto): MuscleSvgActi
   });
 }
 
-export function MuscleStimulationReport({ report }: MuscleStimulationReportProps) {
+export function MuscleStimulationReport({ report, hasComparison = false }: MuscleStimulationReportProps) {
   const [selectedMuscleId, setSelectedMuscleId] = useState<MuscleMapKey | null>(null);
   const hasData = report.totalScore > 0;
   const figureActivations = useMemo(() => getFigureActivations(report), [report]);
@@ -97,7 +98,10 @@ export function MuscleStimulationReport({ report }: MuscleStimulationReportProps
               <div className="stimulation-ranking-row" key={item.muscle}>
                 <span>{getMuscleGroupDisplayLabel(item.muscle)}</span>
                 <strong>{item.score}</strong>
-                <small>{item.percentage}% · 较上期 {item.change >= 0 ? "+" : ""}{item.change}%</small>
+                <small>
+                  {item.percentage}%
+                  {hasComparison ? ` · 较对比周期 ${item.change >= 0 ? "+" : ""}${item.change}%` : ""}
+                </small>
                 <i style={{ width: `${Math.min(100, item.percentage * 3)}%` }} />
               </div>
             ))}
@@ -108,10 +112,12 @@ export function MuscleStimulationReport({ report }: MuscleStimulationReportProps
             <span>总刺激得分</span>
             <strong>{report.totalScore}</strong>
           </div>
-          <div>
-            <span>较上一周期</span>
-            <strong>{report.changeFromPreviousPeriod >= 0 ? "+" : ""}{report.changeFromPreviousPeriod}%</strong>
-          </div>
+          {hasComparison ? (
+            <div>
+              <span>较对比周期</span>
+              <strong>{report.changeFromPreviousPeriod >= 0 ? "+" : ""}{report.changeFromPreviousPeriod}%</strong>
+            </div>
+          ) : null}
           <div>
             <span>高刺激肌群</span>
             <strong>{report.highStimulusMuscleCount}</strong>

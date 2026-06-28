@@ -1,8 +1,16 @@
-import type { MuscleGroup, TrainingSessionRecord, TrendPoint } from "../types/appTypes";
+import type { MuscleGroup, ProgramSettings, TrainingSessionRecord, TrendPoint } from "../types/appTypes";
 
 export type TrainingTrendWeek = {
   label: string;
   startDate: string;
+  endDate: string;
+};
+
+export type TrainingCycle = {
+  cycleNumber: number;
+  label: string;
+  startDate: string;
+  endWeekStartDate: string;
   endDate: string;
 };
 
@@ -14,22 +22,78 @@ export type MainLiftEstimatedPrTrend = {
   data: TrendPoint[];
 };
 
-// Preset training weeks for chart grouping. Later this should come from user program settings.
+// Preset training cycles for chart grouping. Each cycle currently spans 7 days.
 const presetTrainingTrendWeeks: TrainingTrendWeek[] = [
-  { label: "W1", startDate: "2026-04-27", endDate: "2026-05-03" },
-  { label: "W2", startDate: "2026-05-04", endDate: "2026-05-10" },
-  { label: "W3", startDate: "2026-05-11", endDate: "2026-05-17" },
-  { label: "W4", startDate: "2026-05-18", endDate: "2026-05-24" },
-  { label: "W5", startDate: "2026-05-25", endDate: "2026-05-31" },
-  { label: "W6", startDate: "2026-06-01", endDate: "2026-06-07" },
-  { label: "W7", startDate: "2026-06-08", endDate: "2026-06-14" },
-  { label: "W8", startDate: "2026-06-15", endDate: "2026-06-21" },
+  { label: "周期 1", startDate: "2026-04-27", endDate: "2026-05-03" },
+  { label: "周期 2", startDate: "2026-05-04", endDate: "2026-05-10" },
+  { label: "周期 3", startDate: "2026-05-11", endDate: "2026-05-17" },
+  { label: "周期 4", startDate: "2026-05-18", endDate: "2026-05-24" },
+  { label: "周期 5", startDate: "2026-05-25", endDate: "2026-05-31" },
+  { label: "周期 6", startDate: "2026-06-01", endDate: "2026-06-07" },
+  { label: "周期 7", startDate: "2026-06-08", endDate: "2026-06-14" },
+  { label: "周期 8", startDate: "2026-06-15", endDate: "2026-06-21" },
 ];
+
+const maxTrainingCycleOptions = 24;
 
 function addDays(date: string, days: number) {
   const nextDate = new Date(`${date}T00:00:00Z`);
   nextDate.setUTCDate(nextDate.getUTCDate() + days);
   return nextDate.toISOString().slice(0, 10);
+}
+
+function addWeeks(date: string, weeks: number) {
+  return addDays(date, weeks * 7);
+}
+
+function normalizeToMonday(date: string) {
+  const value = new Date(`${date}T00:00:00Z`);
+
+  if (Number.isNaN(value.getTime())) {
+    return date;
+  }
+
+  const daysFromMonday = (value.getUTCDay() + 6) % 7;
+  value.setUTCDate(value.getUTCDate() - daysFromMonday);
+  return value.toISOString().slice(0, 10);
+}
+
+export function getTrainingCycles(
+  programSettings: ProgramSettings,
+  optionCount = maxTrainingCycleOptions,
+): TrainingCycle[] {
+  const startDate = normalizeToMonday(programSettings.cycleStartDate);
+  const weeksPerCycle = Math.max(1, Math.round(programSettings.weeksPerCycle));
+
+  return Array.from({ length: optionCount }, (_, index) => {
+    const cycleStartDate = addWeeks(startDate, index * weeksPerCycle);
+
+    return {
+      cycleNumber: index + 1,
+      label: `第 ${index + 1} 个训练周期`,
+      startDate: cycleStartDate,
+      endWeekStartDate: addWeeks(cycleStartDate, weeksPerCycle - 1),
+      endDate: addDays(cycleStartDate, (weeksPerCycle * 7) - 1),
+    };
+  });
+}
+
+export function formatTrainingCycleLabel(cycle: TrainingCycle) {
+  return `${cycle.label}：${cycle.startDate} 至 ${cycle.endDate}`;
+}
+
+export function getCurrentTrainingCycle(programSettings: ProgramSettings) {
+  const today = new Date().toISOString().slice(0, 10);
+  const cycles = getTrainingCycles(programSettings);
+  const currentCycle = cycles.find((cycle) => today >= cycle.startDate && today <= cycle.endDate);
+
+  if (currentCycle) {
+    return currentCycle;
+  }
+
+  const firstCycle = cycles[0];
+  const lastCycle = cycles[cycles.length - 1];
+  return today < firstCycle.startDate ? firstCycle : lastCycle;
 }
 
 export function getTrainingTrendWeeks(
@@ -45,7 +109,7 @@ export function getTrainingTrendWeeks(
 
   while (weekStart <= endWeek) {
     weeks.push({
-      label: `W${weeks.length + 1}`,
+      label: `周期 ${weeks.length + 1}`,
       startDate: weekStart,
       endDate: addDays(weekStart, 6),
     });
@@ -64,8 +128,8 @@ function getMonday(date: string) {
 
 function getDefaultEndWeek() {
   const presetEnd = presetTrainingTrendWeeks[presetTrainingTrendWeeks.length - 1].startDate;
-  const currentWeek = getMonday(new Date().toISOString().slice(0, 10));
-  return currentWeek > presetEnd ? currentWeek : presetEnd;
+  const currentCycleStart = getMonday(new Date().toISOString().slice(0, 10));
+  return currentCycleStart > presetEnd ? currentCycleStart : presetEnd;
 }
 
 export function isSessionInTrainingTrendWeek(
@@ -78,11 +142,11 @@ export function isSessionInTrainingTrendWeek(
 export function getCurrentTrainingTrendWeek() {
   const today = new Date().toISOString().slice(0, 10);
   const weeks = getTrainingTrendWeeks();
-  const currentWeek = weeks.find((week) => (
+  const currentCycle = weeks.find((week) => (
     today >= week.startDate && today <= week.endDate
   ));
 
-  return currentWeek ?? weeks[weeks.length - 1];
+  return currentCycle ?? weeks[weeks.length - 1];
 }
 
 export function formatTrainingTrendWeekLabel(week: TrainingTrendWeek) {

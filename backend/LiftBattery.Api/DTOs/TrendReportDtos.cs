@@ -7,6 +7,8 @@ public sealed record TrendReportSelectionDto(
 public sealed record CreateTrendReportRequestDto(
     string StartWeek,
     string EndWeek,
+    string? ComparisonStartWeek,
+    string? ComparisonEndWeek,
     IReadOnlyList<TrendReportSelectionDto> Selections,
     IReadOnlyList<string> ReportTypes);
 
@@ -43,6 +45,8 @@ public sealed record MuscleStimulationReportDto(
 public sealed record TrendReportResultDto(
     string StartWeek,
     string EndWeek,
+    string? ComparisonStartWeek,
+    string? ComparisonEndWeek,
     IReadOnlyList<string> WeekLabels,
     IReadOnlyList<TrendReportChartDto> Charts,
     MuscleStimulationReportDto? MuscleStimulation);
