@@ -48,14 +48,14 @@ public sealed class TrendReportService : ITrendReportService
     private readonly ITrendReportJobRepository _jobRepository;
     private readonly ITrainingRepository _trainingRepository;
     private readonly IPreCheckRepository _preCheckRepository;
-    private readonly ITrendReportQueue _queue;
+    private readonly ITrendReportServiceBusQueue _queue;
     private readonly int _demoDelayMilliseconds;
 
     public TrendReportService(
         ITrendReportJobRepository jobRepository,
         ITrainingRepository trainingRepository,
         IPreCheckRepository preCheckRepository,
-        ITrendReportQueue queue,
+        ITrendReportServiceBusQueue queue,
         IConfiguration configuration)
     {
         _jobRepository = jobRepository;

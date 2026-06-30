@@ -3,7 +3,7 @@ using Microsoft.Extensions.Configuration;
 
 namespace LiftBattery.Api.Services;
 
-public sealed class TrendReportServiceBusQueue : ITrendReportQueue, IAsyncDisposable
+public sealed class TrendReportServiceBusQueue : ITrendReportServiceBusQueue, IAsyncDisposable
 {
     private readonly IConfiguration _configuration;
     private ServiceBusClient? _client;

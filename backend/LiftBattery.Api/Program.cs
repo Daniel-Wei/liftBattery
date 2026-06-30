@@ -51,7 +51,7 @@ var host = new HostBuilder()
         services.AddScoped<IPreCheckService, PreCheckService>();
         services.AddScoped<ITrainingSessionService, TrainingSessionService>();
         services.AddScoped<ITrendReportJobRepository, TrendReportJobRepository>();
-        services.AddScoped<ITrendReportQueue, TrendReportServiceBusQueue>();
+        services.AddScoped<ITrendReportServiceBusQueue, TrendReportServiceBusQueue>();
         services.AddScoped<ITrendReportService, TrendReportService>();
     })
     .Build();

@@ -1,6 +1,6 @@
 namespace LiftBattery.Api.Services;
 
-public interface ITrendReportQueue
+public interface ITrendReportServiceBusQueue
 {
     Task EnqueueAsync(int jobId);
 }

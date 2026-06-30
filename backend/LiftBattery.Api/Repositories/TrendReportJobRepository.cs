@@ -103,6 +103,8 @@ public sealed class TrendReportJobRepository : ITrendReportJobRepository
     {
         await EnsureTableAsync();
 
+        // Protect Cancelled jobs from being overwritten by stale workers.
+        // If an old worker finishes after this job was cancelled, it must not change the job back to Processing, Completed, or Failed.
         if (job.Status != TrendReportJobStatuses.Cancelled)
         {
             try
