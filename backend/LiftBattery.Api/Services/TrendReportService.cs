@@ -1,3 +1,6 @@
+using System.Security.Cryptography;
+using System.Text;
+using System.Text.Json;
 using LiftBattery.Api.DTOs;
 using LiftBattery.Api.Models;
 using LiftBattery.Api.Repositories;
@@ -39,6 +42,8 @@ public sealed class TrendReportService : ITrendReportService
         "purple",
         "dark",
     };
+
+    private static readonly JsonSerializerOptions FingerprintJsonOptions = new(JsonSerializerDefaults.Web);
 
     private readonly ITrendReportJobRepository _jobRepository;
     private readonly ITrainingRepository _trainingRepository;
@@ -89,7 +94,33 @@ public sealed class TrendReportService : ITrendReportService
             userId,
             snapshotStart,
             rangeEnd);
+        var snapshot = new TrendReportSnapshot(trainingDays, preCheckLogs);
+        var reportFingerprint = CreateReportFingerprint(validatedRequest, snapshot);
+        var activeJobs = await _jobRepository.GetActiveByUserIdAsync(userId);
+        var existingActiveJob = activeJobs
+            .Where(job => job.ReportFingerprint == reportFingerprint)
+            .OrderByDescending(job => job.CreatedAtUtc)
+            .FirstOrDefault();
+
+        if (existingActiveJob is not null)
+        {
+            return ToDto(existingActiveJob);
+        }
+
         var now = DateTimeOffset.UtcNow;
+
+        foreach (var activeJob in activeJobs)
+        {
+            await _jobRepository.UpdateAsync(activeJob with
+            {
+                Status = TrendReportJobStatuses.Cancelled,
+                CurrentStage = "已取消：用户提交了新的报告请求",
+                ErrorMessage = null,
+                CompletedAtUtc = now,
+                UpdatedAtUtc = now,
+            });
+        }
+
         var job = new TrendReportJob(
             Random.Shared.Next(1, int.MaxValue),
             userId,
@@ -97,8 +128,9 @@ public sealed class TrendReportService : ITrendReportService
             0,
             "等待后台处理",
             validatedRequest,
+            reportFingerprint,
             // The request stores user selections; the snapshot stores database data at submission time.
-            new TrendReportSnapshot(trainingDays, preCheckLogs),
+            snapshot,
             null,
             null,
             now,
@@ -154,6 +186,11 @@ public sealed class TrendReportService : ITrendReportService
         {
             await DelayForDemoAsync();
 
+            if (await IsCancelledAsync(job.Id))
+            {
+                return;
+            }
+
             job = job with
             {
                 ProgressPercent = 45,
@@ -162,6 +199,11 @@ public sealed class TrendReportService : ITrendReportService
             };
             await _jobRepository.UpdateAsync(job);
             await DelayForDemoAsync();
+
+            if (await IsCancelledAsync(job.Id))
+            {
+                return;
+            }
 
             var result = GenerateResult(job.Request, job.Snapshot);
 
@@ -173,6 +215,11 @@ public sealed class TrendReportService : ITrendReportService
             };
             await _jobRepository.UpdateAsync(job);
             await DelayForDemoAsync();
+
+            if (await IsCancelledAsync(job.Id))
+            {
+                return;
+            }
 
             var completedAt = DateTimeOffset.UtcNow;
             job = job with
@@ -198,6 +245,12 @@ public sealed class TrendReportService : ITrendReportService
             await _jobRepository.UpdateAsync(failedJob);
             throw;
         }
+    }
+
+    private async Task<bool> IsCancelledAsync(int jobId)
+    {
+        var latestJob = await _jobRepository.GetByIdAsync(jobId);
+        return latestJob?.Status == TrendReportJobStatuses.Cancelled;
     }
 
     private Task DelayForDemoAsync()
@@ -288,6 +341,28 @@ public sealed class TrendReportService : ITrendReportService
         }
 
         return new TrendReportRequest(startWeek, endWeek, comparisonStartWeek, comparisonEndWeek, selections, reportTypes);
+    }
+
+    private static string CreateReportFingerprint(TrendReportRequest request, TrendReportSnapshot snapshot)
+    {
+        var normalizedSelections = request.Selections
+            .OrderBy(selection => selection.MuscleGroup, StringComparer.Ordinal)
+            .ThenBy(selection => selection.ExerciseName, StringComparer.Ordinal)
+            .Select(selection => $"{selection.MuscleGroup}:{selection.ExerciseName}");
+        var normalizedReportTypes = request.ReportTypes
+            .OrderBy(reportType => reportType, StringComparer.Ordinal);
+        var fingerprintSource = string.Join(
+            "\n",
+            request.StartWeek.ToString("yyyy-MM-dd"),
+            request.EndWeek.ToString("yyyy-MM-dd"),
+            request.ComparisonStartWeek?.ToString("yyyy-MM-dd") ?? string.Empty,
+            request.ComparisonEndWeek?.ToString("yyyy-MM-dd") ?? string.Empty,
+            string.Join("|", normalizedSelections),
+            string.Join("|", normalizedReportTypes),
+            JsonSerializer.Serialize(snapshot, FingerprintJsonOptions));
+
+        return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(fingerprintSource)))
+            .ToLowerInvariant();
     }
 
     private static TrendReportResultDto GenerateResult(
@@ -771,6 +846,7 @@ public sealed class TrendReportService : ITrendReportService
     {
         return new TrendReportJobDto(
             job.Id,
+            job.ReportFingerprint,
             job.Status,
             job.ProgressPercent,
             job.CurrentStage,

@@ -6,7 +6,7 @@
     "ConnectionStrings__LiftBatteryDatabase": "Server=(localdb)\\MSSQLLocalDB;Database=LiftBattery;Trusted_Connection=True;TrustServerCertificate=True",
     "PreCheck__DefaultUserId": "1",
     "Training__DefaultUserId": "1",
-    "Auth__BetaInviteCode": "replace-with-local-beta-code",
+    "Auth__BetaInviteCode": "liftbattery-beta-v-100",
     "Auth__RequireSecureCookie": "false",
     "Auth__SessionDays": "14",
     "ServiceBusConnection": "",

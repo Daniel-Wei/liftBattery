@@ -177,10 +177,36 @@ export function TrendsPage() {
 
   // #endregion
 
-  const canGenerate = selectedCycle !== undefined
-    && selectedMuscleSelections.length > 0
-    && selectedReports.length > 0
+  const currentReportRequest = useMemo<CreateTrendReportRequestDto | null>(() => {
+    if (selectedCycle === undefined || selectedMuscleSelections.length === 0 || selectedReports.length === 0) {
+      return null;
+    }
+
+    const nextRequest: CreateTrendReportRequestDto = {
+      startWeek: selectedCycle.startDate,
+      endWeek: selectedCycle.endWeekStartDate,
+      selections: selectedMuscleSelections.map((selection) => ({
+        muscleGroup: selection.muscleGroup,
+        exerciseName: selection.exerciseName,
+      })),
+      reportTypes: selectedReports.map((report) => report.value),
+    };
+
+    if (comparisonCycle) {
+      nextRequest.comparisonStartWeek = comparisonCycle.startDate;
+      nextRequest.comparisonEndWeek = comparisonCycle.endWeekStartDate;
+    }
+
+    return nextRequest;
+  }, [comparisonCycle, selectedCycle, selectedMuscleSelections, selectedReports]);
+  const activeJobIsGenerating = job?.status === "Queued" || job?.status === "Processing";
+  const canGenerate = currentReportRequest !== null
     && status !== "submitting";
+  const generateButtonText = status === "submitting"
+    ? "正在提交"
+    : activeJobIsGenerating
+      ? "重新生成报告"
+      : "生成报告";
 
   // execute any remaining job
   useEffect(() => {
@@ -211,26 +237,11 @@ export function TrendsPage() {
   }, [dispatch, job]);
 
   function handleGenerateReport() {
-    if (!canGenerate) {
+    if (!canGenerate || currentReportRequest === null) {
       return;
     }
 
-    const request: CreateTrendReportRequestDto = {
-      startWeek: selectedCycle.startDate,
-      endWeek: selectedCycle.endWeekStartDate,
-      selections: selectedMuscleSelections.map((selection) => ({
-        muscleGroup: selection.muscleGroup,
-        exerciseName: selection.exerciseName,
-      })),
-      reportTypes: selectedReports.map((report) => report.value),
-    };
-
-    if (comparisonCycle) {
-      request.comparisonStartWeek = comparisonCycle.startDate;
-      request.comparisonEndWeek = comparisonCycle.endWeekStartDate;
-    }
-
-    void dispatch(createTrendReport(request));
+    void dispatch(createTrendReport(currentReportRequest));
   }
 
   return (
@@ -329,7 +340,7 @@ export function TrendsPage() {
             disabled={!canGenerate}
             onClick={handleGenerateReport}
           >
-            {status === "submitting" ? "正在提交" : "生成报告"}
+            {generateButtonText}
           </button>
         </div>
       </section>

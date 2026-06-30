@@ -25,7 +25,7 @@ var host = new HostBuilder()
 
         var databaseConnection = context.Configuration.GetConnectionString("LiftBatteryDatabase")
             ?? throw new InvalidOperationException(
-                "ConnectionStrings:LiftBatteryDatabase is required for PreCheck persistence.");
+                "ConnectionStrings:LiftBatteryDatabase is required.");
 
         services.Configure<PreCheckOptions>(
             context.Configuration.GetSection(PreCheckOptions.SectionName));
@@ -35,8 +35,15 @@ var host = new HostBuilder()
             context.Configuration.GetSection(AuthOptions.SectionName));
         services.AddDbContext<LiftBatteryDbContext>(options =>
             options.UseSqlServer(databaseConnection, sqlOptions => sqlOptions.EnableRetryOnFailure()));
+
+        // Singleton services are created once and reused for the whole application lifetime.
+        // Use this only for stateless, thread-safe services that do not depend on scoped services.
         services.AddSingleton(TimeProvider.System);
         services.AddSingleton<PasswordHashingService>();
+
+        // Scoped services are created once per function invocation/request.
+        // Use scoped lifetime for services that depend on LiftBatteryDbContext or repositories,
+        // because DbContext tracks entity changes and should not be shared across requests.
         services.AddScoped<AuthCookieHelper>();
         services.AddScoped<IAuthService, AuthService>();
         services.AddScoped<IPreCheckRepository, PreCheckRepository>();

@@ -136,6 +136,7 @@ export type TrendReportJobStatus =
 
 export type TrendReportJobDto = {
   id: number;
+  reportFingerprint: string;
   status: TrendReportJobStatus;
   progressPercent: number;
   currentStage: string;

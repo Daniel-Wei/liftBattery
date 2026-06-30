@@ -30,6 +30,24 @@ public sealed class TrendReportJobRepository : ITrendReportJobRepository
         return job;
     }
 
+    public async Task<IReadOnlyList<TrendReportJob>> GetActiveByUserIdAsync(int userId)
+    {
+        await EnsureTableAsync();
+
+        var jobs = new List<TrendReportJob>();
+
+        await foreach (var jobEntity in _tableClient.QueryAsync<TrendReportJobEntity>(
+            entity => entity.PartitionKey == PartitionKeyValue && entity.UserId == userId))
+        {
+            if (jobEntity.Status is TrendReportJobStatuses.Queued or TrendReportJobStatuses.Processing)
+            {
+                jobs.Add(ToModel(jobEntity));
+            }
+        }
+
+        return jobs;
+    }
+
     // Atomically claims an eligible job by marking it Processing; the ETag prevents concurrent claims.
     public async Task<TrendReportJob?> TryStartProcessingAsync(
         int id,
@@ -84,6 +102,26 @@ public sealed class TrendReportJobRepository : ITrendReportJobRepository
     public async Task<TrendReportJob> UpdateAsync(TrendReportJob job)
     {
         await EnsureTableAsync();
+
+        if (job.Status != TrendReportJobStatuses.Cancelled)
+        {
+            try
+            {
+                var current = await _tableClient.GetEntityAsync<TrendReportJobEntity>(
+                    PartitionKeyValue,
+                    job.Id.ToString());
+
+                if (current.Value.Status == TrendReportJobStatuses.Cancelled)
+                {
+                    return ToModel(current.Value);
+                }
+            }
+            catch (RequestFailedException exception) when (exception.Status == 404)
+            {
+                // Upsert below will create the row if it disappeared between reads.
+            }
+        }
+
         await _tableClient.UpsertEntityAsync(ToEntity(job), TableUpdateMode.Replace);
         return job;
     }
@@ -103,6 +141,7 @@ public sealed class TrendReportJobRepository : ITrendReportJobRepository
             UserId = job.UserId,
             ProgressPercent = job.ProgressPercent,
             CurrentStage = job.CurrentStage,
+            ReportFingerprint = job.ReportFingerprint,
             RequestJson = JsonSerializer.Serialize(job.Request, _jsonOptions),
             SnapshotJson = JsonSerializer.Serialize(job.Snapshot, _jsonOptions),
             ResultJson = job.Result is null
@@ -133,6 +172,7 @@ public sealed class TrendReportJobRepository : ITrendReportJobRepository
             entity.ProgressPercent,
             entity.CurrentStage,
             request,
+            entity.ReportFingerprint,
             snapshot,
             result,
             entity.ErrorMessage,
@@ -152,6 +192,7 @@ public sealed class TrendReportJobRepository : ITrendReportJobRepository
         public int UserId { get; set; }
         public int ProgressPercent { get; set; }
         public string CurrentStage { get; set; } = string.Empty;
+        public string ReportFingerprint { get; set; } = string.Empty;
         public string RequestJson { get; set; } = string.Empty;
         public string SnapshotJson { get; set; } = string.Empty;
         public string? ResultJson { get; set; }
