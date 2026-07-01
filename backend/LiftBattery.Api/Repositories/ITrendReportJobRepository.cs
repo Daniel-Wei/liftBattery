@@ -6,6 +6,7 @@ public interface ITrendReportJobRepository
 {
     Task<TrendReportJob> CreateAsync(TrendReportJob job);
     Task<IReadOnlyList<TrendReportJob>> GetActiveByUserIdAsync(int userId);
+    Task<TrendReportJob?> GetLatestByUserIdAndFingerprintAsync(int userId, string reportFingerprint);
     Task<TrendReportJob?> GetByIdAsync(int id);
     Task<TrendReportJob?> TryStartProcessingAsync(int id, DateTimeOffset startedAtUtc);
     Task<TrendReportJob> UpdateAsync(TrendReportJob job);

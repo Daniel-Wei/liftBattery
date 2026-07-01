@@ -1,10 +1,14 @@
+using System.Text.Json;
 using Azure.Messaging.ServiceBus;
+using LiftBattery.Api.DTOs;
 using Microsoft.Extensions.Configuration;
 
 namespace LiftBattery.Api.Services;
 
 public sealed class TrendReportServiceBusQueue : ITrendReportServiceBusQueue, IAsyncDisposable
 {
+    private static readonly JsonSerializerOptions QueueMessageJsonOptions = new(JsonSerializerDefaults.Web);
+
     private readonly IConfiguration _configuration;
     private ServiceBusClient? _client;
     private ServiceBusSender? _sender;
@@ -14,18 +18,26 @@ public sealed class TrendReportServiceBusQueue : ITrendReportServiceBusQueue, IA
         _configuration = configuration;
     }
 
-    // Creates a small message containing the job ID and sends it to the configured queue.
-    public async Task EnqueueAsync(int jobId)
+    // Sends a self-describing JSON message so the queue record is useful in Azure Portal,
+    // logs, retry investigations, and DLQ debugging.
+    public async Task EnqueueAsync(TrendReportQueueMessageDto queueMessage)
     {
         var sender = GetSender();
-        var jobIdText = jobId.ToString();
-        var message = new ServiceBusMessage(jobIdText)
+        var body = JsonSerializer.Serialize(queueMessage, QueueMessageJsonOptions);
+        var message = new ServiceBusMessage(body)
         {
-            MessageId = jobIdText,
-            ContentType = "text/plain",
+            MessageId = CreateMessageId(queueMessage),
+            CorrelationId = queueMessage.RunId,
+            ContentType = "application/json",
             Subject = "TrendReportRequested",
         };
         message.ApplicationProperties["jobType"] = "TrendReport";
+        message.ApplicationProperties["runId"] = queueMessage.RunId;
+        message.ApplicationProperties["jobId"] = queueMessage.JobId;
+        message.ApplicationProperties["userId"] = queueMessage.UserId;
+        message.ApplicationProperties["periodStart"] = queueMessage.PeriodStart;
+        message.ApplicationProperties["periodEnd"] = queueMessage.PeriodEnd;
+        message.ApplicationProperties["dataVersion"] = queueMessage.DataVersion;
         await sender.SendMessageAsync(message);
     }
 
@@ -60,5 +72,10 @@ public sealed class TrendReportServiceBusQueue : ITrendReportServiceBusQueue, IA
         _client = new ServiceBusClient(connectionString);
         _sender = _client.CreateSender(queueName);
         return _sender;
+    }
+
+    private static string CreateMessageId(TrendReportQueueMessageDto queueMessage)
+    {
+        return $"trend-report:{queueMessage.UserId}:{queueMessage.PeriodStart}:v{queueMessage.DataVersion}";
     }
 }

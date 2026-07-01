@@ -1,6 +1,8 @@
+using LiftBattery.Api.DTOs;
+
 namespace LiftBattery.Api.Services;
 
 public interface ITrendReportServiceBusQueue
 {
-    Task EnqueueAsync(int jobId);
+    Task EnqueueAsync(TrendReportQueueMessageDto queueMessage);
 }

@@ -43,8 +43,6 @@ public sealed class TrendReportFunctions
         {
             var job = await _service.CreateAsync(userId.Value, dto);
             var response = request.CreateResponse(HttpStatusCode.Accepted);
-            // for frontend to iterate later
-            response.Headers.Add("Location", $"/api/trendreports/{job.Id}");
             await response.WriteAsJsonAsync(job);
             return response;
         }

@@ -63,3 +63,12 @@ public sealed record TrendReportJobDto(
     DateTimeOffset? CompletedAtUtc,
     DateTimeOffset UpdatedAtUtc,
     TrendReportResultDto? Result);
+
+public sealed record TrendReportQueueMessageDto(
+    int JobId,
+    string RunId,
+    int UserId,
+    string PeriodStart,
+    string PeriodEnd,
+    string DataVersion,
+    DateTimeOffset RequestedAtUtc);

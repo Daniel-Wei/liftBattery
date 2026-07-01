@@ -96,6 +96,16 @@ public sealed class TrendReportService : ITrendReportService
             rangeEnd);
         var snapshot = new TrendReportSnapshot(trainingDays, preCheckLogs);
         var reportFingerprint = CreateReportFingerprint(validatedRequest, snapshot);
+        var existingSameVersionJob = await _jobRepository.GetLatestByUserIdAndFingerprintAsync(userId, reportFingerprint);
+
+        if (existingSameVersionJob is not null
+            && existingSameVersionJob.Status is not TrendReportJobStatuses.Failed
+                and not TrendReportJobStatuses.Cancelled
+                and not TrendReportJobStatuses.Superseded)
+        {
+            return ToDto(existingSameVersionJob);
+        }
+
         var activeJobs = await _jobRepository.GetActiveByUserIdAsync(userId);
         var existingActiveJob = activeJobs
             .Where(job => job.ReportFingerprint == reportFingerprint)
@@ -143,8 +153,9 @@ public sealed class TrendReportService : ITrendReportService
 
         try
         {
-            // Publish only the job ID; the consumer loads the full job from Azure Table Storage.
-            await _queue.EnqueueAsync(job.Id);
+            // Publish a compact JSON command. The consumer still loads the durable job from Azure Table Storage,
+            // but the message carries enough metadata for duplicate detection, correlation, retry, and DLQ debugging.
+            await _queue.EnqueueAsync(CreateQueueMessage(job));
         }
         catch (Exception exception)
         {
@@ -173,20 +184,28 @@ public sealed class TrendReportService : ITrendReportService
     // 1. atomically claim an eligible job and mark it Processing
     // 2. update progress, calculate the report, and persist the completed result
     // 3. on failure, persist Failed and rethrow so Service Bus can redeliver the message
-    public async Task ProcessAsync(int jobId)
+    public async Task ProcessAsync(TrendReportQueueMessageDto queueMessage, CancellationToken cancellationToken = default)
     {
-        var job = await _jobRepository.TryStartProcessingAsync(jobId, DateTimeOffset.UtcNow);
+        cancellationToken.ThrowIfCancellationRequested();
+
+        var job = await _jobRepository.TryStartProcessingAsync(queueMessage.JobId, DateTimeOffset.UtcNow);
 
         if (job is null)
         {
             return;
         }
 
+        if (await StopIfQueueMessageIsStaleAsync(queueMessage))
+        {
+            return;
+        }
+
         try
         {
-            await DelayForDemoAsync();
+            await DelayForDemoAsync(cancellationToken);
+            cancellationToken.ThrowIfCancellationRequested();
 
-            if (await IsCancelledAsync(job.Id))
+            if (await StopIfQueueMessageIsStaleAsync(queueMessage))
             {
                 return;
             }
@@ -198,9 +217,10 @@ public sealed class TrendReportService : ITrendReportService
                 UpdatedAtUtc = DateTimeOffset.UtcNow,
             };
             await _jobRepository.UpdateAsync(job);
-            await DelayForDemoAsync();
+            await DelayForDemoAsync(cancellationToken);
+            cancellationToken.ThrowIfCancellationRequested();
 
-            if (await IsCancelledAsync(job.Id))
+            if (await StopIfQueueMessageIsStaleAsync(queueMessage))
             {
                 return;
             }
@@ -214,9 +234,10 @@ public sealed class TrendReportService : ITrendReportService
                 UpdatedAtUtc = DateTimeOffset.UtcNow,
             };
             await _jobRepository.UpdateAsync(job);
-            await DelayForDemoAsync();
+            await DelayForDemoAsync(cancellationToken);
+            cancellationToken.ThrowIfCancellationRequested();
 
-            if (await IsCancelledAsync(job.Id))
+            if (await StopIfQueueMessageIsStaleAsync(queueMessage))
             {
                 return;
             }
@@ -233,8 +254,17 @@ public sealed class TrendReportService : ITrendReportService
             };
             await _jobRepository.UpdateAsync(job);
         }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
         catch (Exception exception)
         {
+            if (await StopIfQueueMessageIsStaleAsync(queueMessage))
+            {
+                return;
+            }
+
             var failedJob = job with
             {
                 Status = TrendReportJobStatuses.Failed,
@@ -247,17 +277,66 @@ public sealed class TrendReportService : ITrendReportService
         }
     }
 
-    private async Task<bool> IsCancelledAsync(int jobId)
+    private static TrendReportQueueMessageDto CreateQueueMessage(TrendReportJob job)
     {
-        var latestJob = await _jobRepository.GetByIdAsync(jobId);
-        return latestJob?.Status == TrendReportJobStatuses.Cancelled;
+        return new TrendReportQueueMessageDto(
+            job.Id,
+            $"trend-report:{job.Id}",
+            job.UserId,
+            job.Request.StartWeek.ToString("yyyy-MM-dd"),
+            job.Request.EndWeek.AddDays(6).ToString("yyyy-MM-dd"),
+            job.ReportFingerprint,
+            job.CreatedAtUtc);
     }
 
-    private Task DelayForDemoAsync()
+    private async Task<bool> StopIfQueueMessageIsStaleAsync(TrendReportQueueMessageDto queueMessage)
+    {
+        var latestJob = await _jobRepository.GetByIdAsync(queueMessage.JobId);
+
+        if (latestJob is null)
+        {
+            return true;
+        }
+
+        if (latestJob.Status is TrendReportJobStatuses.Cancelled or TrendReportJobStatuses.Superseded)
+        {
+            return true;
+        }
+
+        if (QueueMessageMatchesJob(queueMessage, latestJob))
+        {
+            return false;
+        }
+
+        var now = DateTimeOffset.UtcNow;
+        await _jobRepository.UpdateAsync(latestJob with
+        {
+            Status = TrendReportJobStatuses.Superseded,
+            ProgressPercent = Math.Max(latestJob.ProgressPercent, 80),
+            CurrentStage = "已跳过：队列消息的数据版本已过期",
+            ErrorMessage = null,
+            CompletedAtUtc = now,
+            UpdatedAtUtc = now,
+        });
+        return true;
+    }
+
+    private static bool QueueMessageMatchesJob(
+        TrendReportQueueMessageDto queueMessage,
+        TrendReportJob job)
+    {
+        return queueMessage.JobId == job.Id
+            && queueMessage.UserId == job.UserId
+            && queueMessage.PeriodStart == job.Request.StartWeek.ToString("yyyy-MM-dd")
+            && queueMessage.PeriodEnd == job.Request.EndWeek.AddDays(6).ToString("yyyy-MM-dd")
+            && string.Equals(queueMessage.DataVersion, job.ReportFingerprint, StringComparison.Ordinal);
+    }
+
+    private Task DelayForDemoAsync(CancellationToken cancellationToken)
     {
         return _demoDelayMilliseconds == 0
             ? Task.CompletedTask
-            : Task.Delay(_demoDelayMilliseconds);
+            : Task.Delay(_demoDelayMilliseconds, cancellationToken);
     }
 
     private static TrendReportRequest ValidateRequest(CreateTrendReportRequestDto request)

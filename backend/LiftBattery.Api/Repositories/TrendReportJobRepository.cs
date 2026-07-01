@@ -48,6 +48,25 @@ public sealed class TrendReportJobRepository : ITrendReportJobRepository
         return jobs;
     }
 
+    public async Task<TrendReportJob?> GetLatestByUserIdAndFingerprintAsync(int userId, string reportFingerprint)
+    {
+        await EnsureTableAsync();
+
+        var jobs = new List<TrendReportJob>();
+
+        await foreach (var jobEntity in _tableClient.QueryAsync<TrendReportJobEntity>(
+            entity => entity.PartitionKey == PartitionKeyValue
+                && entity.UserId == userId
+                && entity.ReportFingerprint == reportFingerprint))
+        {
+            jobs.Add(ToModel(jobEntity));
+        }
+
+        return jobs
+            .OrderByDescending(job => job.CreatedAtUtc)
+            .FirstOrDefault();
+    }
+
     // Atomically claims an eligible job by marking it Processing; the ETag prevents concurrent claims.
     public async Task<TrendReportJob?> TryStartProcessingAsync(
         int id,
@@ -62,7 +81,7 @@ public sealed class TrendReportJobRepository : ITrendReportJobRepository
             var processingIsFresh = entity.Status == TrendReportJobStatuses.Processing
                 && entity.UpdatedAtUtc > startedAtUtc.AddMinutes(-10);
 
-            if (entity.Status is TrendReportJobStatuses.Completed or TrendReportJobStatuses.Cancelled
+            if (entity.Status is TrendReportJobStatuses.Completed or TrendReportJobStatuses.Cancelled or TrendReportJobStatuses.Superseded
                 || processingIsFresh)
             {
                 return null;
@@ -103,9 +122,9 @@ public sealed class TrendReportJobRepository : ITrendReportJobRepository
     {
         await EnsureTableAsync();
 
-        // Protect Cancelled jobs from being overwritten by stale workers.
-        // If an old worker finishes after this job was cancelled, it must not change the job back to Processing, Completed, or Failed.
-        if (job.Status != TrendReportJobStatuses.Cancelled)
+        // Protect terminal jobs from being overwritten by stale workers.
+        // If an old worker finishes after this job was cancelled or superseded, it must not change the job back to Processing, Completed, or Failed.
+        if (job.Status is not TrendReportJobStatuses.Cancelled and not TrendReportJobStatuses.Superseded)
         {
             try
             {
@@ -113,7 +132,7 @@ public sealed class TrendReportJobRepository : ITrendReportJobRepository
                     PartitionKeyValue,
                     job.Id.ToString());
 
-                if (current.Value.Status == TrendReportJobStatuses.Cancelled)
+                if (current.Value.Status is TrendReportJobStatuses.Cancelled or TrendReportJobStatuses.Superseded)
                 {
                     return ToModel(current.Value);
                 }

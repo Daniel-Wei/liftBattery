@@ -87,5 +87,9 @@ export function getJobStatusLabel(status: string) {
     return "生成失败";
   }
 
+  if (status === "Superseded") {
+    return "已被新版本取代";
+  }
+
   return "已取消";
 }
