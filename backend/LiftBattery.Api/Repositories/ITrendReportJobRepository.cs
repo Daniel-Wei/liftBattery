@@ -5,7 +5,7 @@ namespace LiftBattery.Api.Repositories;
 public interface ITrendReportJobRepository
 {
     Task<TrendReportJob> CreateAsync(TrendReportJob job);
-    Task<string> GetCurrentDataVersionAsync(int userId);
+    Task<string> GetOrCreateCurrentDataVersionAsync(int userId);
     Task<string> BumpDataVersionAsync(int userId, DateTimeOffset updatedAtUtc);
     Task<IReadOnlyList<TrendReportJob>> GetActiveByUserIdAsync(int userId);
     Task<TrendReportJob?> GetLatestByUserIdAndFingerprintAsync(int userId, string reportFingerprint);

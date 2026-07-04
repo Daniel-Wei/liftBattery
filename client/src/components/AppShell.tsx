@@ -1,4 +1,15 @@
 import type { ReactNode } from "react";
+import {
+  BarChart3,
+  Bell,
+  CalendarCheck,
+  Dumbbell,
+  Home,
+  LogOut,
+  Settings,
+  User,
+  Zap,
+} from "lucide-react";
 import { PageKey, type AuthUser, type NavItem } from "../types/appTypes";
 
 type AppShellProps = {
@@ -9,6 +20,24 @@ type AppShellProps = {
   onLogout: () => void;
   children: ReactNode;
 };
+
+const navIconByPage: Record<PageKey, ReactNode> = {
+  [PageKey.Login]: null,
+  [PageKey.Register]: null,
+  [PageKey.Overview]: <Home size={17} />,
+  [PageKey.PreCheck]: <CalendarCheck size={17} />,
+  [PageKey.Training]: <Dumbbell size={17} />,
+  [PageKey.Trends]: <BarChart3 size={17} />,
+  [PageKey.Profile]: <Settings size={17} />,
+};
+
+function formatToday() {
+  return new Intl.DateTimeFormat("zh-CN", {
+    month: "2-digit",
+    day: "2-digit",
+    weekday: "short",
+  }).format(new Date());
+}
 
 export function AppShell({
   navItems,
@@ -24,6 +53,8 @@ export function AppShell({
   }
 
   const activeItem = navItems.find((item) => item.key === currentPage);
+  const mainNavItems = navItems.filter((item) => item.key !== PageKey.Profile);
+  const workspaceNavItems = navItems.filter((item) => item.key === PageKey.Profile);
 
   return (
     <div className="app-shell">
@@ -31,14 +62,20 @@ export function AppShell({
         <button
           type="button"
           onClick={() => onNavigate(PageKey.Overview)}
-          className="brand-card"
+          className="app-brand"
         >
-          <p className="brand-title">训练电量</p>
-          <p className="brand-subtitle">训练状态与记录</p>
+          <span className="app-brand-mark">
+            <Zap size={18} />
+          </span>
+          <span>
+            <span className="brand-title">Lift Bettery</span>
+            <span className="brand-subtitle">Training intelligence</span>
+          </span>
         </button>
 
-        <nav className="side-nav">
-          {navItems.map((item) => {
+        <nav className="side-nav" aria-label="Main navigation">
+          <p className="side-nav-heading">MAIN</p>
+          {mainNavItems.map((item) => {
             const isActive = item.key === currentPage;
 
             return (
@@ -48,6 +85,24 @@ export function AppShell({
                 onClick={() => onNavigate(item.key)}
                 className={isActive ? "side-nav-button side-nav-button--active" : "side-nav-button"}
               >
+                <span className="side-nav-icon">{navIconByPage[item.key]}</span>
+                <span className="side-nav-label">{item.labelZh}</span>
+              </button>
+            );
+          })}
+
+          <p className="side-nav-heading side-nav-heading--workspace">WORKSPACE</p>
+          {workspaceNavItems.map((item) => {
+            const isActive = item.key === currentPage;
+
+            return (
+              <button
+                key={item.key}
+                type="button"
+                onClick={() => onNavigate(item.key)}
+                className={isActive ? "side-nav-button side-nav-button--active" : "side-nav-button"}
+              >
+                <span className="side-nav-icon">{navIconByPage[item.key]}</span>
                 <span className="side-nav-label">{item.labelZh}</span>
               </button>
             );
@@ -55,41 +110,63 @@ export function AppShell({
         </nav>
 
         <div className="phase-note">
+          <span className="phase-note-icon">
+            <Zap size={16} />
+          </span>
           <p className="phase-note-title">第一阶段</p>
           <p className="phase-note-body">练前检查与训练记录</p>
+          <div className="phase-note-progress">
+            <span />
+          </div>
         </div>
       </aside>
 
-      <header className="app-topbar">
-        <div className="topbar-inner">
+      <div className="app-workspace">
+        <header className="app-topbar">
           <div>
-            <p className="topbar-eyebrow">训练电量</p>
+            <p className="topbar-eyebrow">LIFT BETTERY</p>
             <h1 className="topbar-title">{activeItem?.labelZh}</h1>
           </div>
-          {user ? (
-            <div className="user-menu">
-              <button type="button" className="user-chip" onClick={() => onNavigate(PageKey.Profile)}>
-                <span>{user.displayName.slice(0, 1).toUpperCase()}</span>
-                {user.displayName}
-              </button>
-              <button type="button" className="text-button" onClick={onLogout}>退出</button>
-            </div>
-          ) : (
-            <button
-              type="button"
-              onClick={() => onNavigate(PageKey.Login)}
-              className="button-secondary topbar-login-button"
-            >
-              登录
-            </button>
-          )}
-        </div>
-      </header>
 
-      <main className="app-main">{children}</main>
+          <div className="topbar-actions">
+            <span className="topbar-date">{formatToday()}</span>
+            <button type="button" className="icon-button" aria-label="通知">
+              <Bell size={16} />
+              <span />
+            </button>
+            {user ? (
+              <>
+                <button type="button" className="user-chip" onClick={() => onNavigate(PageKey.Profile)}>
+                  <span className="user-avatar">
+                    {user.displayName.slice(0, 1).toUpperCase()}
+                  </span>
+                  <span className="user-chip-copy">
+                    <strong>{user.displayName}</strong>
+                    <small>Account settings</small>
+                  </span>
+                </button>
+                <button type="button" className="icon-button" onClick={onLogout} aria-label="退出">
+                  <LogOut size={16} />
+                </button>
+              </>
+            ) : (
+              <button
+                type="button"
+                onClick={() => onNavigate(PageKey.Login)}
+                className="button-secondary topbar-login-button"
+              >
+                <User size={16} />
+                登录
+              </button>
+            )}
+          </div>
+        </header>
+
+        <main className="app-main">{children}</main>
+      </div>
 
       <nav className="mobile-nav">
-        {navItems.map((item) => {
+        {mainNavItems.map((item) => {
           const isActive = item.key === currentPage;
 
           return (

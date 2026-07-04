@@ -85,7 +85,12 @@ function AppContent() {
         return <ProfilePage onSignedOut={() => setCurrentPage(PageKey.Login)} />;
       case PageKey.Overview:
       default:
-        return <OverviewPage />;
+        return (
+          <OverviewPage
+            onOpenPreCheck={() => navigate(PageKey.PreCheck)}
+            onRecordTraining={() => navigate(PageKey.Training)}
+          />
+        );
     }
   }
 

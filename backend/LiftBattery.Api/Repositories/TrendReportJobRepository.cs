@@ -31,30 +31,48 @@ public sealed class TrendReportJobRepository : ITrendReportJobRepository
         return job;
     }
 
-    public async Task<string> GetCurrentDataVersionAsync(int userId)
+    public async Task<string> GetOrCreateCurrentDataVersionAsync(int userId)
     {
         await EnsureTableAsync();
+        var rowKey = userId.ToString();
 
         try
         {
-            var response = await _tableClient.GetEntityAsync<TrendReportDataVersionEntity>(
-                DataVersionPartitionKeyValue,
-                userId.ToString());
+            var response =
+                await _tableClient.GetEntityAsync<TrendReportDataVersionEntity>(
+                    DataVersionPartitionKeyValue,
+                    rowKey);
+
             return response.Value.DataVersion;
         }
-        catch (RequestFailedException exception) when (exception.Status == 404)
+        catch (RequestFailedException ex) when (ex.Status == 404)
         {
             var now = DateTimeOffset.UtcNow;
             var initialVersion = CreateDataVersion(now);
-            await _tableClient.UpsertEntityAsync(new TrendReportDataVersionEntity
+
+            var entity = new TrendReportDataVersionEntity
             {
                 PartitionKey = DataVersionPartitionKeyValue,
-                RowKey = userId.ToString(),
+                RowKey = rowKey,
                 UserId = userId,
                 DataVersion = initialVersion,
-                UpdatedAtUtc = now,
-            });
-            return initialVersion;
+                UpdatedAtUtc = now
+            };
+
+            try
+            {
+                await _tableClient.AddEntityAsync(entity);
+                return initialVersion;
+            }
+            catch (RequestFailedException e) when (e.Status == 409)
+            {
+                var existing =
+                    await _tableClient.GetEntityAsync<TrendReportDataVersionEntity>(
+                        DataVersionPartitionKeyValue,
+                        rowKey);
+
+                return existing.Value.DataVersion;
+            }
         }
     }
 

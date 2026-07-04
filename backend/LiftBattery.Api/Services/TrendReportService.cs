@@ -95,7 +95,7 @@ public sealed class TrendReportService : ITrendReportService
             snapshotStart,
             rangeEnd);
         var snapshot = new TrendReportSnapshot(trainingDays, preCheckLogs);
-        var dataVersion = await _jobRepository.GetCurrentDataVersionAsync(userId);
+        var dataVersion = await _jobRepository.GetOrCreateCurrentDataVersionAsync(userId);
         var reportFingerprint = CreateReportFingerprint(validatedRequest, snapshot, dataVersion);
         var existingSameVersionJob = await _jobRepository.GetLatestByUserIdAndFingerprintAsync(userId, reportFingerprint);
 
