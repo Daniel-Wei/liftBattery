@@ -29,14 +29,22 @@ function formatSummaryValue(card: TrendReportSummaryCardDto, value: number | und
   }
 
   if (card.type === "sleep") {
-    return `${Number(value.toFixed(1))} h`;
+    return `${Number(value.toFixed(1))} 小时`;
   }
 
   if (card.unit === "kg") {
-    return `${Math.round(value).toLocaleString("zh-CN")} kg`;
+    return `${Math.round(value).toLocaleString("zh-CN")} 公斤`;
   }
 
   return Math.round(value).toLocaleString("zh-CN");
+}
+
+function getSummaryTitle(title: string) {
+  if (title === "Readiness") return "恢复状态";
+  if (title === "Sleep") return "睡眠";
+  if (title === "Training Load") return "训练负荷";
+  if (title === "Training Volume") return "训练容量";
+  return title;
 }
 
 function TrendSummarySparkline({ points }: { points?: number[] }) {
@@ -74,7 +82,7 @@ function TrendSummaryCardView({ card }: { card: TrendReportSummaryCardDto }) {
   return (
     <article className={`metric-card metric-card--${variant} trend-summary-card`}>
       <span className="metric-accent-bar" />
-      <p className="metric-label">{card.title}</p>
+      <p className="metric-label">{getSummaryTitle(card.title)}</p>
       <div className="metric-value-row">
         <strong className="metric-value">{formatSummaryValue(card, card.value)}</strong>
         {typeof card.changePercent === "number" ? (
@@ -86,7 +94,7 @@ function TrendSummaryCardView({ card }: { card: TrendReportSummaryCardDto }) {
       {card.comparisonValue !== undefined ? (
         <p className="trend-summary-comparison">对比周期 {formatSummaryValue(card, card.comparisonValue)}</p>
       ) : null}
-      <p className="metric-helper">{card.comparisonValue === undefined ? "selected cycle" : "vs comparison cycle"}</p>
+      <p className="metric-helper">{card.comparisonValue === undefined ? "所选周期" : "对比周期变化"}</p>
       <TrendSummarySparkline points={card.sparklineValues} />
     </article>
   );
@@ -236,7 +244,7 @@ export function TrendsPage() {
 
           <button
             type="button"
-            className="button-dark trend-report-generate-button"
+            className="button-primary trend-report-generate-button"
             disabled={!canGenerate}
             onClick={handleGenerateReport}
           >

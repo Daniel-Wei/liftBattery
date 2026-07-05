@@ -234,7 +234,7 @@ export function MultiLineTrendChart({
                       cy={point.y}
                       r="3"
                     />
-                    <title>{`${line.label}：${formatAxisValue(point.value)} kg`}</title>
+                    <title>{`${line.label}：${formatAxisValue(point.value)} 公斤`}</title>
                   </g>
                 ))}
               </g>

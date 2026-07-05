@@ -165,8 +165,8 @@ export function ProfilePage({ onSignedOut }: ProfilePageProps) {
           <label className="training-form-field">
             <span className="training-form-label">偏好单位</span>
             <select className="training-input" value={preferredUnit} onChange={(event) => setPreferredUnit(event.target.value as "kg" | "lb")}>
-              <option value="kg">kg</option>
-              <option value="lb">lb</option>
+              <option value="kg">公斤</option>
+              <option value="lb">磅</option>
             </select>
           </label>
           <label className="training-form-field">
@@ -178,7 +178,7 @@ export function ProfilePage({ onSignedOut }: ProfilePageProps) {
             <input className="training-input" type="number" min="1" max="12" value={weeksPerCycle} onChange={(event) => setWeeksPerCycle(event.target.value === "" ? "" : Number(event.target.value))} />
           </label>
           {error ? <p className="form-error auth-form-span" role="alert">{error}</p> : null}
-          {saved ? <p className="success-text auth-form-span" role="status">Profile 已保存。</p> : null}
+          {saved ? <p className="success-text auth-form-span" role="status">个人设置已保存。</p> : null}
           <div className="profile-actions auth-form-span">
             <button type="submit" className="button-primary" disabled={status === "submitting"}>
               {status === "submitting" ? "保存中" : "保存"}
@@ -190,27 +190,33 @@ export function ProfilePage({ onSignedOut }: ProfilePageProps) {
 
       <section className="profile-card">
         <form className="auth-form auth-form--grid" onSubmit={handleWeeklyReportSave}>
-          <div className="auth-form-span">
-            <h2 className="section-title">每周趋势报告计划</h2>
-            <p className="page-subtitle">每周一按指定时间生成上一训练周的趋势报告 PDF，并发送到指定邮箱。</p>
+          <div className="weekly-report-settings-header auth-form-span">
+            <div>
+              <h2 className="section-title">每周趋势报告计划</h2>
+              <p className="page-subtitle">每周一按指定时间生成上一训练周的趋势报告，并发送到指定邮箱。</p>
+            </div>
+            <label className="weekly-report-toggle">
+              <span>自动发送</span>
+              <input
+                type="checkbox"
+                checked={weeklyReportEnabled}
+                onChange={(event) => setWeeklyReportEnabled(event.target.checked)}
+                disabled={weeklyReportLoading}
+              />
+              <i aria-hidden="true" />
+            </label>
           </div>
-          <label className="training-form-field auth-form-span">
-            <span className="training-form-label">启用自动发送</span>
-            <input
-              type="checkbox"
-              checked={weeklyReportEnabled}
-              onChange={(event) => setWeeklyReportEnabled(event.target.checked)}
-              disabled={weeklyReportLoading}
-            />
-          </label>
           <label className="training-form-field">
             <span className="training-form-label">发送时间</span>
             <input
               className="training-input"
-              type="time"
+              type="text"
+              inputMode="numeric"
+              pattern="[0-2][0-9]:[0-5][0-9]"
               value={weeklyReportTime}
               onChange={(event) => setWeeklyReportTime(event.target.value)}
               disabled={weeklyReportLoading}
+              placeholder="08:00"
               required
             />
           </label>
@@ -223,16 +229,6 @@ export function ProfilePage({ onSignedOut }: ProfilePageProps) {
               onChange={(event) => setWeeklyReportEmail(event.target.value)}
               disabled={weeklyReportLoading}
               required
-            />
-          </label>
-          <label className="training-form-field auth-form-span">
-            <span className="training-form-label">时区</span>
-            <input
-              className="training-input"
-              value={weeklyReportTimezone}
-              onChange={(event) => setWeeklyReportTimezone(event.target.value)}
-              disabled={weeklyReportLoading}
-              placeholder="UTC"
             />
           </label>
           {weeklyReportError ? <p className="form-error auth-form-span" role="alert">{weeklyReportError}</p> : null}

@@ -146,7 +146,7 @@ export function TrainingPage() {
 
                   <div className="training-set-table-wrap">
                     <table className="training-set-table">
-                      <thead><tr><th>组</th><th>次数</th><th>重量 kg</th><th>剩余次数</th><th>类型</th><th /></tr></thead>
+                      <thead><tr><th>组</th><th>次数</th><th>重量（公斤）</th><th>剩余次数</th><th>类型</th><th /></tr></thead>
                       <tbody>
                         {exercise.sets.map((set, setIndex) => (
                           <tr key={set.id}>

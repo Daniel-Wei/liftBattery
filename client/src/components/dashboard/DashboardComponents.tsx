@@ -43,6 +43,7 @@ type DonutMetricProps = {
   value: number;
   label: string;
   helper?: string;
+  variant?: "default" | "readiness";
 };
 
 type ProgressMetricProps = {
@@ -171,7 +172,7 @@ export function DashboardMetricCard({
   );
 }
 
-export function DonutMetric({ value, label, helper }: DonutMetricProps) {
+export function DonutMetric({ value, label, helper, variant = "default" }: DonutMetricProps) {
   const radius = 54;
   const stroke = 13;
   const normalizedRadius = radius - stroke / 2;
@@ -182,6 +183,13 @@ export function DonutMetric({ value, label, helper }: DonutMetricProps) {
   return (
     <div className="donut-metric">
       <svg className="donut-metric-svg" width="132" height="132" viewBox="0 0 132 132">
+        <defs>
+          <linearGradient id="donut-readiness-gradient" x1="16" y1="116" x2="116" y2="16" gradientUnits="userSpaceOnUse">
+            <stop offset="0%" stopColor="#ff6b8f" />
+            <stop offset="48%" stopColor="var(--accent-purple)" />
+            <stop offset="100%" stopColor="var(--accent-yellow)" />
+          </linearGradient>
+        </defs>
         <circle
           cx="66"
           cy="66"
@@ -195,7 +203,7 @@ export function DonutMetric({ value, label, helper }: DonutMetricProps) {
           cy="66"
           r={normalizedRadius}
           fill="transparent"
-          stroke="var(--accent-cyan)"
+          stroke={variant === "readiness" ? "url(#donut-readiness-gradient)" : "var(--accent-cyan)"}
           strokeWidth={stroke}
           strokeLinecap="round"
           strokeDasharray={`${circumference} ${circumference}`}
@@ -316,7 +324,7 @@ export function TrendLineChart({ data }: { data: TrendChartPoint[] }) {
             yAxisId="load"
             type="monotone"
             dataKey="load"
-            name="Training Load"
+            name="训练负荷"
             stroke="none"
             fill="url(#trend-cyan-fill)"
           />
@@ -324,7 +332,7 @@ export function TrendLineChart({ data }: { data: TrendChartPoint[] }) {
             yAxisId="volume"
             type="monotone"
             dataKey="volume"
-            name="Volume"
+            name="训练容量"
             stroke="none"
             fill="url(#trend-purple-fill)"
           />
@@ -332,7 +340,7 @@ export function TrendLineChart({ data }: { data: TrendChartPoint[] }) {
             yAxisId="load"
             type="monotone"
             dataKey="load"
-            name="Training Load"
+            name="训练负荷"
             stroke="var(--accent-cyan)"
             strokeWidth={2.4}
             dot={false}
@@ -342,7 +350,7 @@ export function TrendLineChart({ data }: { data: TrendChartPoint[] }) {
             yAxisId="volume"
             type="monotone"
             dataKey="volume"
-            name="Volume"
+            name="训练容量"
             stroke="var(--accent-purple)"
             strokeWidth={2.4}
             dot={false}

@@ -95,14 +95,14 @@ function formatRelativeDate(date: string) {
   const days = getDayDiff(date, getTodayIso());
 
   if (days <= 0) {
-    return "today";
+    return "今天";
   }
 
   if (days === 1) {
-    return "1d";
+    return "1 天前";
   }
 
-  return `${days}d`;
+  return `${days} 天前`;
 }
 
 function getSessionVolume(session: TrainingSessionRecord) {
@@ -235,7 +235,7 @@ function getOverviewWatchCards(metrics: Metric[]): Metric[] {
   }
 
   return [{
-    label: "Stable State",
+    label: "状态稳定",
     labelZh: "当前状态稳定",
     value: "正常",
     trend: "stable",
@@ -248,18 +248,18 @@ function getOverviewWatchCards(metrics: Metric[]): Metric[] {
 
 function getMetricStatusText(status: ReadinessStatus) {
   if (status === ReadinessStatus.Ready) {
-    return "Ready";
+    return "状态较好";
   }
 
   if (status === ReadinessStatus.Steady) {
-    return "Steady";
+    return "状态稳定";
   }
 
   if (status === ReadinessStatus.Caution) {
-    return "Caution";
+    return "需要留意";
   }
 
-  return "Recovery";
+  return "优先恢复";
 }
 
 export function OverviewPage({ onOpenPreCheck, onRecordTraining }: OverviewPageProps) {
@@ -312,8 +312,8 @@ export function OverviewPage({ onOpenPreCheck, onRecordTraining }: OverviewPageP
 
   const recentSessions = sortSessionsNewestFirst(trainingSessions).slice(0, 4);
   const activityItems = recentSessions.map((session, index) => ({
-    title: `${getLatestExerciseName(session)} completed`,
-    detail: `${session.durationMinutes} min · ${formatNumber(getSessionVolume(session))} kg · ${getPrimaryMuscles(session)}`,
+    title: `${getLatestExerciseName(session)} 已完成`,
+    detail: `${session.durationMinutes} 分钟 · ${formatNumber(getSessionVolume(session))} 公斤 · ${getPrimaryMuscles(session)}`,
     meta: formatRelativeDate(session.date),
     tone: index === 0 ? "mint" as const : "cyan" as const,
   }));
@@ -321,7 +321,7 @@ export function OverviewPage({ onOpenPreCheck, onRecordTraining }: OverviewPageP
   const insightItems = overviewWatchCards.slice(0, 4).map((metric) => ({
     title: metric.labelZh,
     detail: metric.explanationZh,
-    action: metric.status === MetricStatus.Good ? "Keep going →" : "Review →",
+    action: metric.status === MetricStatus.Good ? "继续保持 →" : "查看详情 →",
     tone: metric.status === MetricStatus.Good ? "mint" as const : "yellow" as const,
   }));
 
@@ -332,23 +332,24 @@ export function OverviewPage({ onOpenPreCheck, onRecordTraining }: OverviewPageP
     <div className="overview-page">
       <section className="overview-grid overview-grid--top">
         <DashboardCard
-          title="Readiness Summary"
+          title="状态总览"
           action={<span className="status-pill status-pill--mint">{getMetricStatusText(currentReadiness.status)}</span>}
           className="readiness-summary-card"
         >
           <div className="readiness-summary-layout">
             <DonutMetric
               value={currentReadiness.score}
-              label="Readiness"
-              helper={latestLog ? `Updated ${formatDateShort(latestLog.date)}` : "Live estimate"}
+              label="今日状态"
+              helper={latestLog ? `更新于 ${formatDateShort(latestLog.date)}` : "实时估算"}
+              variant="readiness"
             />
             <div className="readiness-summary-copy">
               <h2>{currentReadiness.recommendationZh}</h2>
               <div className="readiness-factor-grid">
-                <span>睡眠 <strong>{latestLog?.input.sleepHours ?? "—"}h</strong></span>
+                <span>睡眠 <strong>{latestLog?.input.sleepHours ?? "—"} 小时</strong></span>
                 <span>酸痛 <strong>{latestLog?.input.soreness ?? "—"} / 10</strong></span>
                 <span>动力 <strong>{latestLog?.input.motivation ?? "—"} / 10</strong></span>
-                <span>心率 <strong>{latestLog?.input.restingHeartRateBpm ?? "—"} bpm</strong></span>
+                <span>心率 <strong>{latestLog?.input.restingHeartRateBpm ?? "—"} 次/分</strong></span>
               </div>
               <button type="button" className="inline-link" onClick={onOpenPreCheck}>
                 查看练前检查 →
@@ -357,15 +358,15 @@ export function OverviewPage({ onOpenPreCheck, onRecordTraining }: OverviewPageP
           </div>
         </DashboardCard>
 
-        <DashboardCard title="Training Cycle">
+        <DashboardCard title="训练周期">
           <div className="cycle-summary">
             <div className="cycle-summary-top">
               <strong>第 {currentWeek} 周 / 共 {programSettings.weeksPerCycle} 周</strong>
               <span>{cycleProgress}%</span>
             </div>
             <ProgressMetric
-              label="Cycle progress"
-              value={`${daysRemaining} days left`}
+              label="周期进度"
+              value={`剩余 ${daysRemaining} 天`}
               percent={cycleProgress}
               helper={`${currentTrainingCycle.startDate} → ${currentTrainingCycle.endDate}`}
             />
@@ -376,7 +377,7 @@ export function OverviewPage({ onOpenPreCheck, onRecordTraining }: OverviewPageP
               </div>
               <div>
                 <span>训练量</span>
-                <strong>{formatNumber(currentVolume)} kg</strong>
+                <strong>{formatNumber(currentVolume)} 公斤</strong>
               </div>
               <div>
                 <span>连续记录</span>
@@ -389,33 +390,33 @@ export function OverviewPage({ onOpenPreCheck, onRecordTraining }: OverviewPageP
 
       <section className="overview-metric-grid">
         <DashboardMetricCard
-          label="Training Load"
+          label="训练负荷"
           value={currentLoad > 0 ? formatNumber(currentLoad) : "0"}
           change={getPercentChange(currentLoad, previousLoad)}
-          helper="vs previous cycle"
+          helper="对比上一周期"
           data={getSparklineData(currentCycleSessions, getSessionLoad)}
           accent="cyan"
         />
         <DashboardMetricCard
-          label="Training Volume"
-          value={`${formatNumber(currentVolume)} kg`}
+          label="训练容量"
+          value={`${formatNumber(currentVolume)} 公斤`}
           change={getPercentChange(currentVolume, previousVolume)}
-          helper="current cycle"
+          helper="当前周期"
           data={getSparklineData(currentCycleSessions, getSessionVolume)}
           accent="mint"
         />
         <DashboardMetricCard
-          label="Recovery Trend"
+          label="恢复趋势"
           value={`${currentReadiness.score} / 100`}
-          change={latest7Logs.length > 1 ? `${Math.abs(currentReadiness.score - calculateReadiness(latest7Logs[1].input).score)} pts` : undefined}
-          helper="latest readiness"
+          change={latest7Logs.length > 1 ? `${Math.abs(currentReadiness.score - calculateReadiness(latest7Logs[1].input).score)} 分` : undefined}
+          helper="最新状态"
           data={getRecoverySparkline(latest7Logs)}
           accent="purple"
         />
         <DashboardMetricCard
-          label="Consistency"
+          label="训练稳定性"
           value={`${consistencyDays} 天`}
-          helper="current cycle"
+          helper="当前周期"
           data={getConsistencySparkline(currentCycleSessions)}
           accent="yellow"
         />
@@ -423,14 +424,14 @@ export function OverviewPage({ onOpenPreCheck, onRecordTraining }: OverviewPageP
 
       <section>
         <DashboardCard
-          title="Current Cycle Performance"
-          action={<span className="chart-range-pill">Current cycle</span>}
+          title="当前周期表现"
+          action={<span className="chart-range-pill">当前周期</span>}
           className="cycle-performance-card"
         >
           <ChartLegend
             items={[
-              { label: "Training Load", tone: "cyan" },
-              { label: "Volume", tone: "purple" },
+              { label: "训练负荷", tone: "cyan" },
+              { label: "训练容量", tone: "purple" },
             ]}
           />
           <TrendLineChart data={trendData} />

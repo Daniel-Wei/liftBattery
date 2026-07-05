@@ -1088,6 +1088,81 @@ a {
   justify-content: flex-start;
 }
 
+.weekly-report-settings-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+}
+
+.weekly-report-settings-header > div {
+  min-width: 0;
+}
+
+.weekly-report-toggle {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 10px;
+  min-height: 42px;
+  padding: 0 14px;
+  border: 1px solid rgba(82, 196, 214, 0.26);
+  border-radius: 999px;
+  background: rgba(82, 196, 214, 0.06);
+  color: var(--text-primary);
+  font-size: 13px;
+  font-weight: 780;
+}
+
+.weekly-report-toggle input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.weekly-report-toggle i {
+  position: relative;
+  display: inline-block;
+  width: 42px;
+  height: 24px;
+  border: 1px solid rgba(82, 196, 214, 0.32);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06);
+  transition: background 160ms ease, border-color 160ms ease;
+}
+
+.weekly-report-toggle i::before {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 16px;
+  height: 16px;
+  border-radius: 999px;
+  background: var(--text-secondary);
+  transition: transform 160ms ease, background 160ms ease;
+  content: "";
+}
+
+.weekly-report-toggle input:checked + i {
+  border-color: rgba(82, 196, 214, 0.62);
+  background: rgba(82, 196, 214, 0.22);
+}
+
+.weekly-report-toggle input:checked + i::before {
+  transform: translateX(18px);
+  background: var(--accent-cyan);
+}
+
+.weekly-report-toggle input:focus-visible + i {
+  outline: 2px solid rgba(82, 196, 214, 0.32);
+  outline-offset: 2px;
+}
+
+.weekly-report-toggle input {
+  width: 18px;
+  height: 18px;
+}
+
 .page-header,
 .dashboard-hero {
   display: grid;
@@ -2323,6 +2398,9 @@ input.range-input--modern:focus {
 .trend-report-generate-button {
   align-self: end;
   min-height: 46px;
+  border-color: rgba(82, 196, 214, 0.58);
+  box-shadow: 0 12px 28px rgba(82, 196, 214, 0.18);
+  white-space: nowrap;
 }
 
 .checkbox-dropdown {
@@ -2675,7 +2753,6 @@ input.range-input--modern:focus {
 
   .training-session-form--header,
   .saved-session-controls--three,
-  .trend-report-week-row--compact,
   .trend-summary-card-grid,
   .muscle-stimulation-grid,
   .muscle-map-panel,
@@ -2683,8 +2760,8 @@ input.range-input--modern:focus {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .trend-report-generate-button {
-    grid-column: 1 / -1;
+  .trend-report-week-row--compact {
+    grid-template-columns: minmax(220px, 1fr) minmax(220px, 1fr) minmax(150px, 0.34fr);
   }
 }
 
@@ -2747,6 +2824,11 @@ input.range-input--modern:focus {
 
   .muscle-callout-lines {
     display: none;
+  }
+
+  .weekly-report-settings-header {
+    align-items: stretch;
+    flex-direction: column;
   }
 
   .muscle-model-viewer--map {
