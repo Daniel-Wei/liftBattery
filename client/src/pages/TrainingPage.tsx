@@ -104,7 +104,6 @@ export function TrainingPage() {
             <input className="training-input" type="number" min="1" max="10" step="0.5" value={getNumberInputValue(trainingSessionDraft.sessionRpe)} onChange={(event) => dispatch(updateTrainingSessionDraft({ field: "sessionRpe", value: getNumberInputChangeValue(event.target.value) }))} />
           </label>
           <div className="training-form-field training-save-field">
-            <span className="training-form-label">操作</span>
             <button type="button" className="button-primary training-save-button" onClick={handleSave}>保存</button>
           </div>
         </div>
@@ -179,7 +178,7 @@ export function TrainingPage() {
         </div>
 
         <div className="training-form-actions training-form-actions--split">
-          <button type="button" className="button-dark" onClick={() => dispatch(addTrainingExercise())}>+ 添加动作</button>
+          <button type="button" className="button-primary" onClick={() => dispatch(addTrainingExercise())}>+ 添加动作</button>
         </div>
         {formError ? <p className="form-error" role="alert">{formError}</p> : null}
         {error ? <p className="form-error" role="alert">{error}</p> : null}

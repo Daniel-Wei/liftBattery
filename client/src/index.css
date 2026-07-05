@@ -2308,6 +2308,7 @@ input.range-input--modern:focus {
 .trend-report-week-count {
   color: var(--text-muted);
   font-size: 12px;
+  min-height: 16px;
 }
 
 .trend-report-week-count {

@@ -230,7 +230,7 @@ export function TrendsPage() {
                 ))}
             </select>
             <small className="trend-report-period-meta">
-              {comparisonCycle ? `${comparisonCycle.startDate} 至 ${comparisonCycle.endDate}` : " "}
+              {comparisonCycle ? `${comparisonCycle.startDate} 至 ${comparisonCycle.endDate}` : ""}
             </small>
           </label>
 

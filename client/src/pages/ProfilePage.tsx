@@ -148,12 +148,6 @@ export function ProfilePage({ onSignedOut }: ProfilePageProps) {
 
   return (
     <div className="page page-stack">
-      <header className="page-header">
-        <p className="eyebrow">Profile</p>
-        <h1 className="page-title">用户 Profile</h1>
-        <p className="page-subtitle">管理你的封闭 Beta 账号和训练偏好。</p>
-      </header>
-
       <section className="profile-card">
         <form className="auth-form auth-form--grid" onSubmit={handleSave}>
           <label className="training-form-field">
@@ -183,7 +177,6 @@ export function ProfilePage({ onSignedOut }: ProfilePageProps) {
             <span className="training-form-label">每个周期包含周数</span>
             <input className="training-input" type="number" min="1" max="12" value={weeksPerCycle} onChange={(event) => setWeeksPerCycle(event.target.value === "" ? "" : Number(event.target.value))} />
           </label>
-          <p className="muted-text auth-form-span">注册日期：{new Date(user.createdAtUtc).toLocaleDateString()}</p>
           {error ? <p className="form-error auth-form-span" role="alert">{error}</p> : null}
           {saved ? <p className="success-text auth-form-span" role="status">Profile 已保存。</p> : null}
           <div className="profile-actions auth-form-span">
@@ -198,7 +191,6 @@ export function ProfilePage({ onSignedOut }: ProfilePageProps) {
       <section className="profile-card">
         <form className="auth-form auth-form--grid" onSubmit={handleWeeklyReportSave}>
           <div className="auth-form-span">
-            <p className="eyebrow">Weekly Report</p>
             <h2 className="section-title">每周趋势报告计划</h2>
             <p className="page-subtitle">每周一按指定时间生成上一训练周的趋势报告 PDF，并发送到指定邮箱。</p>
           </div>
