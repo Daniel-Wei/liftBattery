@@ -1,4 +1,32 @@
 services:
+  sqlserver:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_PID: Developer
+      MSSQL_SA_PASSWORD: ${LIFTBATTERY_SQL_PASSWORD:-Change_this_local_password_123!}
+    ports:
+      - "14333:1433"
+    volumes:
+      - liftbattery-sql-data:/var/opt/mssql
+    restart: unless-stopped
+
+  azurite:
+    image: mcr.microsoft.com/azure-storage/azurite:3.34.0
+    command: >
+      azurite
+      --blobHost 0.0.0.0
+      --queueHost 0.0.0.0
+      --tableHost 0.0.0.0
+      --location /data
+    ports:
+      - "10000:10000"
+      - "10001:10001"
+      - "10002:10002"
+    volumes:
+      - liftbattery-azurite-data:/data
+    restart: unless-stopped
+
   client:
     build:
       context: ./client
@@ -7,15 +35,6 @@ services:
       - "8080:80"
     restart: unless-stopped
 
-# Phase 4 will add the Azure Functions API service after the .NET 8
-# Functions project exists in ./api.
-#
-#  api:
-#    build:
-#      context: ./api
-#      dockerfile: Dockerfile
-#    ports:
-#      - "7071:80"
-#    environment:
-#      AzureWebJobsStorage: "UseDevelopmentStorage=true"
-#      FUNCTIONS_WORKER_RUNTIME: "dotnet-isolated"
+volumes:
+  liftbattery-sql-data:
+  liftbattery-azurite-data:

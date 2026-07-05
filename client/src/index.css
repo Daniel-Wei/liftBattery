@@ -215,54 +215,6 @@ a {
   white-space: nowrap;
 }
 
-.phase-note {
-  display: grid;
-  gap: 8px;
-  margin-top: auto;
-  padding: 16px;
-  border: 1px solid var(--border);
-  border-radius: 16px;
-  background: var(--card-bg-secondary);
-}
-
-.phase-note-icon {
-  display: grid;
-  place-items: center;
-  width: 34px;
-  height: 34px;
-  border-radius: 10px;
-  background: rgba(57, 210, 231, 0.1);
-  color: var(--accent-cyan);
-}
-
-.phase-note-title {
-  margin: 4px 0 0;
-  font-size: 14px;
-  font-weight: 760;
-}
-
-.phase-note-body {
-  margin: 0;
-  color: var(--text-muted);
-  font-size: 12px;
-  line-height: 1.55;
-}
-
-.phase-note-progress {
-  height: 6px;
-  overflow: hidden;
-  border-radius: 999px;
-  background: rgba(111, 127, 147, 0.24);
-}
-
-.phase-note-progress span {
-  display: block;
-  width: 58%;
-  height: 100%;
-  border-radius: inherit;
-  background: var(--accent-cyan);
-}
-
 .app-workspace {
   min-width: 0;
   min-height: 100vh;

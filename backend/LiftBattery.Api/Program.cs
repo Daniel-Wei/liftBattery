@@ -5,6 +5,7 @@ using LiftBattery.Api.Options;
 using LiftBattery.Api.Repositories;
 using LiftBattery.Api.Services;
 using Microsoft.Azure.Functions.Worker;
+using Microsoft.Azure.Functions.Worker.ApplicationInsights;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -22,6 +23,8 @@ var host = new HostBuilder()
                 PropertyNameCaseInsensitive = true,
             });
         });
+        services.AddApplicationInsightsTelemetryWorkerService();
+        services.ConfigureFunctionsApplicationInsights();
 
         var databaseConnection = context.Configuration.GetConnectionString("LiftBatteryDatabase")
             ?? throw new InvalidOperationException(

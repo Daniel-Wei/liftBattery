@@ -108,17 +108,6 @@ export function AppShell({
             );
           })}
         </nav>
-
-        <div className="phase-note">
-          <span className="phase-note-icon">
-            <Zap size={16} />
-          </span>
-          <p className="phase-note-title">第一阶段</p>
-          <p className="phase-note-body">练前检查与训练记录</p>
-          <div className="phase-note-progress">
-            <span />
-          </div>
-        </div>
       </aside>
 
       <div className="app-workspace">
