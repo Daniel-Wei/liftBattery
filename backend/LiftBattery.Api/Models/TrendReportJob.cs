@@ -17,9 +17,7 @@ public sealed record TrendReportRequest(
     DateOnly StartWeek,
     DateOnly EndWeek,
     DateOnly? ComparisonStartWeek,
-    DateOnly? ComparisonEndWeek,
-    IReadOnlyList<TrendReportSelectionDto> Selections,
-    IReadOnlyList<string> ReportTypes);
+    DateOnly? ComparisonEndWeek);
 
 public sealed record TrendReportSnapshot(
     IReadOnlyList<TrainingDayModel> TrainingDays,

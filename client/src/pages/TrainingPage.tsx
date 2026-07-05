@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
 import { SectionCard } from "../components/SectionCard";
-import { StatusBadge } from "../components/StatusBadge";
 import { MuscleViewer } from "../components/MuscleViewer";
 import { getExerciseMuscleContribution } from "../domain/exerciseMuscleMap";
 import { getOptionalNumber } from "../helpers/GenericHelpers";
@@ -10,12 +9,7 @@ import {
   getMuscleGroupDisplayLabel,
   muscleGroupOptions,
 } from "../data/programValues";
-import {
-  formatTrainingCycleLabel,
-  getCurrentTrainingCycle,
-  getTrainingCycles,
-} from "../domain/trainingTrendCharts";
-import { MetricStatus, type MuscleGroup } from "../types/appTypes";
+import type { MuscleGroup } from "../types/appTypes";
 import { useAppDispatch, useAppSelector } from "../store/hooks";
 import {
   addTrainingExercise,
@@ -33,20 +27,13 @@ import {
 } from "../store/slices/trainingSlice";
 import { getTrainingData, selectTrainingDays } from "../store/selectors/trainingSelector";
 import { getTrainingFormError } from "../helpers/TrainingPageHelpers";
-import { selectProgramSettings } from "../store/selectors/programSettingsSelector";
 
-type SavedExercise = {
-  muscleGroup: MuscleGroup;
-  exerciseName: string;
-};
-
-function getCycleForDate(date: string, cycles: ReturnType<typeof getTrainingCycles>) {
-  return cycles.find((cycle) => date >= cycle.startDate && date <= cycle.endDate);
+function getNumberInputValue(value: number) {
+  return Number.isFinite(value) ? value : "";
 }
 
-function formatDate(date: string) {
-  const [year, month, day] = date.split("-");
-  return year && month && day ? `${day}/${month}/${year}` : date;
+function getNumberInputChangeValue(value: string) {
+  return value === "" ? "" : Number(value);
 }
 
 export function TrainingPage() {
@@ -59,21 +46,14 @@ export function TrainingPage() {
     successMessage,
     operationErrorMessage,
   } = useAppSelector(getTrainingData);
-  const programSettings = useAppSelector(selectProgramSettings);
   const [formError, setFormError] = useState("");
-  const cycles = useMemo(() => getTrainingCycles(programSettings), [programSettings]);
-  const initialCycle = getCycleForDate(trainingSessionDraft.date, cycles) ?? getCurrentTrainingCycle(programSettings);
-  const [selectedCycleLabel, setSelectedCycleLabel] = useState(initialCycle.label);
-  const [selectedMuscleGroup, setSelectedMuscleGroup] = useState<MuscleGroup>("All");
-  const [selectedExercise, setSelectedExercise] = useState("All");
-  const selectedCycle = cycles.find((cycle) => cycle.label === selectedCycleLabel) ?? initialCycle;
 
   useEffect(() => {
     void dispatch(fetchTrainingDays({
-      from: selectedCycle.startDate,
-      to: selectedCycle.endDate,
+      from: trainingSessionDraft.date,
+      to: trainingSessionDraft.date,
     }));
-  }, [dispatch, selectedCycle.endDate, selectedCycle.startDate]);
+  }, [dispatch, trainingSessionDraft.date]);
 
   useEffect(() => {
     if (!successMessage) return;
@@ -87,63 +67,14 @@ export function TrainingPage() {
     return () => window.clearTimeout(timeout);
   }, [dispatch, operationErrorMessage]);
 
-  const savedExercises = useMemo(() => {
-    const values = new Map<string, SavedExercise>();
-
-    trainingDays.forEach((day) => day.sessions.forEach((session) => (
-      session.exercises.forEach((exercise) => {
-        values.set(`${exercise.muscleGroup}::${exercise.exerciseName}`, {
-          muscleGroup: exercise.muscleGroup,
-          exerciseName: exercise.exerciseName,
-        });
-      })
-    )));
-
-    return [...values.values()];
-  }, [trainingDays]);
-
-  const exerciseFilterOptions = savedExercises
-    .filter((exercise) => selectedMuscleGroup === "All" || exercise.muscleGroup === selectedMuscleGroup)
-    .map((exercise) => exercise.exerciseName)
-    .filter((exerciseName, index, values) => values.indexOf(exerciseName) === index)
-    .sort();
-
-  useEffect(() => {
-    if (selectedExercise !== "All" && !exerciseFilterOptions.includes(selectedExercise)) {
-      setSelectedExercise("All");
-    }
-  }, [exerciseFilterOptions, selectedExercise]);
-
   const filteredDays = trainingDays
-    .map((day) => ({
-      ...day,
-      sessions: day.sessions
-        .map((session) => ({
-          ...session,
-          exercises: session.exercises.filter((exercise) => (
-            (selectedMuscleGroup === "All" || exercise.muscleGroup === selectedMuscleGroup)
-            && (selectedExercise === "All" || exercise.exerciseName === selectedExercise)
-          )),
-        }))
-        .filter((session) => session.exercises.length > 0),
-    }))
+    .filter((day) => day.date === trainingSessionDraft.date)
     .filter((day) => day.sessions.length > 0)
     .sort((first, second) => second.date.localeCompare(first.date));
+  const savedSessions = filteredDays.flatMap((day) => day.sessions);
 
   function handleDateChange(date: string) {
     dispatch(updateTrainingSessionDraft({ field: "date", value: date }));
-    const cycle = getCycleForDate(date, cycles);
-    if (cycle) setSelectedCycleLabel(cycle.label);
-  }
-
-  function handleCycleChange(label: string) {
-    const cycle = cycles.find((candidate) => candidate.label === label);
-    if (!cycle) return;
-
-    setSelectedCycleLabel(label);
-    if (trainingSessionDraft.date < cycle.startDate || trainingSessionDraft.date > cycle.endDate) {
-      dispatch(updateTrainingSessionDraft({ field: "date", value: cycle.startDate }));
-    }
   }
 
   function handleSave() {
@@ -154,12 +85,7 @@ export function TrainingPage() {
 
   return (
     <div className="page page-stack">
-      <header className="dashboard-hero">
-        <p className="landing-eyebrow">训练记录</p>
-        <h1 className="page-title">记录今天完成的训练</h1>
-      </header>
-
-      <SectionCard title="记录训练" eyebrow="训练后填写" className="training-record-card">
+      <SectionCard title="记录训练" className="training-record-card">
         <div className="training-session-form training-session-form--header">
           <label className="training-form-field">
             <span className="training-form-label">训练日期</span>
@@ -171,12 +97,16 @@ export function TrainingPage() {
           </label>
           <label className="training-form-field">
             <span className="training-form-label">训练时长（分钟）</span>
-            <input className="training-input" type="number" min="1" value={trainingSessionDraft.durationMinutes} onChange={(event) => dispatch(updateTrainingSessionDraft({ field: "durationMinutes", value: Number(event.target.value) }))} />
+            <input className="training-input" type="number" min="1" value={getNumberInputValue(trainingSessionDraft.durationMinutes)} onChange={(event) => dispatch(updateTrainingSessionDraft({ field: "durationMinutes", value: getNumberInputChangeValue(event.target.value) }))} />
           </label>
           <label className="training-form-field">
             <span className="training-form-label">总体难度</span>
-            <input className="training-input" type="number" min="1" max="10" step="0.5" value={trainingSessionDraft.sessionRpe} onChange={(event) => dispatch(updateTrainingSessionDraft({ field: "sessionRpe", value: Number(event.target.value) }))} />
+            <input className="training-input" type="number" min="1" max="10" step="0.5" value={getNumberInputValue(trainingSessionDraft.sessionRpe)} onChange={(event) => dispatch(updateTrainingSessionDraft({ field: "sessionRpe", value: getNumberInputChangeValue(event.target.value) }))} />
           </label>
+          <div className="training-form-field training-save-field">
+            <span className="training-form-label">操作</span>
+            <button type="button" className="button-primary training-save-button" onClick={handleSave}>保存</button>
+          </div>
         </div>
 
         <div className="training-exercise-stack training-exercise-stack--friendly">
@@ -222,8 +152,8 @@ export function TrainingPage() {
                         {exercise.sets.map((set, setIndex) => (
                           <tr key={set.id}>
                             <td className="training-set-number">{setIndex + 1}</td>
-                            <td><input aria-label={`动作 ${exerciseIndex + 1} 第 ${setIndex + 1} 组次数`} type="number" min="1" value={set.reps} onChange={(event) => dispatch(updateTrainingSet({ exerciseId: exercise.id, setId: set.id, field: "reps", value: Number(event.target.value) }))} /></td>
-                            <td><input aria-label={`动作 ${exerciseIndex + 1} 第 ${setIndex + 1} 组重量`} type="number" min="0" step="0.5" value={set.weightKg} onChange={(event) => dispatch(updateTrainingSet({ exerciseId: exercise.id, setId: set.id, field: "weightKg", value: Number(event.target.value) }))} /></td>
+                            <td><input aria-label={`动作 ${exerciseIndex + 1} 第 ${setIndex + 1} 组次数`} type="number" min="1" value={getNumberInputValue(set.reps)} onChange={(event) => dispatch(updateTrainingSet({ exerciseId: exercise.id, setId: set.id, field: "reps", value: getNumberInputChangeValue(event.target.value) }))} /></td>
+                            <td><input aria-label={`动作 ${exerciseIndex + 1} 第 ${setIndex + 1} 组重量`} type="number" min="0" step="0.5" value={getNumberInputValue(set.weightKg)} onChange={(event) => dispatch(updateTrainingSet({ exerciseId: exercise.id, setId: set.id, field: "weightKg", value: getNumberInputChangeValue(event.target.value) }))} /></td>
                             <td><input aria-label={`动作 ${exerciseIndex + 1} 第 ${setIndex + 1} 组剩余次数`} type="number" min="0" step="1" value={set.rir ?? ""} onChange={(event) => dispatch(updateTrainingSet({ exerciseId: exercise.id, setId: set.id, field: "rir", value: getOptionalNumber(event.target.value) }))} /></td>
                             <td>
                               <select aria-label={`动作 ${exerciseIndex + 1} 第 ${setIndex + 1} 组类型`} value={set.isWarmup ? "warmup" : "working"} onChange={(event) => dispatch(updateTrainingSet({ exerciseId: exercise.id, setId: set.id, field: "isWarmup", value: event.target.value === "warmup" }))}>
@@ -250,85 +180,45 @@ export function TrainingPage() {
 
         <div className="training-form-actions training-form-actions--split">
           <button type="button" className="button-dark" onClick={() => dispatch(addTrainingExercise())}>+ 添加动作</button>
-          <button type="button" className="button-primary" onClick={handleSave}>保存本次训练</button>
         </div>
         {formError ? <p className="form-error" role="alert">{formError}</p> : null}
         {error ? <p className="form-error" role="alert">{error}</p> : null}
       </SectionCard>
 
       <SectionCard title="已保存训练">
-        <div className="saved-session-header">
-          <div className="saved-session-controls saved-session-controls--three">
-            <label className="training-form-field training-form-field--compact">
-              <span className="training-form-label">训练周期</span>
-              <select className="training-input training-input--compact" value={selectedCycleLabel} onChange={(event) => handleCycleChange(event.target.value)}>
-                {cycles.map((cycle) => <option key={cycle.label} value={cycle.label}>{formatTrainingCycleLabel(cycle)}</option>)}
-              </select>
-            </label>
-            <label className="training-form-field training-form-field--compact">
-              <span className="training-form-label">肌群</span>
-              <select className="training-input training-input--compact" value={selectedMuscleGroup} onChange={(event) => setSelectedMuscleGroup(event.target.value as MuscleGroup)}>
-                <option value="All">全部肌群</option>
-                {muscleGroupOptions.map((muscleGroup) => <option key={muscleGroup} value={muscleGroup}>{getMuscleGroupDisplayLabel(muscleGroup)}</option>)}
-              </select>
-            </label>
-            <label className="training-form-field training-form-field--compact">
-              <span className="training-form-label">动作</span>
-              <select className="training-input training-input--compact" value={selectedExercise} onChange={(event) => setSelectedExercise(event.target.value)}>
-                <option value="All">全部动作</option>
-                {exerciseFilterOptions.map((exerciseName) => <option key={exerciseName} value={exerciseName}>{getExerciseDisplayLabel(exerciseName)}</option>)}
-              </select>
-            </label>
-          </div>
-        </div>
-
-        <div className="saved-week-summary">
-          <StatusBadge status={MetricStatus.Neutral} label={`${filteredDays.length} 个训练日`} />
-          <StatusBadge status={MetricStatus.Neutral} label={`${filteredDays.reduce((total, day) => total + day.sessions.length, 0)} 次训练`} />
-        </div>
-
-        {filteredDays.length === 0 ? (
-          <p className="muted-text saved-session-empty">本训练周期暂无符合筛选条件的训练记录。</p>
+        {savedSessions.length === 0 ? (
+          <p className="muted-text saved-session-empty">当前训练日期暂无保存记录。</p>
         ) : (
-          <div className="training-day-list training-day-list--calendar">
-            {filteredDays.map((day) => (
-              <article className="training-day-card" key={day.id}>
-                <div className="training-day-calendar-heading">
-                  <div className="training-calendar-date"><strong>{formatDate(day.date)}</strong><span>{day.sessions.length} 次训练</span></div>
+          <div className="training-day-session-list">
+            {savedSessions.map((session) => (
+              <div className="saved-training-session saved-training-session--stacked" key={session.id}>
+                <div className="saved-session-summary-row">
+                  <div className="saved-session-meta">
+                    <div>
+                      <strong>{session.startTime}</strong>
+                      <span>{session.durationMinutes} 分钟</span>
+                    </div>
+                    <div>
+                      <span>总体难度</span>
+                      <strong>{session.sessionRpe}</strong>
+                    </div>
+                  </div>
+                  <button type="button" className="text-button saved-session-delete-button" onClick={() => void dispatch(deleteTrainingSession(session.id))}>删除</button>
                 </div>
-                <div className="training-day-session-list">
-                  {day.sessions.map((session) => (
-                    <div className="saved-training-session saved-training-session--stacked" key={session.id}>
-                      <div className="saved-session-summary-row">
-                        <div className="saved-session-meta">
-                          <div>
-                            <strong>{session.startTime}</strong>
-                            <span>{session.durationMinutes} 分钟</span>
-                          </div>
-                          <div>
-                            <span>总体难度</span>
-                            <strong>{session.sessionRpe}</strong>
-                          </div>
-                        </div>
-                        <button type="button" className="text-button saved-session-delete-button" onClick={() => void dispatch(deleteTrainingSession(session.id))}>删除</button>
+                <div className="saved-training-exercise-list">
+                  {session.exercises.map((exercise) => (
+                    <div className="saved-training-exercise" key={exercise.id}>
+                      <div className="saved-training-exercise-heading">
+                        <strong>{getExerciseDisplayLabel(exercise.exerciseName)}</strong>
+                        <span>{getMuscleGroupDisplayLabel(exercise.muscleGroup)}</span>
                       </div>
-                      <div className="saved-training-exercise-list">
-                        {session.exercises.map((exercise) => (
-                          <div className="saved-training-exercise" key={exercise.id}>
-                            <div className="saved-training-exercise-heading">
-                              <strong>{getExerciseDisplayLabel(exercise.exerciseName)}</strong>
-                              <span>{getMuscleGroupDisplayLabel(exercise.muscleGroup)}</span>
-                            </div>
-                            <div className="saved-set-chips">
-                              {exercise.sets.map((set) => <span className="signal-chip signal-chip--muted" key={set.id}>{set.setOrder} · {set.weightKg}kg × {set.reps}{set.rir !== undefined ? ` · RIR ${set.rir}` : ""}{set.isWarmup ? " · 热身" : ""}</span>)}
-                            </div>
-                          </div>
-                        ))}
+                      <div className="saved-set-chips">
+                        {exercise.sets.map((set) => <span className="signal-chip signal-chip--muted" key={set.id}>{set.setOrder} · {set.weightKg}kg × {set.reps}{set.rir !== undefined ? ` · RIR ${set.rir}` : ""}{set.isWarmup ? " · 热身" : ""}</span>)}
                       </div>
                     </div>
                   ))}
                 </div>
-              </article>
+              </div>
             ))}
           </div>
         )}

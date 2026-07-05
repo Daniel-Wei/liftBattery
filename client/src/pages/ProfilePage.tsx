@@ -14,16 +14,14 @@ export function ProfilePage({ onSignedOut }: ProfilePageProps) {
   const { user, status, error } = useAppSelector((state) => state.auth);
   const programSettings = useAppSelector(selectProgramSettings);
   const [displayName, setDisplayName] = useState(user?.displayName ?? "");
-  const [trainingGoal, setTrainingGoal] = useState(user?.trainingGoal ?? "");
-  const [weeklyTargetTrainingDays, setWeeklyTargetTrainingDays] = useState(user?.weeklyTargetTrainingDays ?? 4);
+  const [weeklyTargetTrainingDays, setWeeklyTargetTrainingDays] = useState<number | "">(user?.weeklyTargetTrainingDays ?? 4);
   const [preferredUnit, setPreferredUnit] = useState<"kg" | "lb">(user?.preferredUnit ?? "kg");
   const [cycleStartDate, setCycleStartDate] = useState(programSettings.cycleStartDate);
-  const [weeksPerCycle, setWeeksPerCycle] = useState(programSettings.weeksPerCycle);
+  const [weeksPerCycle, setWeeksPerCycle] = useState<number | "">(programSettings.weeksPerCycle);
   const [saved, setSaved] = useState(false);
 
   useEffect(() => {
     setDisplayName(user?.displayName ?? "");
-    setTrainingGoal(user?.trainingGoal ?? "");
     setWeeklyTargetTrainingDays(user?.weeklyTargetTrainingDays ?? 4);
     setPreferredUnit(user?.preferredUnit ?? "kg");
     setCycleStartDate(programSettings.cycleStartDate);
@@ -32,13 +30,17 @@ export function ProfilePage({ onSignedOut }: ProfilePageProps) {
 
   async function handleSave(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    const normalizedWeeklyTarget = weeklyTargetTrainingDays === ""
+      ? 4
+      : Math.max(1, Math.min(14, Math.round(weeklyTargetTrainingDays)));
+    const normalizedWeeksPerCycle = weeksPerCycle === ""
+      ? programSettings.weeksPerCycle
+      : Math.max(1, Math.min(12, Math.round(weeksPerCycle)));
     const result = await dispatch(updateCurrentUser({
       displayName,
-      trainingGoal,
-      weeklyTargetTrainingDays,
+      weeklyTargetTrainingDays: normalizedWeeklyTarget,
       preferredUnit,
     }));
-    const normalizedWeeksPerCycle = Math.max(1, Math.min(12, Math.round(weeksPerCycle)));
 
     dispatch(updateProgramSettings({
       ...programSettings,
@@ -83,13 +85,9 @@ export function ProfilePage({ onSignedOut }: ProfilePageProps) {
             <span className="training-form-label">邮箱</span>
             <input className="training-input" value={user.email} readOnly />
           </label>
-          <label className="training-form-field auth-form-span">
-            <span className="training-form-label">训练目标</span>
-            <input className="training-input" value={trainingGoal} onChange={(event) => setTrainingGoal(event.target.value)} placeholder="例如：减脂保力量 / 增肌 / 回归训练" />
-          </label>
           <label className="training-form-field">
             <span className="training-form-label">每周目标训练次数</span>
-            <input className="training-input" type="number" min="1" max="14" value={weeklyTargetTrainingDays} onChange={(event) => setWeeklyTargetTrainingDays(Number(event.target.value))} />
+            <input className="training-input" type="number" min="1" max="14" value={weeklyTargetTrainingDays} onChange={(event) => setWeeklyTargetTrainingDays(event.target.value === "" ? "" : Number(event.target.value))} />
           </label>
           <label className="training-form-field">
             <span className="training-form-label">偏好单位</span>
@@ -104,7 +102,7 @@ export function ProfilePage({ onSignedOut }: ProfilePageProps) {
           </label>
           <label className="training-form-field">
             <span className="training-form-label">每个周期包含周数</span>
-            <input className="training-input" type="number" min="1" max="12" value={weeksPerCycle} onChange={(event) => setWeeksPerCycle(Number(event.target.value))} />
+            <input className="training-input" type="number" min="1" max="12" value={weeksPerCycle} onChange={(event) => setWeeksPerCycle(event.target.value === "" ? "" : Number(event.target.value))} />
           </label>
           <p className="muted-text auth-form-span">注册日期：{new Date(user.createdAtUtc).toLocaleDateString()}</p>
           {error ? <p className="form-error auth-form-span" role="alert">{error}</p> : null}

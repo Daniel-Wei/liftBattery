@@ -150,16 +150,23 @@ export function DashboardMetricCard({
   accent = "cyan",
   data,
 }: DashboardMetricCardProps) {
+  const isNegativeChange = typeof change === "string" && change.trim().startsWith("-");
+  const changePrefix = isNegativeChange ? "↓" : "↑";
+
   return (
     <DashboardCard className={`metric-card metric-card--${accent}`}>
       <span className="metric-accent-bar" />
       <p className="metric-label">{label}</p>
       <div className="metric-value-row">
         <strong className="metric-value">{value}</strong>
-        {change ? <span className="metric-change">↑ {change}</span> : null}
+        {change ? (
+          <span className={isNegativeChange ? "metric-change metric-change--negative" : "metric-change"}>
+            {changePrefix} {change}
+          </span>
+        ) : null}
       </div>
       {helper ? <p className="metric-helper">{helper}</p> : null}
-      <SparklineChart data={data} accent={accent === "yellow" ? "cyan" : accent} />
+      <SparklineChart data={data} accent={accent} />
     </DashboardCard>
   );
 }

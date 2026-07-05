@@ -344,14 +344,6 @@ export type ReadinessControl = {
 
 export type TrainableMuscleGroup = Exclude<MuscleGroup, "All">;
 
-export type TrendReportType =
-  | "readiness"
-  | "sleep"
-  | "sessionLoad"
-  | "volume"
-  | "estimatedPr"
-  | "muscleStimulation";
-
 export type MuscleMapKey =
   | "pecClavicular"
   | "pecSternocostal"

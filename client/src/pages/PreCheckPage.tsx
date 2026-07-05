@@ -14,10 +14,13 @@ import {
   savePreCheck,
   updatePreCheckDraft 
 } from "../store/slices/preCheckSlice";
-import { calculateReadiness } from "../domain/readiness";
 
 function getRangeProgress(value: number, min: number, max: number) {
   return `${Math.min(100, Math.max(0, ((value - min) / (max - min)) * 100))}%`;
+}
+
+function getRangeRatio(value: number, min: number, max: number) {
+  return Math.min(1, Math.max(0, (value - min) / (max - min)));
 }
 
 function formatInputValue(value: number, unit: string) {
@@ -30,8 +33,6 @@ export function PreCheckPage() {
   const {
     preCheckDraft,
     preCheckDraftUpdated,
-    savedPreCheckLogs,
-    latest7Logs,
     status,
     error,
   } = useAppSelector(getPreCheckData);
@@ -65,19 +66,7 @@ export function PreCheckPage() {
 
   return (
     <div className="page page-stack">
-      <header className="dashboard-hero today-dashboard-hero">
-        <div className="dashboard-title-row">
-          <div>
-            <p className="landing-eyebrow">今天</p>
-            <h1 className="page-title">练前状态检查</h1>
-            <p className="page-subtitle">
-              训练前记录睡眠、酸痛、动力、静息心率次数和上次训练负荷，生成今天的训练建议。
-            </p>
-          </div>
-          
-        </div>
-
-        <div className="battery-focus-panel">
+      <section className="battery-focus-panel">
           <div className="battery-panel-badges">
             <StatusBadge
               status={readiness.badgeStatus}
@@ -107,13 +96,11 @@ export function PreCheckPage() {
             <h2 className="battery-focus-title">{readiness.recommendationZh}</h2>
           </div>
 
-        </div>
-      </header>
+      </section>
 
       <section className="quick-log-shell">
         <div className="quick-log-header">
           <div>
-            <p className="section-eyebrow">状态输入</p>
             <h2 className="section-title">训练前状态</h2>
           </div>
           <div className="quick-log-actions">
@@ -139,6 +126,7 @@ export function PreCheckPage() {
           {readinessControls.map((control) => {
             const value = preCheckDraft[control.field];
             const progress = getRangeProgress(value, control.min, control.max);
+            const ratio = getRangeRatio(value, control.min, control.max);
 
             return (
               <article key={control.field} className="quick-control-card">
@@ -151,18 +139,29 @@ export function PreCheckPage() {
                   </span>
                 </div>
                 <p className="quick-output">{control.output}</p>
-                <input
-                  type="range"
-                  min={control.min}
-                  max={control.max}
-                  step={control.step}
-                  value={value}
-                  onChange={(event) => (
-                    dispatch(updatePreCheckDraft({ field: control.field, value: Number(event.target.value) }))
-                  )}
-                  className="range-input range-input--modern"
-                  style={{ "--range-progress": progress } as CSSProperties}
-                />
+                <div
+                  className="range-shell"
+                  style={{
+                    "--range-progress": progress,
+                    "--range-ratio": ratio,
+                  } as CSSProperties}
+                >
+                  <span className="range-visual" aria-hidden="true">
+                    <span className="range-visual-fill" />
+                    <span className="range-visual-thumb" />
+                  </span>
+                  <input
+                    type="range"
+                    min={control.min}
+                    max={control.max}
+                    step={control.step}
+                    value={value}
+                    onChange={(event) => (
+                      dispatch(updatePreCheckDraft({ field: control.field, value: Number(event.target.value) }))
+                    )}
+                    className="range-input range-input--modern"
+                  />
+                </div>
               </article>
             );
           })}
@@ -179,28 +178,6 @@ export function PreCheckPage() {
               <span className="signal-chip">{mainDriver.reason}</span>
             </article>
           ))}
-        </div>
-      </SectionCard>
-
-      <SectionCard title="已保存的练前检查">
-        <div className="compact-card-list">
-          {latest7Logs.length === 0 ? (
-            <p className="muted-text">
-              暂无已保存记录。保存今天的练前检查后，可在趋势页查看变化。
-            </p>
-          ) : latest7Logs.map((log) => {
-            const savedReadiness = calculateReadiness(log.input);
-
-            return (
-              <article key={log.id} className="compact-signal-card">
-                <div>
-                  <p className="work-title">{log.date}</p>
-                  <p className="info-subtitle">{savedReadiness.recommendationZh}</p>
-                </div>
-                <span className="signal-chip">{savedReadiness.score} / 100</span>
-              </article>
-            );
-          })}
         </div>
       </SectionCard>
 

@@ -10,16 +10,6 @@ namespace LiftBattery.Api.Services;
 
 public sealed class TrendReportService : ITrendReportService
 {
-    private static readonly HashSet<string> SupportedReportTypes = new(StringComparer.Ordinal)
-    {
-        "readiness",
-        "sleep",
-        "sessionLoad",
-        "volume",
-        "estimatedPr",
-        "muscleStimulation",
-    };
-
     private static readonly HashSet<string> SupportedMuscleGroups = new(StringComparer.Ordinal)
     {
         "Chest",
@@ -32,15 +22,6 @@ public sealed class TrendReportService : ITrendReportService
         "Glutes",
         "Calves",
         "Abs",
-    };
-
-    private static readonly string[] SeriesVariants =
-    {
-        "blue",
-        "green",
-        "amber",
-        "purple",
-        "dark",
     };
 
     private static readonly JsonSerializerOptions FingerprintJsonOptions = new(JsonSerializerDefaults.Web);
@@ -141,7 +122,7 @@ public sealed class TrendReportService : ITrendReportService
             validatedRequest,
             dataVersion,
             reportFingerprint,
-            // The request stores user selections; the snapshot stores database data at submission time.
+            // The request stores the selected report period; the snapshot stores database data at submission time.
             snapshot,
             null,
             null,
@@ -180,6 +161,14 @@ public sealed class TrendReportService : ITrendReportService
         ValidateUserId(userId);
         var job = await _jobRepository.GetByIdAsync(id);
         return job is null || job.UserId != userId ? null : ToDto(job);
+    }
+
+    public async Task<TrendReportResultDto> GenerateResultAsync(int userId, CreateTrendReportRequestDto request)
+    {
+        ValidateUserId(userId);
+        var validatedRequest = ValidateRequest(request);
+        var snapshot = await LoadSnapshotAsync(userId, validatedRequest);
+        return GenerateResult(validatedRequest, snapshot);
     }
 
     // Asynchronous consumer path:
@@ -356,6 +345,26 @@ public sealed class TrendReportService : ITrendReportService
             : Task.Delay(_demoDelayMilliseconds, cancellationToken);
     }
 
+    private async Task<TrendReportSnapshot> LoadSnapshotAsync(int userId, TrendReportRequest request)
+    {
+        var snapshotStart = request.ComparisonStartWeek.HasValue
+            ? Min(request.StartWeek, request.ComparisonStartWeek.Value)
+            : request.StartWeek;
+        var rangeEnd = request.ComparisonEndWeek.HasValue
+            ? Max(request.EndWeek, request.ComparisonEndWeek.Value).AddDays(6)
+            : request.EndWeek.AddDays(6);
+        var trainingDays = await _trainingRepository.GetByDateRangeAsync(
+            userId,
+            snapshotStart,
+            rangeEnd);
+        var preCheckLogs = await _preCheckRepository.GetByDateRangeAsync(
+            userId,
+            snapshotStart,
+            rangeEnd);
+
+        return new TrendReportSnapshot(trainingDays, preCheckLogs);
+    }
+
     private static TrendReportRequest ValidateRequest(CreateTrendReportRequestDto request)
     {
         if (!DateOnly.TryParse(request.StartWeek, out var startWeek)
@@ -415,28 +424,7 @@ public sealed class TrendReportService : ITrendReportService
             comparisonEndWeek = parsedComparisonEndWeek;
         }
 
-        var selections = request.Selections
-            .Where(selection => SupportedMuscleGroups.Contains(selection.MuscleGroup))
-            .Where(selection => !string.IsNullOrWhiteSpace(selection.ExerciseName))
-            .DistinctBy(selection => $"{selection.MuscleGroup}::{selection.ExerciseName}")
-            .ToList();
-
-        if (selections.Count == 0)
-        {
-            throw new ArgumentException("At least one muscle and exercise selection is required.");
-        }
-
-        var reportTypes = request.ReportTypes
-            .Where(SupportedReportTypes.Contains)
-            .Distinct(StringComparer.Ordinal)
-            .ToList();
-
-        if (reportTypes.Count == 0)
-        {
-            throw new ArgumentException("At least one report type is required.");
-        }
-
-        return new TrendReportRequest(startWeek, endWeek, comparisonStartWeek, comparisonEndWeek, selections, reportTypes);
+        return new TrendReportRequest(startWeek, endWeek, comparisonStartWeek, comparisonEndWeek);
     }
 
     private static string CreateReportFingerprint(
@@ -444,12 +432,6 @@ public sealed class TrendReportService : ITrendReportService
         TrendReportSnapshot snapshot,
         string dataVersion)
     {
-        var normalizedSelections = request.Selections
-            .OrderBy(selection => selection.MuscleGroup, StringComparer.Ordinal)
-            .ThenBy(selection => selection.ExerciseName, StringComparer.Ordinal)
-            .Select(selection => $"{selection.MuscleGroup}:{selection.ExerciseName}");
-        var normalizedReportTypes = request.ReportTypes
-            .OrderBy(reportType => reportType, StringComparer.Ordinal);
         var fingerprintSource = string.Join(
             "\n",
             request.StartWeek.ToString("yyyy-MM-dd"),
@@ -457,8 +439,6 @@ public sealed class TrendReportService : ITrendReportService
             request.ComparisonStartWeek?.ToString("yyyy-MM-dd") ?? string.Empty,
             request.ComparisonEndWeek?.ToString("yyyy-MM-dd") ?? string.Empty,
             dataVersion,
-            string.Join("|", normalizedSelections),
-            string.Join("|", normalizedReportTypes),
             JsonSerializer.Serialize(snapshot, FingerprintJsonOptions));
 
         return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(fingerprintSource)))
@@ -470,70 +450,14 @@ public sealed class TrendReportService : ITrendReportService
         TrendReportSnapshot snapshot)
     {
         var reportPeriods = BuildReportPeriods(request);
-        var selectionKeys = request.Selections
-            .Select(selection => GetSelectionKey(selection.MuscleGroup, selection.ExerciseName))
-            .ToHashSet(StringComparer.Ordinal);
         var trainingSessions = ToReportSessions(snapshot.TrainingDays);
-        var filteredSessions = trainingSessions
-            .Select(session => session with
-            {
-                Sets = session.Sets
-                    .Where(set => selectionKeys.Contains(GetSelectionKey(set.MuscleGroup, set.ExerciseName)))
-                    .ToList(),
-            })
-            .Where(session => session.Sets.Count > 0)
-            .ToList();
-        var charts = new List<TrendReportChartDto>();
-        MuscleStimulationReportDto? muscleStimulation = null;
-
-        if (request.ReportTypes.Contains("readiness", StringComparer.Ordinal))
-        {
-            charts.Add(CreatePreCheckChart(
-                "readiness",
-                "练前状态分数趋势",
-                "练前状态",
-                "blue",
-                reportPeriods,
-                snapshot.PreCheckLogs,
-                GetReadinessScore));
-        }
-
-        if (request.ReportTypes.Contains("sleep", StringComparer.Ordinal))
-        {
-            charts.Add(CreatePreCheckChart(
-                "sleep",
-                "睡眠时长趋势",
-                "睡眠时长",
-                "green",
-                reportPeriods,
-                snapshot.PreCheckLogs,
-                log => GetSleepHours(log.SleepQuality)));
-        }
-
-        if (request.ReportTypes.Contains("sessionLoad", StringComparer.Ordinal))
-        {
-            charts.Add(CreateSessionLoadChart(reportPeriods, filteredSessions));
-        }
-
-        if (request.ReportTypes.Contains("volume", StringComparer.Ordinal))
-        {
-            charts.Add(CreateVolumeChart(reportPeriods, filteredSessions));
-        }
-
-        if (request.ReportTypes.Contains("estimatedPr", StringComparer.Ordinal))
-        {
-            charts.Add(CreateEstimatedPrChart(reportPeriods, trainingSessions, request.Selections));
-        }
-
-        if (request.ReportTypes.Contains("muscleStimulation", StringComparer.Ordinal))
-        {
-            muscleStimulation = CreateMuscleStimulationReport(
-                request.StartWeek,
-                request.EndWeek,
-                request.ComparisonStartWeek,
-                request.ComparisonEndWeek,
-                filteredSessions);
-        }
+        var summaryCards = CreateTrendSummaryCards(request, snapshot, trainingSessions);
+        var muscleStimulation = CreateMuscleStimulationReport(
+            request.StartWeek,
+            request.EndWeek,
+            request.ComparisonStartWeek,
+            request.ComparisonEndWeek,
+            trainingSessions);
 
         return new TrendReportResultDto(
             request.StartWeek.ToString("yyyy-MM-dd"),
@@ -541,125 +465,164 @@ public sealed class TrendReportService : ITrendReportService
             request.ComparisonStartWeek?.ToString("yyyy-MM-dd"),
             request.ComparisonEndWeek?.ToString("yyyy-MM-dd"),
             reportPeriods.Select(period => period.Label).ToList(),
-            charts,
+            summaryCards,
             muscleStimulation);
     }
 
-    private static TrendReportChartDto CreatePreCheckChart(
+    private static IReadOnlyList<TrendReportSummaryCardDto> CreateTrendSummaryCards(
+        TrendReportRequest request,
+        TrendReportSnapshot snapshot,
+        IReadOnlyList<ReportTrainingSession> trainingSessions)
+    {
+        var currentWeeks = BuildWeeks(request.StartWeek, request.EndWeek);
+        var comparisonWeeks = request.ComparisonStartWeek.HasValue && request.ComparisonEndWeek.HasValue
+            ? BuildWeeks(request.ComparisonStartWeek.Value, request.ComparisonEndWeek.Value)
+            : Array.Empty<ReportWeek>();
+
+        return new[]
+        {
+            CreatePreCheckSummaryCard(
+                "readiness",
+                "Readiness",
+                "/100",
+                "cyan",
+                currentWeeks,
+                comparisonWeeks,
+                snapshot.PreCheckLogs,
+                GetReadinessScore),
+            CreatePreCheckSummaryCard(
+                "sleep",
+                "Sleep",
+                "h",
+                "purple",
+                currentWeeks,
+                comparisonWeeks,
+                snapshot.PreCheckLogs,
+                log => GetSleepHours(log.SleepQuality)),
+            CreateTrainingSummaryCard(
+                "sessionLoad",
+                "Training Load",
+                "",
+                "mint",
+                currentWeeks,
+                comparisonWeeks,
+                trainingSessions,
+                GetWeeklySessionLoad),
+            CreateTrainingSummaryCard(
+                "volume",
+                "Training Volume",
+                "kg",
+                "yellow",
+                currentWeeks,
+                comparisonWeeks,
+                trainingSessions,
+                GetWeeklyVolume),
+        };
+    }
+
+    private static TrendReportSummaryCardDto CreatePreCheckSummaryCard(
         string type,
         string title,
-        string seriesLabel,
+        string unit,
         string variant,
+        IReadOnlyList<ReportWeek> currentWeeks,
+        IReadOnlyList<ReportWeek> comparisonWeeks,
+        IReadOnlyList<PreCheckModel> logs,
+        Func<PreCheckModel, decimal> getValue)
+    {
+        var currentValues = GetWeeklyPreCheckAverages(currentWeeks, logs, getValue);
+        var comparisonValues = GetWeeklyPreCheckAverages(comparisonWeeks, logs, getValue);
+        var currentValue = AverageNonZero(currentValues);
+        var comparisonValue = comparisonValues.Count > 0 ? AverageNonZero(comparisonValues) : (decimal?)null;
+
+        return new TrendReportSummaryCardDto(
+            type,
+            title,
+            Math.Round(currentValue, 1),
+            comparisonValue.HasValue ? Math.Round(comparisonValue.Value, 1) : null,
+            comparisonValue.HasValue ? CalculatePercentChange(currentValue, comparisonValue.Value) : null,
+            unit,
+            variant,
+            currentValues.Select(value => Math.Round(value, 1)).ToList());
+    }
+
+    private static TrendReportSummaryCardDto CreateTrainingSummaryCard(
+        string type,
+        string title,
+        string unit,
+        string variant,
+        IReadOnlyList<ReportWeek> currentWeeks,
+        IReadOnlyList<ReportWeek> comparisonWeeks,
+        IReadOnlyList<ReportTrainingSession> sessions,
+        Func<ReportWeek, IReadOnlyList<ReportTrainingSession>, decimal> getWeekValue)
+    {
+        var currentValues = currentWeeks.Select(week => getWeekValue(week, sessions)).ToList();
+        var comparisonValues = comparisonWeeks.Select(week => getWeekValue(week, sessions)).ToList();
+        var currentValue = currentValues.Sum();
+        var comparisonValue = comparisonValues.Count > 0 ? comparisonValues.Sum() : (decimal?)null;
+
+        return new TrendReportSummaryCardDto(
+            type,
+            title,
+            Math.Round(currentValue, 1),
+            comparisonValue.HasValue ? Math.Round(comparisonValue.Value, 1) : null,
+            comparisonValue.HasValue ? CalculatePercentChange(currentValue, comparisonValue.Value) : null,
+            unit,
+            variant,
+            currentValues.Select(value => Math.Round(value, 1)).ToList());
+    }
+
+    private static IReadOnlyList<decimal> GetWeeklyPreCheckAverages(
         IReadOnlyList<ReportWeek> weeks,
         IReadOnlyList<PreCheckModel> logs,
         Func<PreCheckModel, decimal> getValue)
     {
-        var points = weeks.SelectMany(week =>
+        return weeks.Select(week =>
         {
             var weekLogs = logs
                 .Where(log => log.Date >= week.StartDate && log.Date <= week.EndDate)
                 .ToList();
 
-            if (weekLogs.Count == 0)
-            {
-                return Array.Empty<TrendReportPointDto>();
-            }
-
-            return new[]
-            {
-                new TrendReportPointDto(
-                    week.Label,
-                    Math.Round(weekLogs.Average(getValue), 1)),
-            };
+            return weekLogs.Count == 0 ? 0 : weekLogs.Average(getValue);
         }).ToList();
-
-        return new TrendReportChartDto(
-            type,
-            title,
-            new[] { new TrendReportSeriesDto(type, seriesLabel, null, variant, points) });
     }
 
-    private static TrendReportChartDto CreateSessionLoadChart(
-        IReadOnlyList<ReportWeek> weeks,
+    private static decimal GetWeeklySessionLoad(
+        ReportWeek week,
         IReadOnlyList<ReportTrainingSession> sessions)
     {
-        var latestSessionPerDay = sessions
+        return sessions
             .GroupBy(session => session.Date)
             .Select(group => group.OrderByDescending(session => session.UpdatedAt).First())
-            .ToList();
-        var points = weeks.Select(week => new TrendReportPointDto(
-            week.Label,
-            latestSessionPerDay
-                .Where(session => session.Date >= week.StartDate && session.Date <= week.EndDate)
-                .Sum(session => session.DurationMinutes * session.SessionRpe)))
-            .Where(point => point.Value > 0)
-            .ToList();
-
-        return new TrendReportChartDto(
-            "sessionLoad",
-            "所选肌群与动作的训练周期负荷",
-            new[] { new TrendReportSeriesDto("session-load", "训练负荷", null, "dark", points) });
+            .Where(session => session.Date >= week.StartDate && session.Date <= week.EndDate)
+            .Sum(session => session.DurationMinutes * session.SessionRpe);
     }
 
-    private static TrendReportChartDto CreateVolumeChart(
-        IReadOnlyList<ReportWeek> weeks,
+    private static decimal GetWeeklyVolume(
+        ReportWeek week,
         IReadOnlyList<ReportTrainingSession> sessions)
     {
-        var points = weeks.Select(week => new TrendReportPointDto(
-            week.Label,
-            sessions
-                .Where(session => session.Date >= week.StartDate && session.Date <= week.EndDate)
-                .SelectMany(session => session.Sets)
-                .Sum(set => set.Reps * set.WeightKg)))
-            .Where(point => point.Value > 0)
-            .ToList();
-
-        return new TrendReportChartDto(
-            "volume",
-            "所选肌群与动作的训练周期训练量",
-            new[] { new TrendReportSeriesDto("volume", "训练量", null, "amber", points) });
+        return sessions
+            .Where(session => session.Date >= week.StartDate && session.Date <= week.EndDate)
+            .SelectMany(session => session.Sets)
+            .Where(set => !set.IsWarmup)
+            .Sum(set => set.Reps * set.WeightKg);
     }
 
-    private static TrendReportChartDto CreateEstimatedPrChart(
-        IReadOnlyList<ReportWeek> weeks,
-        IReadOnlyList<ReportTrainingSession> sessions,
-        IReadOnlyList<TrendReportSelectionDto> selections)
+    private static decimal AverageNonZero(IReadOnlyList<decimal> values)
     {
-        var series = selections.Select((selection, index) =>
+        var nonZeroValues = values.Where(value => value > 0).ToList();
+        return nonZeroValues.Count == 0 ? 0 : nonZeroValues.Average();
+    }
+
+    private static decimal CalculatePercentChange(decimal current, decimal comparison)
+    {
+        if (comparison == 0)
         {
-            var points = weeks.SelectMany(week =>
-            {
-                var estimates = sessions
-                    .Where(session => session.Date >= week.StartDate && session.Date <= week.EndDate)
-                    .SelectMany(session => session.Sets)
-                    .Where(set => set.MuscleGroup == selection.MuscleGroup)
-                    .Where(set => set.ExerciseName == selection.ExerciseName)
-                    .Where(set => !set.IsWarmup && set.WeightKg > 0 && set.Reps > 0)
-                    .Select(set => set.WeightKg * (1 + (set.Reps / 30m)))
-                    .ToList();
+            return current > 0 ? 100m : 0m;
+        }
 
-                return estimates.Count == 0
-                    ? Array.Empty<TrendReportPointDto>()
-                    : new[]
-                    {
-                        new TrendReportPointDto(week.Label, Math.Round(estimates.Max(), 0)),
-                    };
-            }).ToList();
-
-            return new TrendReportSeriesDto(
-                GetSelectionKey(selection.MuscleGroup, selection.ExerciseName),
-                selection.ExerciseName,
-                selection.MuscleGroup,
-                SeriesVariants[index % SeriesVariants.Length],
-                points);
-        })
-        .Where(item => item.Data.Count > 0)
-        .ToList();
-
-        return new TrendReportChartDto(
-            "estimatedPr",
-            "动作预计单次最大重量趋势",
-            series);
+        return Math.Round(((current - comparison) / comparison) * 100m, 1);
     }
 
     private static IReadOnlyList<ReportWeek> BuildWeeks(DateOnly startWeek, DateOnly endWeek)
@@ -917,11 +880,6 @@ public sealed class TrendReportService : ITrendReportService
             4 => 7.25m,
             _ => 8m,
         };
-    }
-
-    private static string GetSelectionKey(string muscleGroup, string exerciseName)
-    {
-        return $"{muscleGroup}::{exerciseName}";
     }
 
     private static DateOnly Min(DateOnly first, DateOnly second)

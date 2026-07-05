@@ -18,7 +18,23 @@ type MuscleModelViewerProps = {
   selectedMuscleId?: MuscleMapKey | null;
   onMuscleSelect?: (muscleId: MuscleMapKey) => void;
   className?: string;
+  anchorMuscleIds?: MuscleMapKey[];
+  onAnchorPositionsChange?: (positions: MuscleScreenAnchorMap) => void;
 };
+
+export type MuscleScreenPoint = {
+  clientX: number;
+  clientY: number;
+  visible: boolean;
+};
+
+export type MuscleScreenAnchor = {
+  inner: MuscleScreenPoint;
+  exit: MuscleScreenPoint;
+  visible: boolean;
+};
+
+export type MuscleScreenAnchorMap = Partial<Record<MuscleMapKey, MuscleScreenAnchor[]>>;
 
 type MuscleMesh = {
   mesh: THREE.Mesh;
@@ -105,17 +121,17 @@ function normalizeModel(model: THREE.Object3D) {
 
   model.position.sub(center);
   if (maxDimension > 0) {
-    model.scale.setScalar(2.3 / maxDimension);
+    model.scale.setScalar(2.32 / maxDimension);
   }
 }
 
-function setCameraView(resources: ViewerResources, view: MuscleView, zoom: number) {
-  const distance = 3.15 / zoom;
+function setCameraView(resources: ViewerResources, view: MuscleView) {
+  const distance = 3.42;
   const z = view === "front" ? distance : -distance;
 
-  resources.camera.position.set(0, 0.15, z);
-  resources.camera.lookAt(0, 0.05, 0);
-  resources.controls.target.set(0, 0.05, 0);
+  resources.camera.position.set(0, 0.02, z);
+  resources.camera.lookAt(0, 0, 0);
+  resources.controls.target.set(0, 0, 0);
   resources.controls.update();
 }
 
@@ -136,24 +152,138 @@ function applyActivationStyles(
   });
 }
 
+function getProjectedMuscleAnchors(
+  resources: ViewerResources,
+  anchorMuscleIds: MuscleMapKey[],
+): MuscleScreenAnchorMap {
+  const ids = new Set(anchorMuscleIds);
+  const canvasRect = resources.renderer.domElement.getBoundingClientRect();
+  const candidates = new Map<MuscleMapKey, MuscleScreenAnchor[]>();
+
+  function projectPoint(point: THREE.Vector3) {
+    const screenPosition = point.clone().project(resources.camera);
+
+    return {
+      clientX: canvasRect.left + ((screenPosition.x + 1) / 2) * canvasRect.width,
+      clientY: canvasRect.top + ((-screenPosition.y + 1) / 2) * canvasRect.height,
+      visible: screenPosition.z >= -1 && screenPosition.z <= 1,
+    };
+  }
+
+  function getMeshProjectionPoints(mesh: THREE.Mesh) {
+    const position = mesh.geometry.getAttribute("position");
+    const points: MuscleScreenPoint[] = [];
+    const worldPoint = new THREE.Vector3();
+    const stride = Math.max(1, Math.floor(position.count / 240));
+
+    mesh.updateWorldMatrix(true, false);
+
+    for (let index = 0; index < position.count; index += stride) {
+      worldPoint.fromBufferAttribute(position, index).applyMatrix4(mesh.matrixWorld);
+      const projected = projectPoint(worldPoint);
+      if (projected.visible) points.push(projected);
+    }
+
+    return points;
+  }
+
+  function getMeshCalloutAnchor(mesh: THREE.Mesh) {
+    const points = getMeshProjectionPoints(mesh);
+    if (points.length === 0) return undefined;
+
+    const inner = points.reduce<MuscleScreenPoint>((total, point) => ({
+      clientX: total.clientX + point.clientX,
+      clientY: total.clientY + point.clientY,
+      visible: true,
+    }), { clientX: 0, clientY: 0, visible: true });
+
+    inner.clientX /= points.length;
+    inner.clientY /= points.length;
+
+    const exit = points
+      .slice()
+      .sort((first, second) => {
+        const firstScore = first.clientX - Math.abs(first.clientY - inner.clientY) * 0.42;
+        const secondScore = second.clientX - Math.abs(second.clientY - inner.clientY) * 0.42;
+        return secondScore - firstScore;
+      })[0];
+
+    if (!exit) return undefined;
+
+    return {
+      inner,
+      exit,
+      visible: true,
+    };
+  }
+
+  resources.muscleMeshes.forEach(({ mesh, muscle }) => {
+    if (!ids.has(muscle)) return;
+
+    const meshAnchor = getMeshCalloutAnchor(mesh);
+    if (!meshAnchor || !meshAnchor.visible) return;
+
+    candidates.set(muscle, [...(candidates.get(muscle) ?? []), meshAnchor]);
+  });
+
+  const projected: MuscleScreenAnchorMap = {};
+  candidates.forEach((anchors, muscle) => {
+    projected[muscle] = anchors.sort((first, second) => first.inner.clientX - second.inner.clientX);
+  });
+
+  return projected;
+}
+
+function getAnchorSignature(positions: MuscleScreenAnchorMap) {
+  return Object.entries(positions)
+    .sort(([first], [second]) => first.localeCompare(second))
+    .map(([muscle, anchors]) => (
+      anchors
+        ? `${muscle}:${anchors.map((anchor) => (
+          [
+            Math.round(anchor.inner.clientX),
+            Math.round(anchor.inner.clientY),
+            Math.round(anchor.exit.clientX),
+            Math.round(anchor.exit.clientY),
+            anchor.visible ? 1 : 0,
+          ].join(":")
+        )).join(",")}`
+        : `${muscle}:missing`
+    ))
+    .join("|");
+}
+
 export function MuscleModelViewer({
   view,
   activations,
   selectedMuscleId,
   onMuscleSelect,
   className,
+  anchorMuscleIds = [],
+  onAnchorPositionsChange,
 }: MuscleModelViewerProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const resourcesRef = useRef<ViewerResources | null>(null);
   const activationsRef = useRef(activations);
   const onMuscleSelectRef = useRef(onMuscleSelect);
+  const onAnchorPositionsChangeRef = useRef(onAnchorPositionsChange);
+  const anchorMuscleIdsRef = useRef(anchorMuscleIds);
+  const lastAnchorSignatureRef = useRef("");
   const selectedMuscleIdRef = useRef(selectedMuscleId);
   const [loadState, setLoadState] = useState<LoadState>("loading");
-  const [zoom, setZoom] = useState(1);
 
   useEffect(() => {
     onMuscleSelectRef.current = onMuscleSelect;
   }, [onMuscleSelect]);
+
+  useEffect(() => {
+    onAnchorPositionsChangeRef.current = onAnchorPositionsChange;
+  }, [onAnchorPositionsChange]);
+
+  useEffect(() => {
+    anchorMuscleIdsRef.current = anchorMuscleIds;
+    lastAnchorSignatureRef.current = "";
+  }, [anchorMuscleIds]);
 
   useEffect(() => {
     activationsRef.current = activations;
@@ -166,9 +296,9 @@ export function MuscleModelViewer({
 
   useEffect(() => {
     if (resourcesRef.current) {
-      setCameraView(resourcesRef.current, view, zoom);
+      setCameraView(resourcesRef.current, view);
     }
-  }, [view, zoom]);
+  }, [view]);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -184,7 +314,9 @@ export function MuscleModelViewer({
 
     const controls = new OrbitControls(camera, renderer.domElement);
     controls.enableDamping = true;
-    controls.enablePan = false;
+    controls.enablePan = true;
+    controls.panSpeed = 0.55;
+    controls.screenSpacePanning = true;
     controls.minDistance = 1.4;
     controls.maxDistance = 6;
 
@@ -217,7 +349,7 @@ export function MuscleModelViewer({
 
     resources.resizeObserver.observe(container);
     resourcesRef.current = resources;
-    setCameraView(resources, view, zoom);
+    setCameraView(resources, view);
 
     const dracoLoader = new DRACOLoader();
     dracoLoader.setDecoderPath(dracoPath);
@@ -295,6 +427,16 @@ export function MuscleModelViewer({
       resources.animationFrameId = window.requestAnimationFrame(animate);
       controls.update();
       renderer.render(scene, camera);
+
+      if (onAnchorPositionsChangeRef.current && anchorMuscleIdsRef.current.length > 0) {
+        const positions = getProjectedMuscleAnchors(resources, anchorMuscleIdsRef.current);
+        const signature = getAnchorSignature(positions);
+
+        if (signature !== lastAnchorSignatureRef.current) {
+          lastAnchorSignatureRef.current = signature;
+          onAnchorPositionsChangeRef.current(positions);
+        }
+      }
     }
 
     animate();
@@ -338,29 +480,10 @@ export function MuscleModelViewer({
     };
   }, []);
 
-  function zoomOut() {
-    setZoom((currentZoom) => Math.max(0.75, Number((currentZoom - 0.15).toFixed(2))));
-  }
-
-  function zoomIn() {
-    setZoom((currentZoom) => Math.min(2.2, Number((currentZoom + 0.15).toFixed(2))));
-  }
-
-  function resetZoom() {
-    setZoom(1);
-  }
-
   const rootClassName = className ? `muscle-model-viewer ${className}` : "muscle-model-viewer";
 
   return (
     <div className={rootClassName}>
-      <div className="muscle-svg-toolbar" aria-label="3D 人体肌肉图缩放">
-        <button type="button" onClick={zoomOut} aria-label="缩小 3D 人体肌肉图">−</button>
-        <button type="button" onClick={resetZoom} aria-label="重置 3D 人体肌肉图缩放">
-          {Math.round(zoom * 100)}%
-        </button>
-        <button type="button" onClick={zoomIn} aria-label="放大 3D 人体肌肉图">＋</button>
-      </div>
       <div className="muscle-model-canvas" ref={containerRef}>
         {loadState === "loading" ? (
           <div className="muscle-svg-loading">正在加载 3D 人体肌肉模型…</div>

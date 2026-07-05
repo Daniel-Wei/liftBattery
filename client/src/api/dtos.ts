@@ -1,4 +1,4 @@
-import type { AuthUser, MuscleGroup, TrendReportType } from "../types/appTypes";
+import type { AuthUser, MuscleGroup } from "../types/appTypes";
 
 export type PreCheckDto = {
   id?: number;
@@ -68,37 +68,11 @@ export type SaveTrainingSessionDto = Omit<
   date: string;
 };
 
-export type TrendReportSelectionDto = {
-  muscleGroup: MuscleGroup;
-  exerciseName: string;
-};
-
 export type CreateTrendReportRequestDto = {
   startWeek: string;
   endWeek: string;
   comparisonStartWeek?: string;
   comparisonEndWeek?: string;
-  selections: TrendReportSelectionDto[];
-  reportTypes: TrendReportType[];
-};
-
-export type TrendReportPointDto = {
-  label: string;
-  value: number;
-};
-
-export type TrendReportSeriesDto = {
-  id: string;
-  label: string;
-  detail?: string;
-  variant: "dark" | "green" | "blue" | "purple" | "amber";
-  data: TrendReportPointDto[];
-};
-
-export type TrendReportChartDto = {
-  type: Exclude<TrendReportType, "muscleStimulation">;
-  title: string;
-  series: TrendReportSeriesDto[];
 };
 
 export type MuscleStimulationItemDto = {
@@ -117,13 +91,24 @@ export type MuscleStimulationReportDto = {
   muscles: MuscleStimulationItemDto[];
 };
 
+export type TrendReportSummaryCardDto = {
+  type: string;
+  title: string;
+  value: number;
+  comparisonValue?: number;
+  changePercent?: number;
+  unit: string;
+  variant: "cyan" | "mint" | "purple" | "yellow";
+  sparklineValues: number[];
+};
+
 export type TrendReportResultDto = {
   startWeek: string;
   endWeek: string;
   comparisonStartWeek?: string;
   comparisonEndWeek?: string;
   weekLabels: string[];
-  charts: TrendReportChartDto[];
+  summaryCards: TrendReportSummaryCardDto[];
   muscleStimulation?: MuscleStimulationReportDto;
 };
 

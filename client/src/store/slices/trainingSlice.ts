@@ -91,7 +91,7 @@ const trainingSlice = createSlice({
       if (field === "date" || field === "startTime") {
         state.trainingSessionDraft[field] = String(value);
       } else {
-        state.trainingSessionDraft[field] = Number(value);
+        state.trainingSessionDraft[field] = value === "" ? Number.NaN : Number(value);
       }
     },
     addTrainingExercise: (state) => {
@@ -167,7 +167,7 @@ const trainingSlice = createSlice({
         exerciseId: number;
         setId: number;
         field: keyof Omit<TrainingSetDraft, "id">;
-        value: number | boolean | undefined;
+        value: number | boolean | string | undefined;
       }>,
     ) => {
       const set = state.trainingSessionDraft.exercises
@@ -180,9 +180,9 @@ const trainingSlice = createSlice({
       if (field === "isWarmup") {
         set.isWarmup = Boolean(value);
       } else if (field === "rir") {
-        set[field] = value === undefined ? undefined : Number(value);
+        set[field] = value === undefined || value === "" ? undefined : Number(value);
       } else {
-        set[field] = Number(value);
+        set[field] = value === "" ? Number.NaN : Number(value);
       }
     },
     clearTrainingSuccessMessage: (state) => {

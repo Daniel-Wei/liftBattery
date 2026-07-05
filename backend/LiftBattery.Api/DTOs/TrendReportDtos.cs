@@ -1,32 +1,10 @@
 namespace LiftBattery.Api.DTOs;
 
-public sealed record TrendReportSelectionDto(
-    string MuscleGroup,
-    string ExerciseName);
-
 public sealed record CreateTrendReportRequestDto(
     string StartWeek,
     string EndWeek,
     string? ComparisonStartWeek,
-    string? ComparisonEndWeek,
-    IReadOnlyList<TrendReportSelectionDto> Selections,
-    IReadOnlyList<string> ReportTypes);
-
-public sealed record TrendReportPointDto(
-    string Label,
-    decimal Value);
-
-public sealed record TrendReportSeriesDto(
-    string Id,
-    string Label,
-    string? Detail,
-    string Variant,
-    IReadOnlyList<TrendReportPointDto> Data);
-
-public sealed record TrendReportChartDto(
-    string Type,
-    string Title,
-    IReadOnlyList<TrendReportSeriesDto> Series);
+    string? ComparisonEndWeek);
 
 public sealed record MuscleStimulationItemDto(
     string Muscle,
@@ -42,13 +20,23 @@ public sealed record MuscleStimulationReportDto(
     int LowStimulusMuscleCount,
     IReadOnlyList<MuscleStimulationItemDto> Muscles);
 
+public sealed record TrendReportSummaryCardDto(
+    string Type,
+    string Title,
+    decimal Value,
+    decimal? ComparisonValue,
+    decimal? ChangePercent,
+    string Unit,
+    string Variant,
+    IReadOnlyList<decimal> SparklineValues);
+
 public sealed record TrendReportResultDto(
     string StartWeek,
     string EndWeek,
     string? ComparisonStartWeek,
     string? ComparisonEndWeek,
     IReadOnlyList<string> WeekLabels,
-    IReadOnlyList<TrendReportChartDto> Charts,
+    IReadOnlyList<TrendReportSummaryCardDto> SummaryCards,
     MuscleStimulationReportDto? MuscleStimulation);
 
 public sealed record TrendReportJobDto(

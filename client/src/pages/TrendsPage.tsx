@@ -1,17 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
-import { CheckboxDropdown } from "../components/CheckboxDropdown";
 import { MuscleStimulationReport } from "../components/MuscleStimulationReport";
-import { TrendsReportChart } from "../components/TrendsReportChart";
-import type { CreateTrendReportRequestDto } from "../api/dtos";
-import {
-  exerciseOptionsByMuscleGroup,
-  getExerciseDisplayLabel,
-  getMuscleGroupDisplayLabel,
-  muscleGroupOptions,
-} from "../data/programValues";
+import type { CreateTrendReportRequestDto, TrendReportSummaryCardDto } from "../api/dtos";
 import { TREND_REPORT_JOB_ID_STORAGE_KEY } from "../data/localStorageKeys";
 import {
-  formatTrainingCycleLabel,
   getCurrentTrainingCycle,
   getTrainingCycles,
 } from "../domain/trainingTrendCharts";
@@ -20,19 +11,92 @@ import {
   createTrendReport,
   fetchTrendReportJob,
 } from "../store/slices/trendReportSlice";
-import type { TrainableMuscleGroup, TrendReportType } from "../types/appTypes";
-import { defaultReportTypeOptions } from "../data/defaultValues";
 import { getJobStatusLabel } from "../helpers/TrendsPageHelpers";
 import { selectProgramSettings } from "../store/selectors/programSettingsSelector";
+
+function formatSignedPercent(value: number) {
+  const rounded = Number(value.toFixed(1));
+  return `${rounded > 0 ? "+" : ""}${rounded}%`;
+}
+
+function formatSummaryValue(card: TrendReportSummaryCardDto, value: number | undefined) {
+  if (value === undefined || !Number.isFinite(value)) {
+    return "—";
+  }
+
+  if (card.type === "readiness") {
+    return `${Math.round(value)} / 100`;
+  }
+
+  if (card.type === "sleep") {
+    return `${Number(value.toFixed(1))} h`;
+  }
+
+  if (card.unit === "kg") {
+    return `${Math.round(value).toLocaleString("zh-CN")} kg`;
+  }
+
+  return Math.round(value).toLocaleString("zh-CN");
+}
+
+function TrendSummarySparkline({ points }: { points?: number[] }) {
+  const chartPoints = (points ?? []).filter(Number.isFinite);
+
+  if (chartPoints.length < 2 || chartPoints.every((point) => point === chartPoints[0])) {
+    return <span className="trend-summary-empty-line" />;
+  }
+
+  const min = Math.min(...chartPoints);
+  const max = Math.max(...chartPoints);
+  const range = Math.max(max - min, 1);
+  const path = chartPoints
+    .map((point, index) => {
+      const x = chartPoints.length === 1 ? 0 : (index / (chartPoints.length - 1)) * 100;
+      const y = 34 - ((point - min) / range) * 28;
+      return `${index === 0 ? "M" : "L"} ${x.toFixed(2)} ${y.toFixed(2)}`;
+    })
+    .join(" ");
+
+  return (
+    <svg className="trend-summary-sparkline" viewBox="0 0 100 40" preserveAspectRatio="none" aria-hidden="true">
+      <path d={path} />
+    </svg>
+  );
+}
+
+function TrendSummaryCardView({ card }: { card: TrendReportSummaryCardDto }) {
+  const isNegativeChange = typeof card.changePercent === "number" && card.changePercent < 0;
+  const changeClassName = isNegativeChange
+    ? "metric-change metric-change--negative"
+    : "metric-change";
+  const variant = card.variant ?? "cyan";
+
+  return (
+    <article className={`metric-card metric-card--${variant} trend-summary-card`}>
+      <span className="metric-accent-bar" />
+      <p className="metric-label">{card.title}</p>
+      <div className="metric-value-row">
+        <strong className="metric-value">{formatSummaryValue(card, card.value)}</strong>
+        {typeof card.changePercent === "number" ? (
+          <span className={changeClassName}>
+            {isNegativeChange ? "↓" : "↑"} {Number(Math.abs(card.changePercent).toFixed(1))}%
+          </span>
+        ) : null}
+      </div>
+      {card.comparisonValue !== undefined ? (
+        <p className="trend-summary-comparison">对比周期 {formatSummaryValue(card, card.comparisonValue)}</p>
+      ) : null}
+      <p className="metric-helper">{card.comparisonValue === undefined ? "selected cycle" : "vs comparison cycle"}</p>
+      <TrendSummarySparkline points={card.sparklineValues} />
+    </article>
+  );
+}
 
 export function TrendsPage() {
   const dispatch = useAppDispatch();
   const { job, status, error } = useAppSelector((state) => state.trendReport);
   const programSettings = useAppSelector(selectProgramSettings);
 
-  // #region: internal states
-
-  // #region: training cycles
   const trainingCycles = useMemo(() => getTrainingCycles(programSettings), [programSettings]);
   const currentTrainingCycle = getCurrentTrainingCycle(programSettings);
   const [selectedCycleNumber, setSelectedCycleNumber] = useState(currentTrainingCycle.cycleNumber);
@@ -60,136 +124,15 @@ export function TrendsPage() {
       setComparisonCycleNumber("");
     }
   }, [comparisonCycleNumber, selectedCycleNumber, trainingCycles]);
-  // #endregion
-
-  // #region: muscle selections
-  const trainableMuscleGroups = muscleGroupOptions.filter(
-    (muscleGroup): muscleGroup is TrainableMuscleGroup => muscleGroup !== "All",
-  );
-
-  const allMuscleSelectionOptions = trainableMuscleGroups.flatMap((muscleGroup) => (
-    exerciseOptionsByMuscleGroup[muscleGroup].map((exerciseName) => ({
-      key: `${muscleGroup}::${exerciseName}`,
-      muscleGroup,
-      exerciseName,
-    }))
-  ));
-
-  const [selectedMuscleSelectionKeys, setSelectedMuscleSelectionKeys] = useState<Set<string> | null>(null);
-
-  const selectedMuscleSelections = selectedMuscleSelectionKeys === null
-    ? allMuscleSelectionOptions
-    : allMuscleSelectionOptions.filter((option) => selectedMuscleSelectionKeys.has(option.key));
-
-  const muscleSelectionSummary = selectedMuscleSelectionKeys === null
-    ? "全部肌群与动作"
-    : selectedMuscleSelectionKeys.size === 0
-      ? "未选择肌群与动作"
-      : `已选 ${selectedMuscleSelectionKeys.size} 个动作`;
-
-  const muscleSelectionGroups = trainableMuscleGroups.map((muscleGroup) => {
-    const groupOptions = allMuscleSelectionOptions.filter((option) => option.muscleGroup === muscleGroup);
-
-    return {
-      id: muscleGroup,
-      label: `肌群：${getMuscleGroupDisplayLabel(muscleGroup)}`,
-      selected: groupOptions.every((option) => (
-            selectedMuscleSelectionKeys === null || selectedMuscleSelectionKeys.has(option.key)
-          )),
-          options: groupOptions.map((option) => ({
-            value: option.key,
-            label: getExerciseDisplayLabel(option.exerciseName),
-          })),
-        };
-    });
-
-  function handleMuscleSelectionToggle(selectionKey: string) {
-    setSelectedMuscleSelectionKeys((currentKeys) => {
-      const nextKeys = currentKeys === null
-        ? new Set(allMuscleSelectionOptions.map((option) => option.key))
-        : new Set(currentKeys);
-
-      if (nextKeys.has(selectionKey)) {
-        nextKeys.delete(selectionKey);
-      } else {
-        nextKeys.add(selectionKey);
-      }
-
-      return nextKeys.size === allMuscleSelectionOptions.length ? null : nextKeys;
-    });
-  }
-
-  function handleMuscleGroupToggle(groupId: string) {
-    const groupKeys = allMuscleSelectionOptions
-      .filter((option) => option.muscleGroup === groupId)
-      .map((option) => option.key);
-
-    setSelectedMuscleSelectionKeys((currentKeys) => {
-      const nextKeys = currentKeys === null
-        ? new Set(allMuscleSelectionOptions.map((option) => option.key))
-        : new Set(currentKeys);
-      const groupIsSelected = groupKeys.every((key) => nextKeys.has(key));
-
-      groupKeys.forEach((key) => {
-        if (groupIsSelected) {
-          nextKeys.delete(key);
-        } else {
-          nextKeys.add(key);
-        }
-      });
-
-      return nextKeys.size === allMuscleSelectionOptions.length ? null : nextKeys;
-    });
-  }
-  // #endregion
-
-  // #region: reports
-  const [selectedReportTypes, setSelectedReportTypes] = useState<Set<TrendReportType> | null>(null);
-
-  const selectedReports = selectedReportTypes === null
-    ? defaultReportTypeOptions
-    : defaultReportTypeOptions.filter((option) => selectedReportTypes.has(option.value));
-
-  const reportSummary = selectedReportTypes === null
-    ? "全部报告"
-    : selectedReportTypes.size === 0
-      ? "未选择报告"
-      : `已选 ${selectedReportTypes.size} 个报告`;
-
-  function handleReportTypeToggle(value: string) {
-    const reportType = value as TrendReportType;
-
-    setSelectedReportTypes((currentTypes) => {
-      const nextTypes = currentTypes === null
-        ? new Set(defaultReportTypeOptions.map((option) => option.value))
-        : new Set(currentTypes);
-
-      if (nextTypes.has(reportType)) {
-        nextTypes.delete(reportType);
-      } else {
-        nextTypes.add(reportType);
-      }
-
-      return nextTypes.size === defaultReportTypeOptions.length ? null : nextTypes;
-    });
-  }
-  // #endregion
-
-  // #endregion
 
   const currentReportRequest = useMemo<CreateTrendReportRequestDto | null>(() => {
-    if (selectedCycle === undefined || selectedMuscleSelections.length === 0 || selectedReports.length === 0) {
+    if (!selectedCycle) {
       return null;
     }
 
     const nextRequest: CreateTrendReportRequestDto = {
       startWeek: selectedCycle.startDate,
       endWeek: selectedCycle.endWeekStartDate,
-      selections: selectedMuscleSelections.map((selection) => ({
-        muscleGroup: selection.muscleGroup,
-        exerciseName: selection.exerciseName,
-      })),
-      reportTypes: selectedReports.map((report) => report.value),
     };
 
     if (comparisonCycle) {
@@ -198,22 +141,22 @@ export function TrendsPage() {
     }
 
     return nextRequest;
-  }, [comparisonCycle, selectedCycle, selectedMuscleSelections, selectedReports]);
+  }, [comparisonCycle, selectedCycle]);
+
   const activeJobIsGenerating = job?.status === "Queued" || job?.status === "Processing";
+  const progressPercent = Math.max(0, Math.min(100, job?.progressPercent ?? 0));
+  const completedResult = job?.status === "Completed" ? job.result : undefined;
+  const summaryCards = completedResult?.summaryCards ?? [];
   const currentReportNeedsRegeneration = job?.status === "Outdated"
     || job?.status === "Superseded"
     || job?.status === "CancelRequested";
-  const canGenerate = currentReportRequest !== null
-    && status !== "submitting";
+  const canGenerate = currentReportRequest !== null && status !== "submitting";
   const generateButtonText = status === "submitting"
     ? "正在提交"
-    : activeJobIsGenerating
+    : activeJobIsGenerating || currentReportNeedsRegeneration
       ? "重新生成报告"
       : "生成报告";
 
-  const displayGenerateButtonText = currentReportNeedsRegeneration ? "重新生成报告" : generateButtonText;
-
-  // execute any remaining job
   useEffect(() => {
     const savedJobId = Number(localStorage.getItem(TREND_REPORT_JOB_ID_STORAGE_KEY));
 
@@ -222,7 +165,6 @@ export function TrendsPage() {
     }
   }, [dispatch]);
 
-  // save job id to local storage + add 1.2s delay for job execution
   useEffect(() => {
     if (!job) {
       return;
@@ -251,16 +193,8 @@ export function TrendsPage() {
 
   return (
     <div className="page page-stack">
-      <header className="page-header">
-        <p className="eyebrow">趋势报告</p>
-        <h1 className="page-title">按训练周期生成异步趋势报告</h1>
-        <p className="page-subtitle">
-          选择一个目标训练周期；需要时可加一个对比周期，否则报告只展示目标周期本身。
-        </p>
-      </header>
-
       <section className="trend-report-builder">
-        <div className="trend-report-week-row">
+        <div className="trend-report-week-row trend-report-week-row--compact">
           <label className="trend-report-field">
             <span className="trend-report-label">目标训练周期</span>
             <select
@@ -296,48 +230,9 @@ export function TrendsPage() {
                 ))}
             </select>
             <small className="trend-report-period-meta">
-              {comparisonCycle ? `${comparisonCycle.startDate} 至 ${comparisonCycle.endDate}` : "可留空"}
+              {comparisonCycle ? `${comparisonCycle.startDate} 至 ${comparisonCycle.endDate}` : " "}
             </small>
           </label>
-
-          <p className="trend-report-week-count">
-            {comparisonCycle
-              ? `${formatTrainingCycleLabel(selectedCycle)} 对比 ${formatTrainingCycleLabel(comparisonCycle)}`
-              : `只看 ${formatTrainingCycleLabel(selectedCycle)}`}
-          </p>
-        </div>
-
-        <div className="trend-report-filter-row">
-          <div className="trend-report-selection-filter">
-            <CheckboxDropdown
-              label="肌群与动作"
-              summary={muscleSelectionSummary}
-              allLabel="全部肌群与动作"
-              allSelected={selectedMuscleSelectionKeys === null}
-              selectedValues={selectedMuscleSelectionKeys ?? new Set<string>()}
-              groups={muscleSelectionGroups}
-              onSelectAll={() => setSelectedMuscleSelectionKeys((currentKeys) => (
-                currentKeys === null ? new Set() : null
-              ))}
-              onToggleGroup={handleMuscleGroupToggle}
-              onToggleOption={handleMuscleSelectionToggle}
-            />
-          </div>
-
-          <div className="trend-report-type-filter">
-            <CheckboxDropdown
-              label="报告内容"
-              summary={reportSummary}
-              allLabel="全部报告"
-              allSelected={selectedReportTypes === null}
-              selectedValues={selectedReportTypes ?? new Set<string>()}
-              groups={[{ id: "reports", options: defaultReportTypeOptions }]}
-              onSelectAll={() => setSelectedReportTypes((currentTypes) => (
-                currentTypes === null ? new Set() : null
-              ))}
-              onToggleOption={handleReportTypeToggle}
-            />
-          </div>
 
           <button
             type="button"
@@ -345,7 +240,7 @@ export function TrendsPage() {
             disabled={!canGenerate}
             onClick={handleGenerateReport}
           >
-            {displayGenerateButtonText}
+            {generateButtonText}
           </button>
         </div>
       </section>
@@ -359,31 +254,36 @@ export function TrendsPage() {
               <p className="section-eyebrow">报告任务</p>
               <h2 className="section-title">{getJobStatusLabel(job.status)}</h2>
             </div>
-            <strong>{job.progressPercent}%</strong>
+            <strong>{progressPercent}%</strong>
           </div>
           <div className="trend-report-progress-track">
-            <span style={{ width: `${job.progressPercent}%` }} />
+            <span style={{ width: `${progressPercent}%` }} />
           </div>
           <p className="muted-text">{job.currentStage}</p>
           {job.errorMessage ? <p className="form-error">{job.errorMessage}</p> : null}
         </section>
       ) : null}
 
-      {job?.status === "Completed" && job.result ? (
+      {completedResult ? (
         <div className="trend-report-results">
-          {job.result.muscleStimulation ? (
+          {summaryCards.length > 0 ? (
+            <section className="trend-summary-card-grid" aria-label="趋势报告摘要">
+              {summaryCards.map((card) => (
+                <TrendSummaryCardView key={card.title} card={card} />
+              ))}
+            </section>
+          ) : (
+            <section className="empty-card">
+              <p className="muted-text">本周期暂无足够数据生成趋势摘要。</p>
+            </section>
+          )}
+
+          {completedResult.muscleStimulation ? (
             <MuscleStimulationReport
-              report={job.result.muscleStimulation}
-              hasComparison={Boolean(job.result.comparisonStartWeek)}
+              report={completedResult.muscleStimulation}
+              hasComparison={Boolean(completedResult.comparisonStartWeek)}
             />
           ) : null}
-          {job.result.charts.map((chart) => (
-            <TrendsReportChart
-              key={chart.type}
-              chart={chart}
-              weekLabels={job.result?.weekLabels ?? []}
-            />
-          ))}
         </div>
       ) : null}
     </div>

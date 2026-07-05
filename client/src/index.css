@@ -13,19 +13,19 @@
   --text-primary: #f4f7fb;
   --text-secondary: #a1aec0;
   --text-muted: #6f7f93;
-  --accent-cyan: #39d2e7;
-  --accent-cyan-soft: #173d4c;
-  --accent-mint: #59d6ad;
-  --accent-purple: #a45eff;
-  --accent-yellow: #d7b64b;
+  --accent-cyan: #52c4d6;
+  --accent-cyan-soft: #173845;
+  --accent-mint: #62cda4;
+  --accent-purple: #9b83e6;
+  --accent-yellow: #d8b652;
   --ring-track: #1b2a3e;
   --chart-grid: rgba(111, 127, 147, 0.16);
   --sidebar-width: 260px;
   --radius-card: 16px;
   --radius-inner: 11px;
   --shadow-card: 0 18px 44px rgba(0, 0, 0, 0.22);
-  font-family: Inter, "Microsoft YaHei", "PingFang SC", "Noto Sans SC", "Segoe UI",
-    ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+  font-family: Inter, "Noto Sans SC", "PingFang SC", "Microsoft YaHei UI",
+    "Microsoft YaHei", sans-serif;
   color: var(--text-primary);
   background: var(--app-bg);
 }
@@ -45,8 +45,8 @@ body {
   margin: 0;
   background: var(--app-bg);
   color: var(--text-primary);
-  font-family: Inter, "Microsoft YaHei", "PingFang SC", "Noto Sans SC", "Segoe UI",
-    ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+  font-family: Inter, "Noto Sans SC", "PingFang SC", "Microsoft YaHei UI",
+    "Microsoft YaHei", sans-serif;
   text-rendering: geometricPrecision;
   -webkit-font-smoothing: antialiased;
 }
@@ -65,6 +65,11 @@ button {
 button:disabled {
   cursor: not-allowed;
   opacity: 0.48;
+}
+
+button:focus-visible {
+  outline: 2px solid rgba(82, 196, 214, 0.32);
+  outline-offset: 2px;
 }
 
 a {
@@ -498,9 +503,9 @@ a {
 .dashboard-card-title {
   margin: 0;
   color: var(--text-primary);
-  font-size: 17px;
-  font-weight: 780;
-  letter-spacing: -0.025em;
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: -0.015em;
 }
 
 .dashboard-card-action {
@@ -533,15 +538,19 @@ a {
 }
 
 .readiness-summary-card {
+  display: grid;
+  grid-template-rows: auto 1fr;
   background: var(--card-bg-secondary);
 }
 
 .readiness-summary-layout {
   display: grid;
-  grid-template-columns: 150px minmax(0, 1fr);
+  grid-template-columns: 132px minmax(0, 1fr);
   align-items: center;
-  gap: 22px;
-  padding: 16px 18px 16px;
+  gap: 18px;
+  min-height: 0;
+  height: 100%;
+  padding: 16px 18px;
 }
 
 .donut-metric {
@@ -565,7 +574,7 @@ a {
 .donut-metric-center strong {
   color: var(--text-primary);
   font-size: 30px;
-  font-weight: 820;
+  font-weight: 700;
   letter-spacing: -0.04em;
 }
 
@@ -598,10 +607,10 @@ a {
   max-width: 560px;
   margin: 0;
   color: var(--text-primary);
-  font-size: 22px;
-  font-weight: 790;
-  line-height: 1.18;
-  letter-spacing: -0.045em;
+  font-size: 24px;
+  font-weight: 650;
+  line-height: 1.22;
+  letter-spacing: -0.01em;
 }
 
 .readiness-summary-copy p {
@@ -779,8 +788,8 @@ a {
 
 .metric-value {
   color: var(--text-primary);
-  font-size: 28px;
-  font-weight: 810;
+  font-size: 30px;
+  font-weight: 700;
   line-height: 1;
   letter-spacing: -0.04em;
 }
@@ -788,7 +797,11 @@ a {
 .metric-change {
   color: var(--accent-mint);
   font-size: 13px;
-  font-weight: 820;
+  font-weight: 700;
+}
+
+.metric-change--negative {
+  color: #dc6f7a;
 }
 
 .metric-helper {
@@ -1026,6 +1039,55 @@ a {
   width: min(100%, 760px);
 }
 
+.auth-page {
+  display: grid;
+  place-items: center;
+  min-height: 100vh;
+  padding: 28px;
+  background: var(--app-bg);
+}
+
+.auth-card {
+  display: grid;
+  gap: 12px;
+  width: min(100%, 460px);
+  padding: 24px;
+}
+
+.auth-form {
+  display: grid;
+  gap: 12px;
+  margin-top: 4px;
+}
+
+.auth-form--grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.auth-form-span {
+  grid-column: 1 / -1;
+}
+
+.auth-switch,
+.profile-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.profile-card {
+  padding: 20px;
+  --panel-accent: var(--accent-purple);
+  background:
+    linear-gradient(135deg, rgba(155, 131, 230, 0.075), rgba(82, 196, 214, 0.04) 58%, rgba(216, 182, 82, 0.035)),
+    var(--card-bg-secondary);
+}
+
+.profile-actions {
+  justify-content: flex-start;
+}
+
 .page-header,
 .dashboard-hero {
   display: grid;
@@ -1059,10 +1121,10 @@ a {
 .page-title {
   margin: 0;
   color: var(--text-primary);
-  font-size: 28px;
-  font-weight: 800;
-  line-height: 1.15;
-  letter-spacing: -0.04em;
+  font-size: 26px;
+  font-weight: 700;
+  line-height: 1.2;
+  letter-spacing: -0.02em;
 }
 
 .page-subtitle,
@@ -1073,7 +1135,8 @@ a {
   margin: 0;
   color: var(--text-secondary);
   font-size: 14px;
-  line-height: 1.6;
+  font-weight: 400;
+  line-height: 1.5;
 }
 
 .section-card,
@@ -1087,9 +1150,28 @@ a {
   min-width: 0;
   border: 1px solid var(--border);
   border-radius: var(--radius-card);
-  background: var(--card-bg-secondary);
+  background:
+    linear-gradient(180deg, rgba(82, 196, 214, 0.035), transparent 42%),
+    var(--card-bg-secondary);
   color: var(--text-primary);
   box-shadow: var(--shadow-card);
+}
+
+.section-card,
+.trend-report-builder,
+.trend-report-job-status,
+.muscle-viewer,
+.muscle-stimulation-report,
+.profile-card,
+.auth-card,
+.quick-log-shell,
+.training-exercise-editor,
+.training-day-card,
+.saved-training-session {
+  --panel-accent: var(--accent-cyan);
+  box-shadow:
+    inset 0 3px 0 color-mix(in srgb, var(--panel-accent), transparent 18%),
+    var(--shadow-card);
 }
 
 .section-card,
@@ -1102,6 +1184,14 @@ a {
   padding: 18px;
 }
 
+.auth-card {
+  padding: 24px;
+}
+
+.profile-card {
+  padding: 20px;
+}
+
 .section-header {
   margin-bottom: 16px;
 }
@@ -1111,9 +1201,9 @@ a {
 .chart-title {
   margin: 0;
   color: var(--text-primary);
-  font-size: 17px;
-  font-weight: 780;
-  letter-spacing: -0.025em;
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: -0.015em;
 }
 
 .section-title-zh,
@@ -1224,19 +1314,26 @@ a {
 /* PreCheck */
 .battery-focus-panel {
   display: grid;
-  grid-template-columns: 150px minmax(0, 1fr);
-  gap: 22px;
+  grid-template-columns: minmax(210px, 0.36fr) minmax(0, 0.64fr);
+  grid-template-rows: auto 1fr;
+  gap: 18px 34px;
   align-items: center;
-  min-height: 230px;
+  min-height: 316px;
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-card);
   background: var(--card-bg);
-  padding: 18px;
+  padding: 24px 36px 30px;
+}
+
+.battery-focus-copy {
+  align-self: center;
+  min-width: 0;
 }
 
 .battery-panel-badges {
   display: flex;
   flex-wrap: wrap;
+  justify-content: flex-end;
   gap: 8px;
   grid-column: 1 / -1;
 }
@@ -1245,29 +1342,44 @@ a {
   --battery-score: 0%;
   display: grid;
   place-items: center;
-  width: 132px;
-  height: 132px;
+  justify-self: center;
+  width: 184px;
+  height: 184px;
   border-radius: 999px;
   background:
-    radial-gradient(circle at center, var(--card-bg) 0 50%, transparent 51%),
-    conic-gradient(var(--accent-cyan) var(--battery-score), var(--ring-track) 0);
+    radial-gradient(circle at center, var(--card-bg) 0 49%, transparent 50%),
+    conic-gradient(
+      #ff6b8f 0%,
+      var(--accent-purple) 42%,
+      var(--accent-yellow) var(--battery-score),
+      var(--ring-track) 0
+    );
+  box-shadow:
+    0 0 0 1px rgba(155, 131, 230, 0.18),
+    0 22px 48px rgba(155, 131, 230, 0.12);
 }
 
 .battery-ring-core {
   display: grid;
   place-items: center;
-  width: 86px;
-  height: 86px;
+  grid-template-rows: auto auto;
+  align-content: center;
+  justify-items: center;
+  width: 118px;
+  height: 118px;
   border-radius: inherit;
   background: var(--card-bg);
   box-shadow: inset 0 0 0 1px var(--border-subtle);
+  text-align: center;
 }
 
 .battery-score {
-  color: var(--text-primary);
-  font-size: 32px;
-  font-weight: 820;
+  color: #fff6df;
+  font-size: 43px;
+  font-weight: 700;
   line-height: 1;
+  min-width: 100%;
+  text-align: center;
 }
 
 .battery-ring-label {
@@ -1286,18 +1398,24 @@ a {
 .battery-focus-title {
   margin: 0;
   color: var(--text-primary);
-  font-size: 26px;
-  font-weight: 800;
+  font-size: 32px;
+  font-weight: 650;
   line-height: 1.22;
-  letter-spacing: -0.04em;
+  letter-spacing: -0.01em;
+  overflow-wrap: anywhere;
 }
 
 .quick-log-shell {
   border: 1px solid var(--border);
   border-radius: var(--radius-card);
-  background: var(--card-bg-secondary);
+  background:
+    linear-gradient(135deg, rgba(82, 196, 214, 0.055), rgba(155, 131, 230, 0.035) 58%, rgba(216, 182, 82, 0.035)),
+    var(--card-bg-secondary);
   padding: 18px;
-  box-shadow: var(--shadow-card);
+  box-shadow:
+    inset 0 3px 0 color-mix(in srgb, var(--panel-accent), transparent 18%),
+    var(--shadow-card);
+  --panel-accent: var(--accent-purple);
 }
 
 .quick-log-actions {
@@ -1319,8 +1437,30 @@ a {
   min-width: 0;
   border: 1px solid var(--border);
   border-radius: 13px;
-  background: var(--card-bg);
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--panel-accent, var(--accent-cyan)), transparent 92%), transparent 62%),
+    var(--card-bg);
   padding: 16px;
+}
+
+.quick-control-card:nth-child(4n + 1),
+.compact-signal-card:nth-child(4n + 1) {
+  --panel-accent: var(--accent-cyan);
+}
+
+.quick-control-card:nth-child(4n + 2),
+.compact-signal-card:nth-child(4n + 2) {
+  --panel-accent: var(--accent-mint);
+}
+
+.quick-control-card:nth-child(4n + 3),
+.compact-signal-card:nth-child(4n + 3) {
+  --panel-accent: var(--accent-purple);
+}
+
+.quick-control-card:nth-child(4n),
+.compact-signal-card:nth-child(4n) {
+  --panel-accent: var(--accent-yellow);
 }
 
 .quick-control-label,
@@ -1328,7 +1468,7 @@ a {
   margin: 0;
   color: var(--text-primary);
   font-size: 16px;
-  font-weight: 780;
+  font-weight: 700;
 }
 
 .quick-output {
@@ -1340,53 +1480,95 @@ a {
 .range-input,
 .range-input--modern {
   width: 100%;
-  accent-color: var(--accent-cyan);
+  accent-color: var(--accent-purple);
+}
+
+.range-shell {
+  --range-progress: 50%;
+  --range-ratio: 0.5;
+  --range-thumb-size: 16px;
+  position: relative;
+  min-height: 32px;
+  padding: 0 16px;
+  overflow: hidden;
+  border-radius: 999px;
+}
+
+.range-visual {
+  position: absolute;
+  inset: 9px 16px;
+  border-radius: 999px;
+  background: var(--ring-track);
+  pointer-events: none;
+}
+
+.range-visual-fill {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: var(--range-progress);
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--accent-purple), var(--accent-cyan), var(--accent-mint));
+}
+
+.range-visual-thumb {
+  position: absolute;
+  top: 50%;
+  left: var(--range-progress);
+  width: var(--range-thumb-size);
+  height: var(--range-thumb-size);
+  border: 2px solid var(--text-primary);
+  border-radius: 999px;
+  background: linear-gradient(135deg, var(--accent-purple), var(--accent-cyan), var(--accent-mint));
+  box-shadow: 0 0 0 3px rgba(8, 19, 33, 0.9);
+  transform: translate(-50%, -50%);
 }
 
 .range-input--modern {
-  --range-progress: 50%;
+  position: absolute;
+  inset: 0 16px;
   appearance: none;
-  height: 22px;
+  width: calc(100% - 32px);
+  height: 32px;
+  margin: 0;
   border: 0;
   background: transparent;
   cursor: pointer;
 }
 
+.range-input--modern:focus {
+  outline: 0;
+}
+
 .range-input--modern::-webkit-slider-runnable-track {
-  height: 8px;
+  height: 32px;
   border-radius: 999px;
-  background:
-    linear-gradient(
-      90deg,
-      var(--accent-cyan) 0%,
-      var(--accent-cyan) var(--range-progress),
-      var(--ring-track) var(--range-progress),
-      var(--ring-track) 100%
-    );
+  background: transparent;
 }
 
 .range-input--modern::-webkit-slider-thumb {
   appearance: none;
-  width: 18px;
-  height: 18px;
-  margin-top: -5px;
-  border: 3px solid var(--text-primary);
+  width: var(--range-thumb-size);
+  height: var(--range-thumb-size);
+  margin-top: 0;
+  border: 0;
   border-radius: 999px;
-  background: var(--accent-cyan);
+  background: transparent;
 }
 
 .range-input--modern::-moz-range-track {
-  height: 8px;
+  height: 32px;
   border-radius: 999px;
-  background: var(--ring-track);
+  background: transparent;
 }
 
 .range-input--modern::-moz-range-thumb {
-  width: 18px;
-  height: 18px;
-  border: 3px solid var(--text-primary);
+  width: var(--range-thumb-size);
+  height: var(--range-thumb-size);
+  border: 0;
   border-radius: 999px;
-  background: var(--accent-cyan);
+  background: transparent;
 }
 
 .compact-card-list {
@@ -1401,7 +1583,8 @@ a {
 }
 
 .training-session-form--header {
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr)) minmax(96px, auto);
+  align-items: end;
 }
 
 .training-session-form--exercise {
@@ -1454,6 +1637,11 @@ textarea:focus {
   outline-offset: 1px;
 }
 
+input.range-input--modern:focus {
+  border-color: transparent;
+  outline: 0;
+}
+
 .training-exercise-stack {
   display: grid;
   gap: 16px;
@@ -1463,13 +1651,16 @@ textarea:focus {
 .training-exercise-editor {
   border: 1px solid var(--border);
   border-radius: var(--radius-card);
-  background: var(--card-bg);
+  background:
+    linear-gradient(135deg, rgba(82, 196, 214, 0.055), rgba(155, 131, 230, 0.04) 62%, rgba(216, 182, 82, 0.035)),
+    var(--card-bg);
   padding: 16px;
+  --panel-accent: var(--accent-mint);
 }
 
 .training-exercise-editor--with-preview {
   display: grid;
-  grid-template-columns: minmax(0, 1.35fr) minmax(320px, 0.78fr);
+  grid-template-columns: minmax(0, 1fr);
   gap: 16px;
   align-items: start;
 }
@@ -1489,7 +1680,7 @@ textarea:focus {
 
 .training-set-table-wrap {
   max-width: 100%;
-  overflow-x: hidden;
+  overflow-x: auto;
   border: 1px solid var(--border-subtle);
   border-radius: 12px;
   background: var(--card-bg-subtle);
@@ -1497,7 +1688,7 @@ textarea:focus {
 
 .training-set-table {
   width: 100%;
-  min-width: 0;
+  min-width: 620px;
   border-collapse: collapse;
   table-layout: fixed;
 }
@@ -1526,12 +1717,12 @@ textarea:focus {
 
 .training-set-table th:nth-child(5),
 .training-set-table td:nth-child(5) {
-  width: 17%;
+  width: 15%;
 }
 
 .training-set-table th:nth-child(6),
 .training-set-table td:nth-child(6) {
-  width: 54px;
+  width: 78px;
 }
 
 .training-set-table th {
@@ -1555,6 +1746,12 @@ textarea:focus {
   padding-inline: 8px;
 }
 
+.training-set-table td:last-child button {
+  width: 100%;
+  min-width: 56px;
+  white-space: nowrap;
+}
+
 .training-set-number {
   color: var(--text-primary);
   font-weight: 800;
@@ -1563,6 +1760,16 @@ textarea:focus {
 .training-form-actions--split {
   justify-content: space-between;
   margin-top: 16px;
+}
+
+.training-save-field {
+  align-self: end;
+}
+
+.training-save-button {
+  width: 100%;
+  min-height: 38px;
+  white-space: nowrap;
 }
 
 .saved-session-controls,
@@ -1574,11 +1781,25 @@ textarea:focus {
 }
 
 .saved-session-controls--three .training-form-field {
-  flex: 1 1 220px;
+  flex: 0 1 340px;
+}
+
+.saved-session-controls--three {
+  display: grid;
+  grid-template-columns: minmax(320px, 1fr) minmax(190px, 0.52fr) minmax(220px, 0.64fr);
+  width: 100%;
+}
+
+.saved-session-controls--three .training-form-field {
+  width: 100%;
 }
 
 .saved-week-summary {
   margin-bottom: 14px;
+}
+
+.saved-session-header {
+  margin-bottom: 12px;
 }
 
 .training-day-list {
@@ -1590,8 +1811,30 @@ textarea:focus {
 .saved-training-session {
   border: 1px solid var(--border-subtle);
   border-radius: 14px;
-  background: var(--card-bg);
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--panel-accent, var(--accent-cyan)), transparent 92%), transparent 64%),
+    var(--card-bg);
   padding: 14px;
+}
+
+.training-day-card:nth-child(4n + 1),
+.saved-training-session:nth-child(4n + 1) {
+  --panel-accent: var(--accent-cyan);
+}
+
+.training-day-card:nth-child(4n + 2),
+.saved-training-session:nth-child(4n + 2) {
+  --panel-accent: var(--accent-mint);
+}
+
+.training-day-card:nth-child(4n + 3),
+.saved-training-session:nth-child(4n + 3) {
+  --panel-accent: var(--accent-purple);
+}
+
+.training-day-card:nth-child(4n),
+.saved-training-session:nth-child(4n) {
+  --panel-accent: var(--accent-yellow);
 }
 
 .training-calendar-date {
@@ -1638,6 +1881,7 @@ textarea:focus {
 
 .saved-training-exercise-heading {
   display: flex;
+  flex-wrap: wrap;
   justify-content: space-between;
   gap: 12px;
 }
@@ -1651,6 +1895,10 @@ textarea:focus {
 /* Muscle viewer */
 .muscle-viewer {
   padding: 16px;
+}
+
+.muscle-viewer--compact {
+  padding: 14px;
 }
 
 .muscle-viewer-header h3 {
@@ -1691,6 +1939,10 @@ textarea:focus {
   gap: 14px;
 }
 
+.muscle-viewer-body > .muscle-view-toggle {
+  justify-self: end;
+}
+
 .muscle-figure-panel,
 .stimulation-figure-panel {
   display: grid;
@@ -1700,6 +1952,179 @@ textarea:focus {
   border-radius: 14px;
   background: rgba(255, 255, 255, 0.02);
   padding: 12px;
+}
+
+.muscle-map-panel {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 0.6fr) minmax(270px, 0.4fr);
+  gap: 20px;
+  align-items: stretch;
+  min-height: 560px;
+  overflow: hidden;
+  border: 1px solid var(--border-subtle);
+  border-radius: 14px;
+  background:
+    radial-gradient(circle at 22% 42%, rgba(82, 196, 214, 0.12), transparent 34%),
+    linear-gradient(135deg, rgba(155, 131, 230, 0.06), rgba(98, 205, 164, 0.035)),
+    rgba(255, 255, 255, 0.02);
+  padding: 12px;
+}
+
+.muscle-callout-lines {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.muscle-callout-lines path {
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 0.75;
+  vector-effect: non-scaling-stroke;
+}
+
+.muscle-callout-lines .is-primary {
+  color: #ff586d;
+}
+
+.muscle-callout-lines .is-secondary {
+  color: #ff9f43;
+}
+
+.muscle-callout-lines .is-supporting {
+  color: var(--accent-yellow);
+}
+
+.muscle-model-zone,
+.muscle-distribution-panel {
+  position: relative;
+}
+
+.muscle-model-zone {
+  z-index: 2;
+  display: grid;
+  align-content: center;
+  justify-items: start;
+  min-width: 0;
+}
+
+.muscle-model-callout-stage {
+  width: min(100%, 560px);
+}
+
+.muscle-model-viewer--map {
+  width: 100%;
+}
+
+.muscle-model-viewer--map .muscle-model-canvas {
+  min-height: 500px;
+}
+
+.muscle-model-viewer--map .muscle-model-canvas canvas {
+  max-height: 500px;
+}
+
+.muscle-distribution-panel {
+  z-index: 4;
+  display: grid;
+  align-content: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.muscle-distribution-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 760;
+}
+
+.muscle-distribution-heading strong {
+  color: var(--accent-cyan);
+}
+
+.muscle-distribution-list {
+  display: grid;
+  gap: 8px;
+}
+
+.muscle-distribution-row {
+  --muscle-share: 0%;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 5px 10px;
+  width: 100%;
+  border: 1px solid color-mix(in srgb, currentColor, transparent 74%);
+  border-radius: 12px;
+  background:
+    linear-gradient(90deg, color-mix(in srgb, currentColor, transparent 84%) var(--muscle-share), transparent 0),
+    var(--card-bg-subtle);
+  color: var(--accent-cyan);
+  padding: 9px 10px;
+  text-align: left;
+}
+
+.muscle-distribution-row.is-primary {
+  color: #ff586d;
+}
+
+.muscle-distribution-row.is-secondary {
+  color: #ff9f43;
+}
+
+.muscle-distribution-row.is-supporting {
+  color: var(--accent-yellow);
+}
+
+.muscle-distribution-row span,
+.muscle-distribution-row strong {
+  color: var(--text-primary);
+  font-size: 12px;
+  font-weight: 780;
+}
+
+.muscle-distribution-row span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.muscle-distribution-row small {
+  color: currentColor;
+  font-size: 11px;
+  font-weight: 760;
+}
+
+.muscle-distribution-row i {
+  grid-column: 1 / -1;
+  display: block;
+  width: var(--muscle-share);
+  height: 3px;
+  border-radius: 999px;
+  background: currentColor;
+}
+
+.muscle-distribution-row.is-selected {
+  border-color: currentColor;
+  box-shadow: 0 0 0 2px color-mix(in srgb, currentColor, transparent 82%);
+}
+
+.muscle-distribution-row.is-muted {
+  color: var(--text-muted);
+  opacity: 0.46;
+}
+
+.muscle-distribution-row.is-muted i {
+  width: 0;
 }
 
 .muscle-model-viewer {
@@ -1717,13 +2142,14 @@ textarea:focus {
   position: relative;
   display: grid;
   place-items: center;
-  min-height: 280px;
+  min-height: 440px;
   overflow: hidden;
   border-radius: 12px;
 }
 
 .muscle-model-canvas canvas {
   max-width: 100%;
+  max-height: 440px;
 }
 
 .muscle-svg-loading,
@@ -1829,6 +2255,10 @@ textarea:focus {
   gap: 8px;
 }
 
+.muscle-details-summary--collapsed {
+  margin-top: 12px;
+}
+
 .muscle-details-summary span {
   border: 1px solid var(--border-subtle);
   border-radius: 999px;
@@ -1843,11 +2273,27 @@ textarea:focus {
   align-content: start;
 }
 
+.trend-report-builder {
+  --panel-accent: var(--accent-yellow);
+  background:
+    linear-gradient(135deg, rgba(216, 182, 82, 0.07), rgba(82, 196, 214, 0.04) 58%, rgba(155, 131, 230, 0.035)),
+    var(--card-bg-secondary);
+}
+
+.trend-report-job-status {
+  --panel-accent: var(--accent-mint);
+}
+
 .trend-report-week-row,
 .trend-report-filter-row {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12px;
+  align-items: end;
+}
+
+.trend-report-week-row--compact {
+  grid-template-columns: minmax(260px, 1fr) minmax(260px, 1fr) minmax(150px, 0.32fr);
   align-items: end;
 }
 
@@ -1875,6 +2321,7 @@ textarea:focus {
 
 .trend-report-generate-button {
   align-self: end;
+  min-height: 46px;
 }
 
 .checkbox-dropdown {
@@ -1972,6 +2419,45 @@ textarea:focus {
   gap: 18px;
 }
 
+.trend-summary-card-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.trend-summary-card {
+  min-height: 154px;
+}
+
+.trend-summary-comparison {
+  margin: 8px 0 0;
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.trend-summary-sparkline {
+  width: 100%;
+  height: 42px;
+  margin-top: auto;
+}
+
+.trend-summary-sparkline path {
+  fill: none;
+  stroke: var(--accent-cyan);
+  stroke-width: 2.1;
+  vector-effect: non-scaling-stroke;
+}
+
+.trend-summary-empty-line {
+  display: block;
+  width: 64px;
+  height: 3px;
+  margin-top: auto;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent-cyan), transparent 72%);
+}
+
 .muscle-stimulation-grid {
   display: grid;
   grid-template-columns: minmax(0, 1.2fr) minmax(220px, 0.8fr) minmax(180px, 0.55fr);
@@ -1979,8 +2465,27 @@ textarea:focus {
   align-items: start;
 }
 
+.muscle-stimulation-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(190px, 0.26fr);
+  gap: 16px;
+  align-items: start;
+}
+
+.muscle-stimulation-layout .muscle-map-panel {
+  min-height: 540px;
+}
+
 .muscle-figure-panel--dual {
   grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.muscle-figure-panel--dual .muscle-model-canvas {
+  min-height: 360px;
+}
+
+.muscle-figure-panel--dual .muscle-model-canvas canvas {
+  max-height: 380px;
 }
 
 .stimulation-ranking,
@@ -2166,6 +2671,20 @@ textarea:focus {
   .overview-metric-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
+
+  .training-session-form--header,
+  .saved-session-controls--three,
+  .trend-report-week-row--compact,
+  .trend-summary-card-grid,
+  .muscle-stimulation-grid,
+  .muscle-map-panel,
+  .muscle-stimulation-layout {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .trend-report-generate-button {
+    grid-column: 1 / -1;
+  }
 }
 
 @media (max-width: 860px) {
@@ -2188,8 +2707,49 @@ textarea:focus {
 
   .readiness-summary-layout,
   .readiness-factor-grid,
-  .overview-metric-grid {
+  .overview-metric-grid,
+  .battery-focus-panel,
+  .quick-control-grid,
+  .training-session-form--header,
+  .training-session-form--exercise,
+  .saved-session-controls--three,
+  .trend-report-week-row--compact,
+  .trend-summary-card-grid,
+  .muscle-stimulation-grid,
+  .muscle-stimulation-layout,
+  .muscle-map-panel,
+  .auth-form--grid {
     grid-template-columns: 1fr;
+  }
+
+  .battery-panel-badges {
+    justify-content: flex-start;
+  }
+
+  .battery-focus-panel {
+    min-height: 0;
+    padding: 18px;
+  }
+
+  .training-save-field,
+  .trend-report-generate-button {
+    grid-column: auto;
+  }
+
+  .muscle-model-canvas {
+    min-height: 380px;
+  }
+
+  .muscle-model-canvas canvas {
+    max-height: 380px;
+  }
+
+  .muscle-callout-lines {
+    display: none;
+  }
+
+  .muscle-model-viewer--map {
+    width: 100%;
   }
 
   .mobile-nav {

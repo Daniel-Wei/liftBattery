@@ -330,23 +330,9 @@ export function OverviewPage({ onOpenPreCheck, onRecordTraining }: OverviewPageP
 
   return (
     <div className="overview-page">
-      <header className="overview-page-header">
-        <div>
-          <p className="overview-page-kicker">Dashboard</p>
-          <h1>训练计划总览</h1>
-          <p>
-            第 {currentTrainingCycle.cycleNumber} 个训练周期 · {currentTrainingCycle.startDate} 至 {currentTrainingCycle.endDate}
-          </p>
-        </div>
-        <button type="button" className="button-primary" onClick={onRecordTraining}>
-          记录训练
-        </button>
-      </header>
-
       <section className="overview-grid overview-grid--top">
         <DashboardCard
           title="Readiness Summary"
-          eyebrow="今日训练建议"
           action={<span className="status-pill status-pill--mint">{getMetricStatusText(currentReadiness.status)}</span>}
           className="readiness-summary-card"
         >
@@ -358,7 +344,6 @@ export function OverviewPage({ onOpenPreCheck, onRecordTraining }: OverviewPageP
             />
             <div className="readiness-summary-copy">
               <h2>{currentReadiness.recommendationZh}</h2>
-              <p>根据睡眠、酸痛、训练动力、静息心率和上次训练负荷计算。</p>
               <div className="readiness-factor-grid">
                 <span>睡眠 <strong>{latestLog?.input.sleepHours ?? "—"}h</strong></span>
                 <span>酸痛 <strong>{latestLog?.input.soreness ?? "—"} / 10</strong></span>
@@ -372,7 +357,7 @@ export function OverviewPage({ onOpenPreCheck, onRecordTraining }: OverviewPageP
           </div>
         </DashboardCard>
 
-        <DashboardCard title="Training Cycle" eyebrow="当前周期">
+        <DashboardCard title="Training Cycle">
           <div className="cycle-summary">
             <div className="cycle-summary-top">
               <strong>第 {currentWeek} 周 / 共 {programSettings.weeksPerCycle} 周</strong>
@@ -425,18 +410,18 @@ export function OverviewPage({ onOpenPreCheck, onRecordTraining }: OverviewPageP
           change={latest7Logs.length > 1 ? `${Math.abs(currentReadiness.score - calculateReadiness(latest7Logs[1].input).score)} pts` : undefined}
           helper="latest readiness"
           data={getRecoverySparkline(latest7Logs)}
-          accent="cyan"
+          accent="purple"
         />
         <DashboardMetricCard
           label="Consistency"
           value={`${consistencyDays} 天`}
           helper="current cycle"
           data={getConsistencySparkline(currentCycleSessions)}
-          accent="mint"
+          accent="yellow"
         />
       </section>
 
-      <section className="overview-grid overview-grid--analytics">
+      <section>
         <DashboardCard
           title="Current Cycle Performance"
           action={<span className="chart-range-pill">Current cycle</span>}
@@ -449,32 +434,6 @@ export function OverviewPage({ onOpenPreCheck, onRecordTraining }: OverviewPageP
             ]}
           />
           <TrendLineChart data={trendData} />
-        </DashboardCard>
-
-        <DashboardCard title="Recent Activity" action={<span className="muted-action">View all</span>}>
-          <ActivityList items={activityItems} />
-        </DashboardCard>
-      </section>
-
-      <section className="overview-grid overview-grid--insights">
-        <DashboardCard title="Operational Insights" eyebrow="Needs Attention">
-          <InsightList items={insightItems} />
-        </DashboardCard>
-        <DashboardCard title="Training Snapshot" eyebrow="Current Cycle">
-          <div className="snapshot-list">
-            <div>
-              <span>Hard sets</span>
-              <strong>{currentHardSets}</strong>
-            </div>
-            <div>
-              <span>Latest session</span>
-              <strong>{getLatestExerciseName(latestSession)}</strong>
-            </div>
-            <div>
-              <span>Primary muscles</span>
-              <strong>{getPrimaryMuscles(latestSession)}</strong>
-            </div>
-          </div>
         </DashboardCard>
       </section>
     </div>
