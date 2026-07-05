@@ -137,6 +137,25 @@ export type TrendReportJobDto = {
   result?: TrendReportResultDto;
 };
 
+export type WeeklyReportScheduleDto = {
+  userId: number;
+  enabled: boolean;
+  scheduledTime: string;
+  recipientEmail: string;
+  timezone: string;
+  reportType: string;
+  createdAtUtc: string;
+  updatedAtUtc: string;
+  dataVersion: number;
+};
+
+export type UpdateWeeklyReportScheduleRequestDto = {
+  enabled: boolean;
+  scheduledTime: string;
+  recipientEmail: string;
+  timezone?: string;
+};
+
 export type RegisterRequestDto = {
   displayName: string;
   email: string;

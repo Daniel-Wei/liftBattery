@@ -12,6 +12,16 @@
     "ServiceBusConnection": "",
     "TrendReportQueueName": "trend-report-jobs",
     "TrendReportTableName": "TrendReportJobs",
-    "TrendReportDemoDelayMilliseconds": "2000"
+    "TrendReportDemoDelayMilliseconds": "2000",
+    "WeeklyReportQueueName": "weekly-report-jobs",
+    "WeeklyReportTableName": "WeeklyReportJobs",
+    "WeeklyReportBlobContainerName": "weekly-reports",
+    "WeeklyReportScheduleTimer": "0 */15 * * * *",
+    "Email:SmtpHost": "",
+    "Email:FromAddress": "",
+    "Email:SmtpPort": "587",
+    "Email:EnableSsl": "true",
+    "Email:SmtpUsername": "",
+    "Email:SmtpPassword": ""
   }
 }
