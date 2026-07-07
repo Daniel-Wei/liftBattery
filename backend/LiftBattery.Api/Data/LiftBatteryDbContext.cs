@@ -1,5 +1,5 @@
-using LiftBattery.Api.Data.Entities;
-using LiftBattery.Api.Data.Entities.Training;
+using LiftBattery.Api.Entities;
+using LiftBattery.Api.Entities.Training;
 using Microsoft.EntityFrameworkCore;
 
 namespace LiftBattery.Api.Data;

@@ -1,4 +1,4 @@
-using LiftBattery.Api.Data.Entities.Training;
+using LiftBattery.Api.Entities.Training;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 
@@ -38,7 +38,7 @@ public sealed class TrainingDayEntityConfiguration
             .IsUnique()
             .HasDatabaseName("UX_TrainingDays_UserId_Date");
 
-        builder.HasOne<LiftBattery.Api.Data.Entities.User>()
+        builder.HasOne<LiftBattery.Api.Entities.User>()
             .WithMany()
             .HasForeignKey(entity => entity.UserId)
             .OnDelete(DeleteBehavior.Restrict);

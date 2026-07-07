@@ -1,5 +1,5 @@
 using LiftBattery.Api.Data;
-using LiftBattery.Api.Data.Entities;
+using LiftBattery.Api.Entities;
 using LiftBattery.Api.Models;
 using LiftBattery.Api.Options;
 using Microsoft.EntityFrameworkCore;

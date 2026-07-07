@@ -1,4 +1,4 @@
-using LiftBattery.Api.Data.Entities.Training;
+using LiftBattery.Api.Entities.Training;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 
