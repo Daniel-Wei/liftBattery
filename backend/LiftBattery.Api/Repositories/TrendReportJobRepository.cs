@@ -11,10 +11,11 @@ namespace LiftBattery.Api.Repositories;
 
 public sealed class TrendReportJobRepository : ITrendReportJobRepository
 {
-    private const string PartitionKeyValue = "trend-report";
     private const string DataVersionPartitionKeyValue = "trend-report-data-version";
+    private const string JobPartitionKeyPrefix = "trend-report-user-";
     private readonly TableClient _tableClient;
     private readonly JsonSerializerOptions _jsonOptions = new(JsonSerializerDefaults.Web);
+    private readonly Lazy<Task> _ensureTableOnce;
     private readonly ILogger<TrendReportJobRepository> _logger;
 
     // Uses the AzureWebJobsStorage connection setting to access Azure Table Storage.
@@ -24,24 +25,48 @@ public sealed class TrendReportJobRepository : ITrendReportJobRepository
             ?? throw new InvalidOperationException("AzureWebJobsStorage is required.");
         var tableName = configuration["TrendReportTableName"] ?? "TrendReportJobs";
         _tableClient = new TableClient(connectionString, tableName);
+        _ensureTableOnce = new Lazy<Task>(async () =>
+        {
+            await _tableClient.CreateIfNotExistsAsync();
+        });
+        _logger = logger;
+    }
+
+    internal TrendReportJobRepository(
+        TableClient tableClient,
+        ILogger<TrendReportJobRepository> logger)
+    {
+        _tableClient = tableClient;
+        _ensureTableOnce = new Lazy<Task>(async () =>
+        {
+            await _tableClient.CreateIfNotExistsAsync();
+        });
         _logger = logger;
     }
 
     #region: Create Async
 
     // Persists the initial job as an Azure Table entity.
-    public async Task<TrendReportJob> CreateAsync(TrendReportJob job)
+    public async Task<TrendReportJob> CreateAsync(
+        TrendReportJob job,
+        CancellationToken cancellationToken = default)
     {
+        cancellationToken.ThrowIfCancellationRequested();
+
         await EnsureTableAsync();
-        await _tableClient.AddEntityAsync(ToEntity(job));
+        await _tableClient.AddEntityAsync(ToEntity(job), cancellationToken);
         return job;
     }
 
     #endregion
 
     #region: Data Version Management
-    public async Task<string> GetOrCreateCurrentTrendReportReqDataVersionAsync(int userId)
+    public async Task<string> GetOrCreateCurrentTrendReportReqDataVersionAsync(
+        int userId,
+        CancellationToken cancellationToken = default)
     {
+        cancellationToken.ThrowIfCancellationRequested();
+
         await EnsureTableAsync();
         var rowKey = userId.ToString();
 
@@ -50,9 +75,12 @@ public sealed class TrendReportJobRepository : ITrendReportJobRepository
             var response =
                 await _tableClient.GetEntityAsync<TrendReportDataVersionEntity>(
                     DataVersionPartitionKeyValue,
-                    rowKey);
+                    rowKey,
+                    cancellationToken: cancellationToken);
 
-            return response.Value.DataVersion;
+            return string.IsNullOrWhiteSpace(response.Value.DataVersion)
+                ? await BumpDataVersionAsync(userId, DateTimeOffset.UtcNow, cancellationToken)
+                : response.Value.DataVersion;
         }
         catch (RequestFailedException ex) when (ex.Status == 404)
         {
@@ -70,7 +98,7 @@ public sealed class TrendReportJobRepository : ITrendReportJobRepository
 
             try
             {
-                await _tableClient.AddEntityAsync(entity);
+                await _tableClient.AddEntityAsync(entity, cancellationToken);
                 return initialVersion;
             }
             catch (RequestFailedException e) when (e.Status == 409)
@@ -78,15 +106,23 @@ public sealed class TrendReportJobRepository : ITrendReportJobRepository
                 var existing =
                     await _tableClient.GetEntityAsync<TrendReportDataVersionEntity>(
                         DataVersionPartitionKeyValue,
-                        rowKey);
+                        rowKey,
+                        cancellationToken: cancellationToken);
 
-                return existing.Value.DataVersion;
+                return string.IsNullOrWhiteSpace(existing.Value.DataVersion)
+                    ? await BumpDataVersionAsync(userId, DateTimeOffset.UtcNow, cancellationToken)
+                    : existing.Value.DataVersion;
             }
         }
     }
 
-    public async Task<string> BumpDataVersionAsync(int userId, DateTimeOffset updatedAtUtc)
+    public async Task<string> BumpDataVersionAsync(
+        int userId,
+        DateTimeOffset updatedAtUtc,
+        CancellationToken cancellationToken = default)
     {
+        cancellationToken.ThrowIfCancellationRequested();
+
         await EnsureTableAsync();
 
         var nextVersion = CreateDataVersion(updatedAtUtc);
@@ -97,7 +133,7 @@ public sealed class TrendReportJobRepository : ITrendReportJobRepository
             UserId = userId,
             DataVersion = nextVersion,
             UpdatedAtUtc = updatedAtUtc,
-        }, TableUpdateMode.Replace);
+        }, TableUpdateMode.Replace, cancellationToken);
         return nextVersion;
     }
 
@@ -105,7 +141,10 @@ public sealed class TrendReportJobRepository : ITrendReportJobRepository
 
     #region: Getters
 
-    public async Task<TrendReportJob?> GetByIdAsync(int id, CancellationToken cancellationToken = default)
+    public async Task<TrendReportJob?> GetByIdAsync(
+        int userId,
+        int id,
+        CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
 
@@ -114,7 +153,7 @@ public sealed class TrendReportJobRepository : ITrendReportJobRepository
         try
         {
             var response = await _tableClient.GetEntityAsync<TrendReportJobEntity>(
-                PartitionKeyValue, 
+                GetJobPartitionKey(userId),
                 id.ToString(),
                 cancellationToken: cancellationToken);
             return ToModel(response.Value);
@@ -125,16 +164,22 @@ public sealed class TrendReportJobRepository : ITrendReportJobRepository
         }
     }
 
-    public async Task<TrendReportJob?> GetLatestByUserIdAndFingerprintAsync(int userId, string reportFingerprint)
+    public async Task<TrendReportJob?> GetLatestByUserIdAndFingerprintAsync(int userId, string dataVersion,
+        string reportFingerprint, CancellationToken cancellationToken = default)
     {
+        cancellationToken.ThrowIfCancellationRequested();
+
         await EnsureTableAsync();
 
         var jobs = new List<TrendReportJob>();
+        var partitionKey = GetJobPartitionKey(userId);
 
         await foreach (var jobEntity in _tableClient.QueryAsync<TrendReportJobEntity>(
-            entity => entity.PartitionKey == PartitionKeyValue
+            entity => entity.PartitionKey == partitionKey
                 && entity.UserId == userId
-                && entity.ReportFingerprint == reportFingerprint))
+                && entity.DataVersion == dataVersion
+                && entity.ReportFingerprint == reportFingerprint,
+            cancellationToken: cancellationToken))
         {
             jobs.Add(ToModel(jobEntity));
         }
@@ -144,16 +189,22 @@ public sealed class TrendReportJobRepository : ITrendReportJobRepository
             .FirstOrDefault();
     }
 
-    public async Task<IReadOnlyList<TrendReportJob>> GetActiveByUserIdAsync(int userId)
+    public async Task<IReadOnlyList<TrendReportJob>> GetActiveByUserIdAsync(
+        int userId,
+        CancellationToken cancellationToken = default)
     {
+        cancellationToken.ThrowIfCancellationRequested();
+
         await EnsureTableAsync();
 
         var jobs = new List<TrendReportJob>();
+        var partitionKey = GetJobPartitionKey(userId);
 
         await foreach (var jobEntity in _tableClient.QueryAsync<TrendReportJobEntity>(
-            entity => entity.PartitionKey == PartitionKeyValue && entity.UserId == userId))
+            entity => entity.PartitionKey == partitionKey && entity.UserId == userId,
+            cancellationToken: cancellationToken))
         {
-            if (jobEntity.Status is TrendReportJobStatuses.Queued or TrendReportJobStatuses.Processing)
+            if (IsActiveStatus(jobEntity.Status))
             {
                 jobs.Add(ToModel(jobEntity));
             }
@@ -167,11 +218,13 @@ public sealed class TrendReportJobRepository : ITrendReportJobRepository
 
     #region: Processing State Update Methods 
     public Task<bool> TryStartProcessingAsync(
+        int userId,
         int jobId,
         string expectedDataVersion,
         CancellationToken cancellationToken = default)
     {
         return TryUpdateEntityAsync(
+            userId,
             jobId,
             expectedDataVersion,
             entity =>
@@ -190,6 +243,7 @@ public sealed class TrendReportJobRepository : ITrendReportJobRepository
     }
 
     public Task<bool> TryUpdateProgressIfCurrentProcessingAsync(
+        int userId,
         int jobId,
         string expectedDataVersion,
         int progressPercent,
@@ -197,6 +251,7 @@ public sealed class TrendReportJobRepository : ITrendReportJobRepository
         CancellationToken cancellationToken = default)
     {
         return TryUpdateEntityAsync(
+            userId,
             jobId,
             expectedDataVersion,
             entity =>
@@ -213,12 +268,14 @@ public sealed class TrendReportJobRepository : ITrendReportJobRepository
     }
 
     public Task<bool> TryCompleteIfCurrentProcessingAsync(
+        int userId,
         int jobId,
         string expectedDataVersion,
         TrendReportResultDto result,
         CancellationToken cancellationToken = default)
     {
         return TryUpdateEntityAsync(
+            userId,
             jobId,
             expectedDataVersion,
             entity =>
@@ -239,36 +296,43 @@ public sealed class TrendReportJobRepository : ITrendReportJobRepository
     }
 
     public Task<bool> TryMarkFailedIfCurrentProcessingAsync(
+        int userId,
         int jobId,
         string expectedDataVersion,
         CancellationToken cancellationToken = default)
     {
         return TryUpdateEntityAsync(
+            userId,
             jobId,
             expectedDataVersion,
             entity =>
                 entity.DataVersion == expectedDataVersion
-                && entity.Status == TrendReportJobStatuses.Processing,
+                && entity.Status == TrendReportJobStatuses.Processing
+                && entity.ErrorMessage is null,
             (entity, now) =>
             {
                 entity.Status = TrendReportJobStatuses.Failed;
                 entity.ErrorMessage = "训练报告生成失败，请稍后重试或联系管理员。";
                 entity.CompletedAtUtc = now;
+                entity.CurrentStage = "Report generation failed";
             },
             operationName: TrendReportRepositoryActions.MarkFailed,
             cancellationToken);
     }
 
     public Task<bool> TryMarkSupersededIfCurrentAsync(
+        int userId,
         int jobId,
         string expectedDataVersion,
         CancellationToken cancellationToken = default)
     {
         return TryUpdateEntityAsync(
+            userId,
             jobId,
             expectedDataVersion,
             entity =>
-                entity.DataVersion != expectedDataVersion,
+                entity.DataVersion != expectedDataVersion
+                && IsActiveStatus(entity.Status),
             (entity, now) =>
             {
                 entity.Status = TrendReportJobStatuses.Superseded;
@@ -279,16 +343,19 @@ public sealed class TrendReportJobRepository : ITrendReportJobRepository
             cancellationToken);
     }
 
-     public Task<bool> TryMarkSupersededIfStatusAsync(
+    public Task<bool> TryMarkSupersededIfCancelRequestedAsync(
+        int userId,
         int jobId,
         string expectedDataVersion,
         CancellationToken cancellationToken = default)
     {
         return TryUpdateEntityAsync(
+            userId,
             jobId,
             expectedDataVersion,
             entity =>
-                entity.Status == TrendReportJobStatuses.CancelRequested,
+                entity.DataVersion == expectedDataVersion
+                && entity.Status == TrendReportJobStatuses.CancelRequested,
             (entity, now) =>
             {
                 entity.Status = TrendReportJobStatuses.Superseded;
@@ -300,6 +367,7 @@ public sealed class TrendReportJobRepository : ITrendReportJobRepository
     }
 
     private async Task<bool> TryUpdateEntityAsync(
+        int userId,
         int jobId,
         string expectedDataVersion,
         Func<TrendReportJobEntity, bool> canUpdate,
@@ -309,10 +377,12 @@ public sealed class TrendReportJobRepository : ITrendReportJobRepository
     {
         cancellationToken.ThrowIfCancellationRequested();
 
+        await EnsureTableAsync();
+
         try
         {
             var response = await _tableClient.GetEntityIfExistsAsync<TrendReportJobEntity>(
-                partitionKey: PartitionKeyValue,
+                partitionKey: GetJobPartitionKey(userId),
                 rowKey: jobId.ToString(),
                 cancellationToken: cancellationToken);
 
@@ -367,37 +437,69 @@ public sealed class TrendReportJobRepository : ITrendReportJobRepository
 
     #region: Update Async   
     // Replaces the current job entity in Azure Table Storage.
-    public async Task<TrendReportJob> UpdateAsync(TrendReportJob job)
+    public async Task<TrendReportJob> UpdateAsync(
+        TrendReportJob job,
+        CancellationToken cancellationToken = default)
     {
+        cancellationToken.ThrowIfCancellationRequested();
+
         await EnsureTableAsync();
+        var partitionKey = GetJobPartitionKey(job.UserId);
 
-        // Protect terminal jobs from being overwritten by stale workers.
-        // If an old worker finishes after this job was cancelled or superseded, it must not change the job back to Processing, Completed, or Failed.
-        if (job.Status is not TrendReportJobStatuses.Cancelled
-            and not TrendReportJobStatuses.Superseded
-            and not TrendReportJobStatuses.CancelRequested)
+        try
         {
-            try
-            {
-                var current = await _tableClient.GetEntityAsync<TrendReportJobEntity>(
-                    PartitionKeyValue,
-                    job.Id.ToString());
+            var current = await _tableClient.GetEntityIfExistsAsync<TrendReportJobEntity>(
+                partitionKey,
+                job.Id.ToString(),
+                cancellationToken: cancellationToken);
 
-                if (current.Value.Status is TrendReportJobStatuses.Cancelled
-                    or TrendReportJobStatuses.Superseded
-                    or TrendReportJobStatuses.CancelRequested)
-                {
-                    return ToModel(current.Value);
-                }
-            }
-            catch (RequestFailedException exception) when (exception.Status == 404)
+            if (!current.HasValue || current.Value is null)
             {
-                // Upsert below will create the row if it disappeared between reads.
+                throw CreateMissingJobException(job.UserId, job.Id);
             }
+
+            if (!BlocksStaleWorkerOverwrite(job.Status)
+                && BlocksStaleWorkerOverwrite(current.Value.Status))
+            {
+                return ToModel(current.Value);
+            }
+
+            var entity = ToEntity(job);
+
+            await _tableClient.UpdateEntityAsync(
+                entity,
+                current.Value.ETag,
+                TableUpdateMode.Replace,
+                cancellationToken);
+
+            return job;
         }
+        catch (RequestFailedException exception) when (exception.Status == 404)
+        {
+            throw CreateMissingJobException(job.UserId, job.Id, exception);
+        }
+        catch (RequestFailedException exception) when (exception.Status == 412)
+        {
+            var latest = await GetByIdAsync(job.UserId, job.Id, cancellationToken);
 
-        await _tableClient.UpsertEntityAsync(ToEntity(job), TableUpdateMode.Replace);
-        return job;
+            if (latest is not null)
+            {
+                return latest;
+            }
+
+            throw CreateMissingJobException(job.UserId, job.Id, exception);
+        }
+        catch (RequestFailedException exception)
+        {
+            _logger.LogError(
+                exception,
+                "Failed to replace trend report job. JobId={JobId}, UserId={UserId}, Status={Status}.",
+                job.Id,
+                job.UserId,
+                job.Status);
+
+            throw;
+        }
     }
 
     #endregion
@@ -406,14 +508,51 @@ public sealed class TrendReportJobRepository : ITrendReportJobRepository
 
     private Task EnsureTableAsync()
     {
-        return _tableClient.CreateIfNotExistsAsync();
+        return _ensureTableOnce.Value;
+    }
+
+    private static string GetJobPartitionKey(int userId)
+    {
+        return $"{JobPartitionKeyPrefix}{userId}";
+    }
+
+    private static bool IsActiveStatus(string status)
+    {
+        return status is TrendReportJobStatuses.Queued
+            or TrendReportJobStatuses.Processing;
+    }
+
+    private static bool IsTerminalStatus(string status)
+    {
+        return status is TrendReportJobStatuses.Completed
+            or TrendReportJobStatuses.Failed
+            or TrendReportJobStatuses.Cancelled
+            or TrendReportJobStatuses.Superseded
+            or TrendReportJobStatuses.CancelRequested;
+    }
+
+    private static bool BlocksStaleWorkerOverwrite(string status)
+    {
+        return status is TrendReportJobStatuses.Cancelled
+            or TrendReportJobStatuses.Superseded
+            or TrendReportJobStatuses.CancelRequested;
+    }
+
+    private static InvalidOperationException CreateMissingJobException(
+        int userId,
+        int jobId,
+        Exception? innerException = null)
+    {
+        return new InvalidOperationException(
+            $"Trend report job {jobId} for user {userId} no longer exists.",
+            innerException);
     }
 
     private TrendReportJobEntity ToEntity(TrendReportJob job)
     {
         return new TrendReportJobEntity
         {
-            PartitionKey = PartitionKeyValue,
+            PartitionKey = GetJobPartitionKey(job.UserId),
             RowKey = job.Id.ToString(),
             Status = job.Status,
             UserId = job.UserId,

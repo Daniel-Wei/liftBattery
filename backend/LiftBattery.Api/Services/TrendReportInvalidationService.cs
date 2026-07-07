@@ -20,8 +20,8 @@ public sealed class TrendReportInvalidationService : ITrendReportInvalidationSer
         cancellationToken.ThrowIfCancellationRequested();
 
         var now = DateTimeOffset.UtcNow;
-        var newDataVersion = await _jobRepository.BumpDataVersionAsync(userId, now);
-        var activeJobs = await _jobRepository.GetActiveByUserIdAsync(userId);
+        var newDataVersion = await _jobRepository.BumpDataVersionAsync(userId, now, cancellationToken);
+        var activeJobs = await _jobRepository.GetActiveByUserIdAsync(userId, cancellationToken);
 
         foreach (var job in activeJobs)
         {
@@ -45,7 +45,7 @@ public sealed class TrendReportInvalidationService : ITrendReportInvalidationSer
                     ErrorMessage = null,
                     CompletedAtUtc = now,
                     UpdatedAtUtc = now,
-                });
+                }, cancellationToken);
                 continue;
             }
 
@@ -57,7 +57,7 @@ public sealed class TrendReportInvalidationService : ITrendReportInvalidationSer
                     CurrentStage = $"训练数据已在 {changedDate:yyyy-MM-dd} 更新，正在停止旧报告，请重新生成报告。",
                     ErrorMessage = null,
                     UpdatedAtUtc = now,
-                });
+                }, cancellationToken);
             }
         }
     }

@@ -80,7 +80,7 @@ public sealed class TrendReportService : ITrendReportService
         var trendReportReqDataVersion = await _trendReportJobRepo.GetOrCreateCurrentTrendReportReqDataVersionAsync(userId);
         
         var reportReqFingerprint = CreateTrendReportReqFingerprint(validatedTrendReportReq, trendReportReqSnapshot, trendReportReqDataVersion);
-        var existingSameVersionJob = await _trendReportJobRepo.GetLatestByUserIdAndFingerprintAsync(userId, reportReqFingerprint);
+        var existingSameVersionJob = await _trendReportJobRepo.GetLatestByUserIdAndFingerprintAsync(userId, trendReportReqDataVersion, reportReqFingerprint);
 
         if (existingSameVersionJob is not null
             && existingSameVersionJob.Status is not TrendReportJobStatuses.Failed
@@ -159,7 +159,7 @@ public sealed class TrendReportService : ITrendReportService
         }
 
         var jobId = queueMessageDTO.JobId;
-        var job = await _trendReportJobRepo.GetByIdAsync(jobId, cancellationToken);
+        var job = await _trendReportJobRepo.GetByIdAsync(queueMessageDTO.UserId, jobId, cancellationToken);
 
         if(job is null)
         {
@@ -167,6 +167,7 @@ public sealed class TrendReportService : ITrendReportService
         }
 
         if(!await _trendReportJobRepo.TryStartProcessingAsync(
+            queueMessageDTO.UserId,
             jobId,
             queueMessageDTO.DataVersion,
             cancellationToken))
@@ -189,6 +190,7 @@ public sealed class TrendReportService : ITrendReportService
             }
 
             var updated = await _trendReportJobRepo.TryUpdateProgressIfCurrentProcessingAsync(
+                queueMessageDTO.UserId,
                 jobId,
                 queueMessageDTO.DataVersion,
                 progressPercent: 45,
@@ -210,6 +212,7 @@ public sealed class TrendReportService : ITrendReportService
             var result = GenerateResult(job.Request, job.Snapshot);
 
             updated = await _trendReportJobRepo.TryUpdateProgressIfCurrentProcessingAsync(
+                queueMessageDTO.UserId,
                 jobId,
                 queueMessageDTO.DataVersion,
                 progressPercent: 80,
@@ -229,6 +232,7 @@ public sealed class TrendReportService : ITrendReportService
             }
 
             await _trendReportJobRepo.TryCompleteIfCurrentProcessingAsync(
+                queueMessageDTO.UserId,
                 job.Id,
                 queueMessageDTO.DataVersion,
                 result,
@@ -241,6 +245,7 @@ public sealed class TrendReportService : ITrendReportService
         catch (Exception)
         {
             await _trendReportJobRepo.TryMarkFailedIfCurrentProcessingAsync(
+                queueMessageDTO.UserId,
                 job.Id,
                 queueMessageDTO.DataVersion,
                 cancellationToken);
@@ -252,7 +257,7 @@ public sealed class TrendReportService : ITrendReportService
     public async Task<TrendReportJobDto?> GetByIdAsync(int userId, int id)
     {
         ValidateUserId(userId);
-        var job = await _trendReportJobRepo.GetByIdAsync(id);
+        var job = await _trendReportJobRepo.GetByIdAsync(userId, id);
         return job is null || job.UserId != userId ? null : ToDto(job);
     }
 
@@ -282,7 +287,7 @@ public sealed class TrendReportService : ITrendReportService
     {
         cancellationToken.ThrowIfCancellationRequested();
         
-        var latestJob = await _trendReportJobRepo.GetByIdAsync(message.JobId, cancellationToken);
+        var latestJob = await _trendReportJobRepo.GetByIdAsync(message.UserId, message.JobId, cancellationToken);
 
         if (latestJob is null)
         {
@@ -291,8 +296,10 @@ public sealed class TrendReportService : ITrendReportService
 
         if (latestJob.Status == TrendReportJobStatuses.CancelRequested)
         {
-            await _trendReportJobRepo.TryMarkSupersededIfStatusAsync(
+            await _trendReportJobRepo.TryMarkSupersededIfCancelRequestedAsync(
+                message.UserId,
                 latestJob.Id,
+                message.DataVersion,
                 cancellationToken);
 
             return true;
@@ -304,12 +311,18 @@ public sealed class TrendReportService : ITrendReportService
             return true;
         }
 
-        await _trendReportJobRepo.TryMarkSupersededIfCurrentAsync(
-            latestJob.Id,
-            expectedDataVersion: latestJob.DataVersion,
-            cancellationToken);
+        if (latestJob.DataVersion != message.DataVersion)
+        {
+            await _trendReportJobRepo.TryMarkSupersededIfCurrentAsync(
+                message.UserId,
+                latestJob.Id,
+                expectedDataVersion: message.DataVersion,
+                cancellationToken);
 
-        return true;
+            return true;
+        }
+
+        return false;
     }
 
     private Task DelayForDemoAsync(CancellationToken cancellationToken)
