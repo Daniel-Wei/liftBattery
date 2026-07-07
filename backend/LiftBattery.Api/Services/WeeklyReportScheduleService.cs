@@ -4,38 +4,30 @@ using LiftBattery.Api.DTOs;
 using LiftBattery.Api.Models;
 using LiftBattery.Api.Repositories;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 
 namespace LiftBattery.Api.Services;
 
-public sealed class WeeklyReportScheduleService : IWeeklyReportScheduleService
+public sealed class WeeklyReportScheduleService : IWeeklyReportSchedulingService
 {
-    private readonly IWeeklyReportRepository _repository;
-    private readonly IWeeklyReportQueue _queue;
-    private readonly ITrendReportService _trendReportService;
-    private readonly IWeeklyReportPdfGenerator _pdfGenerator;
-    private readonly IWeeklyReportBlobStorage _blobStorage;
-    private readonly IEmailSender _emailSender;
+    private readonly IWeeklyReportScheduleRepository _scheduleRepository;
+    private readonly IWeeklyReportJobService _jobService;
     private readonly LiftBatteryDbContext _dbContext;
     private readonly TimeProvider _timeProvider;
+    private readonly ILogger<WeeklyReportScheduleService> _logger;
 
     public WeeklyReportScheduleService(
-        IWeeklyReportRepository repository,
-        IWeeklyReportQueue queue,
-        ITrendReportService trendReportService,
-        IWeeklyReportPdfGenerator pdfGenerator,
-        IWeeklyReportBlobStorage blobStorage,
-        IEmailSender emailSender,
+        IWeeklyReportScheduleRepository scheduleRepository,
+        IWeeklyReportJobService jobService,
         LiftBatteryDbContext dbContext,
-        TimeProvider timeProvider)
+        TimeProvider timeProvider,
+        ILogger<WeeklyReportScheduleService> logger)
     {
-        _repository = repository;
-        _queue = queue;
-        _trendReportService = trendReportService;
-        _pdfGenerator = pdfGenerator;
-        _blobStorage = blobStorage;
-        _emailSender = emailSender;
+        _scheduleRepository = scheduleRepository;
+        _jobService = jobService;
         _dbContext = dbContext;
         _timeProvider = timeProvider;
+        _logger = logger;
     }
 
     public async Task<WeeklyReportScheduleDto> GetForUserAsync(
@@ -43,26 +35,32 @@ public sealed class WeeklyReportScheduleService : IWeeklyReportScheduleService
         CancellationToken cancellationToken = default)
     {
         ValidateUserId(userId);
-        var schedule = await _repository.GetScheduleAsync(userId);
 
-        if (schedule is not null)
+        var document = await _scheduleRepository.GetByUserIdAsync(userId, cancellationToken);
+
+        if (document is not null)
         {
-            return ToDto(schedule);
+            return ToDto(document.Schedule);
         }
 
         var userEmail = await GetUserEmailAsync(userId, cancellationToken);
         var now = _timeProvider.GetUtcNow();
-        schedule = new WeeklyReportSchedule(
-            userId,
-            false,
-            new TimeOnly(8, 0),
-            userEmail,
-            "UTC",
-            WeeklyReportConstants.ReportType,
-            now,
-            now,
-            WeeklyReportConstants.DataVersion);
-        schedule = await _repository.UpsertScheduleAsync(schedule);
+        var schedule = new WeeklyReportSchedule
+        {
+            ScheduleId = CreateDefaultScheduleId(userId),
+            UserId = userId,
+            Enabled = false,
+            DayOfWeek = DayOfWeek.Monday,
+            TimeOfDay = new TimeOnly(8, 0),
+            TimeZoneId = WeeklyReportConstants.DefaultTimeZoneId,
+            RecipientEmail = userEmail,
+            CreatedAtUtc = now,
+            UpdatedAtUtc = now,
+        };
+
+        schedule = await _scheduleRepository.UpsertForUserAsync(
+            schedule,
+            cancellationToken: cancellationToken);
         return ToDto(schedule);
     }
 
@@ -72,162 +70,165 @@ public sealed class WeeklyReportScheduleService : IWeeklyReportScheduleService
         CancellationToken cancellationToken = default)
     {
         ValidateUserId(userId);
-        var scheduledTime = ParseScheduledTime(request.ScheduledTime);
-        var recipientEmail = NormalizeEmail(request.RecipientEmail);
-        var timezone = NormalizeTimezone(request.Timezone);
-        var existing = await _repository.GetScheduleAsync(userId);
-        var now = _timeProvider.GetUtcNow();
-        var schedule = new WeeklyReportSchedule(
-            userId,
-            request.Enabled,
-            scheduledTime,
-            recipientEmail,
-            timezone,
-            WeeklyReportConstants.ReportType,
-            existing?.CreatedAtUtc ?? now,
-            now,
-            WeeklyReportConstants.DataVersion);
 
-        schedule = await _repository.UpsertScheduleAsync(schedule);
+        var document = await _scheduleRepository.GetByUserIdAsync(userId, cancellationToken);
+        var now = _timeProvider.GetUtcNow();
+        var dayOfWeek = ParseDayOfWeek(request.DayOfWeek) ?? document?.Schedule.DayOfWeek ?? DayOfWeek.Monday;
+        var timeOfDay = ParseTimeOfDay(request.TimeOfDay);
+        var timeZoneId = NormalizeTimeZoneId(request.TimeZoneId);
+        var schedule = new WeeklyReportSchedule
+        {
+            ScheduleId = document?.Schedule.ScheduleId ?? CreateDefaultScheduleId(userId),
+            UserId = userId,
+            Enabled = request.Enabled,
+            DayOfWeek = dayOfWeek,
+            TimeOfDay = timeOfDay,
+            TimeZoneId = timeZoneId,
+            RecipientEmail = NormalizeEmail(request.RecipientEmail),
+            LastRunAtUtc = document?.Schedule.LastRunAtUtc,
+            NextRunAtUtc = request.Enabled
+                ? CalculateNextRunUtc(dayOfWeek, timeOfDay, timeZoneId, now)
+                : null,
+            LastRunKey = document?.Schedule.LastRunKey,
+            LastRequestedJobId = document?.Schedule.LastRequestedJobId,
+            CreatedAtUtc = document?.Schedule.CreatedAtUtc ?? now,
+            UpdatedAtUtc = now,
+        };
+
+        schedule = await _scheduleRepository.UpsertForUserAsync(
+            schedule,
+            document?.ETag,
+            cancellationToken);
         return ToDto(schedule);
     }
 
-    public async Task EnqueueDueReportsAsync(CancellationToken cancellationToken = default)
+    public async Task ProcessDueSchedulesAsync(CancellationToken cancellationToken = default)
     {
-        var schedules = await _repository.GetEnabledSchedulesAsync();
-        var nowUtc = _timeProvider.GetUtcNow();
+        var now = _timeProvider.GetUtcNow();
+        _logger.LogInformation("Weekly report schedule scan started. NowUtc={NowUtc}.", now);
 
-        foreach (var schedule in schedules)
+        var documents = await _scheduleRepository.GetEnabledAsync(cancellationToken);
+
+        foreach (var document in documents)
         {
             cancellationToken.ThrowIfCancellationRequested();
 
-            if (!TryGetDueWeek(schedule, nowUtc, out var weekStartDate, out var weekEndDate))
+            var schedule = document.Schedule;
+
+            if (!TryGetDueRun(schedule, now, out var scheduledForUtc, out var runKey))
             {
+                _logger.LogDebug(
+                    "Weekly report schedule skipped. ScheduleId={ScheduleId}, UserId={UserId}, NextRunAtUtc={NextRunAtUtc}.",
+                    schedule.ScheduleId,
+                    schedule.UserId,
+                    schedule.NextRunAtUtc);
                 continue;
             }
 
-            var idempotencyKey = CreateIdempotencyKey(
+            _logger.LogInformation(
+                "Weekly report schedule due. ScheduleId={ScheduleId}, UserId={UserId}, RunKey={RunKey}, ScheduledForUtc={ScheduledForUtc}.",
+                schedule.ScheduleId,
                 schedule.UserId,
-                schedule.ReportType,
-                weekStartDate,
-                schedule.DataVersion);
-            var existingJob = await _repository.GetJobAsync(idempotencyKey);
+                runKey,
+                scheduledForUtc);
 
-            if (existingJob is not null)
+            WeeklyReportJobDto job;
+
+            try
             {
+                job = await _jobService.RequestScheduledWeeklyReportAsync(
+                    schedule.UserId,
+                    schedule.ScheduleId,
+                    scheduledForUtc,
+                    schedule.RecipientEmail,
+                    schedule.TimeZoneId ?? WeeklyReportConstants.DefaultTimeZoneId,
+                    cancellationToken);
+            }
+            catch (Exception exception) when (exception is not OperationCanceledException)
+            {
+                _logger.LogError(
+                    exception,
+                    "Weekly report job request failed. ScheduleId={ScheduleId}, UserId={UserId}, RunKey={RunKey}, ScheduledForUtc={ScheduledForUtc}.",
+                    schedule.ScheduleId,
+                    schedule.UserId,
+                    runKey,
+                    scheduledForUtc);
                 continue;
             }
 
-            var correlationId = $"weekly-report:{schedule.UserId}:{weekStartDate:yyyy-MM-dd}:v{schedule.DataVersion}:{Guid.NewGuid():N}";
-            var job = new WeeklyReportJob(
-                idempotencyKey,
-                schedule.UserId,
-                schedule.ReportType,
-                weekStartDate,
-                weekEndDate,
-                schedule.ScheduledTime.ToString("HH:mm"),
-                schedule.Timezone,
-                schedule.RecipientEmail,
-                schedule.DataVersion,
-                WeeklyReportJobStatuses.Pending,
-                correlationId,
-                nowUtc,
-                nowUtc,
-                nowUtc,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null);
-            job = await _repository.CreateJobIfNotExistsAsync(job);
-
-            if (job.Status == WeeklyReportJobStatuses.Pending)
+            var updatedSchedule = CopySchedule(schedule, new WeeklyReportScheduleUpdate
             {
-                await _queue.EnqueueAsync(ToQueueMessage(job));
+                LastRunAtUtc = scheduledForUtc,
+                NextRunAtUtc = CalculateNextRunUtc(
+                    schedule.DayOfWeek,
+                    schedule.TimeOfDay,
+                    schedule.TimeZoneId,
+                    scheduledForUtc.AddSeconds(1)),
+                LastRunKey = runKey,
+                LastRequestedJobId = job.Id,
+                UpdatedAtUtc = now,
+            });
+
+            if (await _scheduleRepository.TryUpdateAsync(updatedSchedule, document.ETag, cancellationToken))
+            {
+                _logger.LogInformation(
+                    "Weekly report schedule metadata updated. ScheduleId={ScheduleId}, UserId={UserId}, RunKey={RunKey}, JobId={JobId}, NextRunAtUtc={NextRunAtUtc}.",
+                    schedule.ScheduleId,
+                    schedule.UserId,
+                    runKey,
+                    job.Id,
+                    updatedSchedule.NextRunAtUtc);
+            }
+            else
+            {
+                _logger.LogInformation(
+                    "Weekly report schedule metadata update skipped after ETag conflict. ScheduleId={ScheduleId}, UserId={UserId}, RunKey={RunKey}, JobId={JobId}.",
+                    schedule.ScheduleId,
+                    schedule.UserId,
+                    runKey,
+                    job.Id);
             }
         }
     }
 
-    public async Task ProcessAsync(
-        WeeklyReportQueueMessageDto queueMessage,
-        CancellationToken cancellationToken = default)
+    internal static bool TryGetDueRun(
+        WeeklyReportSchedule schedule,
+        DateTimeOffset nowUtc,
+        out DateTimeOffset scheduledForUtc,
+        out string runKey)
     {
-        ValidateQueueMessage(queueMessage);
-        var job = await _repository.TryStartProcessingAsync(
-            queueMessage.IdempotencyKey,
-            _timeProvider.GetUtcNow());
+        scheduledForUtc = schedule.NextRunAtUtc ?? default;
+        runKey = string.Empty;
 
-        if (job is null)
+        if (!schedule.Enabled || schedule.NextRunAtUtc is null || schedule.NextRunAtUtc > nowUtc)
         {
-            return;
+            return false;
         }
 
-        try
+        runKey = CreateRunKey(schedule.ScheduleId, scheduledForUtc);
+        return !string.Equals(schedule.LastRunKey, runKey, StringComparison.Ordinal);
+    }
+
+    internal static DateTimeOffset CalculateNextRunUtc(
+        DayOfWeek dayOfWeek,
+        TimeOnly timeOfDay,
+        string? timeZoneId,
+        DateTimeOffset afterUtc)
+    {
+        var timezone = GetTimeZone(timeZoneId);
+        var localAfter = TimeZoneInfo.ConvertTime(afterUtc, timezone);
+        var candidateDate = DateOnly.FromDateTime(localAfter.Date);
+
+        var daysUntil = ((int)dayOfWeek - (int)localAfter.DayOfWeek + 7) % 7;
+        candidateDate = candidateDate.AddDays(daysUntil);
+        var candidateLocal = candidateDate.ToDateTime(timeOfDay);
+
+        if (candidateLocal <= localAfter.DateTime)
         {
-            if (job.DataVersion != queueMessage.DataVersion
-                || job.UserId != queueMessage.UserId
-                || !string.Equals(job.RecipientEmail, queueMessage.RecipientEmail, StringComparison.OrdinalIgnoreCase))
-            {
-                return;
-            }
-
-            var reportRequest = new CreateTrendReportRequestDto(
-                queueMessage.WeekStartDate,
-                queueMessage.WeekStartDate,
-                null,
-                null);
-            var result = await _trendReportService.GenerateResultAsync(queueMessage.UserId, reportRequest);
-            var pdfBytes = _pdfGenerator.GeneratePdf(result, queueMessage.DataVersion, queueMessage.CorrelationId);
-            var generatedAt = _timeProvider.GetUtcNow();
-            var blobName = await _blobStorage.UploadAsync(
-                queueMessage.UserId,
-                queueMessage.WeekStartDate,
-                queueMessage.WeekEndDate,
-                queueMessage.DataVersion,
-                queueMessage.CorrelationId,
-                pdfBytes,
-                cancellationToken);
-
-            job = job with
-            {
-                Status = WeeklyReportJobStatuses.Generated,
-                BlobName = blobName,
-                GeneratedAtUtc = generatedAt,
-                UpdatedAtUtc = generatedAt,
-                Result = result,
-            };
-            await _repository.UpdateJobAsync(job);
-
-            await _emailSender.SendAsync(
-                queueMessage.RecipientEmail,
-                $"LiftOps 每周趋势报告 {queueMessage.WeekStartDate} - {queueMessage.WeekEndDate}",
-                "你好，附件是你的 LiftOps 每周趋势报告。",
-                new EmailAttachment(
-                    $"weekly-trends-report-{queueMessage.WeekStartDate}.pdf",
-                    "application/pdf",
-                    pdfBytes),
-                cancellationToken);
-
-            var sentAt = _timeProvider.GetUtcNow();
-            await _repository.UpdateJobAsync(job with
-            {
-                Status = WeeklyReportJobStatuses.Sent,
-                SentAtUtc = sentAt,
-                UpdatedAtUtc = sentAt,
-            });
+            candidateLocal = candidateLocal.AddDays(7);
         }
-        catch (Exception exception) when (exception is not OperationCanceledException)
-        {
-            var failedAt = _timeProvider.GetUtcNow();
-            await _repository.UpdateJobAsync(job with
-            {
-                Status = WeeklyReportJobStatuses.Failed,
-                ErrorMessage = exception.Message,
-                UpdatedAtUtc = failedAt,
-            });
-            throw;
-        }
+
+        return new DateTimeOffset(candidateLocal, timezone.GetUtcOffset(candidateLocal)).ToUniversalTime();
     }
 
     private async Task<string> GetUserEmailAsync(int userId, CancellationToken cancellationToken)
@@ -246,76 +247,52 @@ public sealed class WeeklyReportScheduleService : IWeeklyReportScheduleService
         return userEmail;
     }
 
-    private static bool TryGetDueWeek(
+    private static WeeklyReportSchedule CopySchedule(
         WeeklyReportSchedule schedule,
-        DateTimeOffset nowUtc,
-        out DateOnly weekStartDate,
-        out DateOnly weekEndDate)
+        WeeklyReportScheduleUpdate update)
     {
-        var timezone = GetTimeZone(schedule.Timezone);
-        var localNow = TimeZoneInfo.ConvertTime(nowUtc, timezone);
-        weekStartDate = default;
-        weekEndDate = default;
-
-        if (localNow.DayOfWeek != DayOfWeek.Monday
-            || TimeOnly.FromDateTime(localNow.DateTime) < schedule.ScheduledTime)
+        return new WeeklyReportSchedule
         {
-            return false;
-        }
-
-        var currentMonday = DateOnly.FromDateTime(localNow.Date);
-        weekStartDate = currentMonday.AddDays(-7);
-        weekEndDate = currentMonday.AddDays(-1);
-        return true;
+            ScheduleId = schedule.ScheduleId,
+            UserId = schedule.UserId,
+            Enabled = schedule.Enabled,
+            DayOfWeek = schedule.DayOfWeek,
+            TimeOfDay = schedule.TimeOfDay,
+            TimeZoneId = schedule.TimeZoneId,
+            RecipientEmail = schedule.RecipientEmail,
+            LastRunAtUtc = update.LastRunAtUtc ?? schedule.LastRunAtUtc,
+            NextRunAtUtc = update.NextRunAtUtc ?? schedule.NextRunAtUtc,
+            LastRunKey = update.LastRunKey ?? schedule.LastRunKey,
+            LastRequestedJobId = update.LastRequestedJobId ?? schedule.LastRequestedJobId,
+            CreatedAtUtc = schedule.CreatedAtUtc,
+            UpdatedAtUtc = update.UpdatedAtUtc ?? schedule.UpdatedAtUtc,
+        };
     }
 
-    private static TimeZoneInfo GetTimeZone(string timezone)
+    private static string CreateDefaultScheduleId(int userId)
     {
-        try
-        {
-            return TimeZoneInfo.FindSystemTimeZoneById(timezone);
-        }
-        catch (TimeZoneNotFoundException)
-        {
-            return TimeZoneInfo.Utc;
-        }
-        catch (InvalidTimeZoneException)
-        {
-            return TimeZoneInfo.Utc;
-        }
+        return $"weekly-report-user-{userId}";
     }
 
-    private static WeeklyReportQueueMessageDto ToQueueMessage(WeeklyReportJob job)
+    private static string CreateRunKey(string scheduleId, DateTimeOffset scheduledForUtc)
     {
-        return new WeeklyReportQueueMessageDto(
-            job.DataVersion,
-            WeeklyReportConstants.MessageType,
-            job.UserId,
-            job.ReportType,
-            job.WeekStartDate.ToString("yyyy-MM-dd"),
-            job.WeekEndDate.ToString("yyyy-MM-dd"),
-            job.ScheduledTime,
-            job.Timezone,
-            job.RecipientEmail,
-            job.IdempotencyKey,
-            job.CorrelationId,
-            job.RequestedAtUtc);
+        return $"{scheduleId}:{scheduledForUtc:O}";
     }
 
-    private static string CreateIdempotencyKey(
-        int userId,
-        string reportType,
-        DateOnly weekStartDate,
-        int dataVersion)
+    private static DayOfWeek? ParseDayOfWeek(string? dayOfWeek)
     {
-        return $"{userId}:{reportType}:{weekStartDate:yyyy-MM-dd}:v{dataVersion}";
+        return string.IsNullOrWhiteSpace(dayOfWeek)
+            ? null
+            : Enum.TryParse<DayOfWeek>(dayOfWeek.Trim(), ignoreCase: true, out var parsed)
+                ? parsed
+                : throw new ArgumentException("DayOfWeek is invalid.");
     }
 
-    private static TimeOnly ParseScheduledTime(string scheduledTime)
+    private static TimeOnly ParseTimeOfDay(string timeOfDay)
     {
-        if (!TimeOnly.TryParse(scheduledTime, out var parsed))
+        if (!TimeOnly.TryParse(timeOfDay, out var parsed))
         {
-            throw new ArgumentException("Scheduled time must use HH:mm format.");
+            throw new ArgumentException("TimeOfDay must use HH:mm format.");
         }
 
         return new TimeOnly(parsed.Hour, parsed.Minute);
@@ -334,26 +311,31 @@ public sealed class WeeklyReportScheduleService : IWeeklyReportScheduleService
         return normalized;
     }
 
-    private static string NormalizeTimezone(string? timezone)
+    private static string NormalizeTimeZoneId(string? timeZoneId)
     {
-        return string.IsNullOrWhiteSpace(timezone)
-            ? "UTC"
-            : timezone.Trim();
+        var normalized = string.IsNullOrWhiteSpace(timeZoneId)
+            ? WeeklyReportConstants.DefaultTimeZoneId
+            : timeZoneId.Trim();
+        _ = GetTimeZone(normalized);
+        return normalized;
     }
 
-    private static void ValidateQueueMessage(WeeklyReportQueueMessageDto queueMessage)
+    private static TimeZoneInfo GetTimeZone(string? timeZoneId)
     {
-        if (queueMessage.DataVersion <= 0
-            || queueMessage.UserId <= 0
-            || queueMessage.MessageType != WeeklyReportConstants.MessageType
-            || queueMessage.ReportType != WeeklyReportConstants.ReportType
-            || string.IsNullOrWhiteSpace(queueMessage.WeekStartDate)
-            || string.IsNullOrWhiteSpace(queueMessage.WeekEndDate)
-            || string.IsNullOrWhiteSpace(queueMessage.IdempotencyKey)
-            || string.IsNullOrWhiteSpace(queueMessage.CorrelationId)
-            || string.IsNullOrWhiteSpace(queueMessage.RecipientEmail))
+        try
         {
-            throw new ArgumentException("Weekly report queue message is invalid.");
+            return TimeZoneInfo.FindSystemTimeZoneById(
+                string.IsNullOrWhiteSpace(timeZoneId)
+                    ? WeeklyReportConstants.DefaultTimeZoneId
+                    : timeZoneId);
+        }
+        catch (TimeZoneNotFoundException)
+        {
+            return TimeZoneInfo.Utc;
+        }
+        catch (InvalidTimeZoneException)
+        {
+            return TimeZoneInfo.Utc;
         }
     }
 
@@ -368,14 +350,27 @@ public sealed class WeeklyReportScheduleService : IWeeklyReportScheduleService
     private static WeeklyReportScheduleDto ToDto(WeeklyReportSchedule schedule)
     {
         return new WeeklyReportScheduleDto(
+            schedule.ScheduleId,
             schedule.UserId,
             schedule.Enabled,
-            schedule.ScheduledTime.ToString("HH:mm"),
+            schedule.DayOfWeek.ToString(),
+            schedule.TimeOfDay.ToString("HH:mm"),
             schedule.RecipientEmail,
-            schedule.Timezone,
-            schedule.ReportType,
+            schedule.TimeZoneId ?? WeeklyReportConstants.DefaultTimeZoneId,
+            schedule.LastRunAtUtc,
+            schedule.NextRunAtUtc,
+            schedule.LastRunKey,
+            schedule.LastRequestedJobId,
             schedule.CreatedAtUtc,
-            schedule.UpdatedAtUtc,
-            schedule.DataVersion);
+            schedule.UpdatedAtUtc);
+    }
+
+    private sealed class WeeklyReportScheduleUpdate
+    {
+        public DateTimeOffset? LastRunAtUtc { get; init; }
+        public DateTimeOffset? NextRunAtUtc { get; init; }
+        public string? LastRunKey { get; init; }
+        public int? LastRequestedJobId { get; init; }
+        public DateTimeOffset? UpdatedAtUtc { get; init; }
     }
 }

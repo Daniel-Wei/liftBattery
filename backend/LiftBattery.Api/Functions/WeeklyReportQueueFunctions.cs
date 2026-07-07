@@ -11,14 +11,17 @@ public sealed class WeeklyReportQueueFunctions
 {
     private static readonly JsonSerializerOptions QueueMessageJsonOptions = new(JsonSerializerDefaults.Web);
 
-    private readonly IWeeklyReportScheduleService _service;
+    private readonly IWeeklyReportSchedulingService _schedulingService;
+    private readonly IWeeklyReportJobService _jobService;
     private readonly ILogger<WeeklyReportQueueFunctions> _logger;
 
     public WeeklyReportQueueFunctions(
-        IWeeklyReportScheduleService service,
+        IWeeklyReportSchedulingService schedulingService,
+        IWeeklyReportJobService jobService,
         ILogger<WeeklyReportQueueFunctions> logger)
     {
-        _service = service;
+        _schedulingService = schedulingService;
+        _jobService = jobService;
         _logger = logger;
     }
 
@@ -32,7 +35,7 @@ public sealed class WeeklyReportQueueFunctions
             timerInfo.ScheduleStatus?.Last,
             timerInfo.ScheduleStatus?.Next);
 
-        return _service.EnqueueDueReportsAsync(cancellationToken);
+        return _schedulingService.ProcessDueSchedulesAsync(cancellationToken);
     }
 
     [Function("ProcessWeeklyReportJob")]
@@ -66,15 +69,16 @@ public sealed class WeeklyReportQueueFunctions
         }
 
         _logger.LogInformation(
-            "Processing weekly report queue message. MessageId={MessageId}, CorrelationId={CorrelationId}, IdempotencyKey={IdempotencyKey}, UserId={UserId}, DataVersion={DataVersion}, DeliveryCount={DeliveryCount}.",
+            "Processing weekly report queue message. MessageId={MessageId}, CorrelationId={CorrelationId}, JobId={JobId}, UserId={UserId}, ScheduleId={ScheduleId}, RunKey={RunKey}, DeliveryCount={DeliveryCount}.",
             message.MessageId,
             message.CorrelationId,
-            queueMessage.IdempotencyKey,
+            queueMessage.JobId,
             queueMessage.UserId,
-            queueMessage.DataVersion,
+            queueMessage.ScheduleId,
+            queueMessage.RunKey,
             message.DeliveryCount);
 
-        await _service.ProcessAsync(queueMessage, cancellationToken);
+        await _jobService.ProcessAsync(queueMessage, cancellationToken);
         await messageActions.CompleteMessageAsync(message, cancellationToken);
     }
 
@@ -94,15 +98,10 @@ public sealed class WeeklyReportQueueFunctions
 
     private static bool IsValidQueueMessage(WeeklyReportQueueMessageDto queueMessage)
     {
-        return queueMessage.DataVersion > 0
+        return queueMessage.JobId > 0
             && queueMessage.UserId > 0
-            && queueMessage.MessageType == "WeeklyTrendsReportRequested"
-            && queueMessage.ReportType == "WeeklyTrendsReport"
-            && !string.IsNullOrWhiteSpace(queueMessage.WeekStartDate)
-            && !string.IsNullOrWhiteSpace(queueMessage.WeekEndDate)
-            && !string.IsNullOrWhiteSpace(queueMessage.IdempotencyKey)
-            && !string.IsNullOrWhiteSpace(queueMessage.CorrelationId)
-            && !string.IsNullOrWhiteSpace(queueMessage.RecipientEmail);
+            && !string.IsNullOrWhiteSpace(queueMessage.ScheduleId)
+            && !string.IsNullOrWhiteSpace(queueMessage.RunKey);
     }
 
     private async Task DeadLetterInvalidMessageAsync(

@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Azure.Messaging.ServiceBus;
 using LiftBattery.Api.DTOs;
+using LiftBattery.Api.Models;
 using Microsoft.Extensions.Configuration;
 
 namespace LiftBattery.Api.Services;
@@ -24,17 +25,18 @@ public sealed class WeeklyReportServiceBusQueue : IWeeklyReportQueue, IAsyncDisp
         var body = JsonSerializer.Serialize(queueMessage, QueueMessageJsonOptions);
         var message = new ServiceBusMessage(body)
         {
-            MessageId = queueMessage.IdempotencyKey,
-            CorrelationId = queueMessage.CorrelationId,
+            MessageId = queueMessage.RunKey,
+            CorrelationId = queueMessage.RunKey,
             ContentType = "application/json",
-            Subject = queueMessage.MessageType,
+            Subject = WeeklyReportConstants.MessageType,
         };
-        message.ApplicationProperties["messageType"] = queueMessage.MessageType;
-        message.ApplicationProperties["reportType"] = queueMessage.ReportType;
+        message.ApplicationProperties["messageType"] = WeeklyReportConstants.MessageType;
+        message.ApplicationProperties["reportType"] = WeeklyReportConstants.ReportType;
+        message.ApplicationProperties["jobId"] = queueMessage.JobId;
         message.ApplicationProperties["userId"] = queueMessage.UserId;
-        message.ApplicationProperties["weekStartDate"] = queueMessage.WeekStartDate;
-        message.ApplicationProperties["weekEndDate"] = queueMessage.WeekEndDate;
-        message.ApplicationProperties["dataVersion"] = queueMessage.DataVersion;
+        message.ApplicationProperties["scheduleId"] = queueMessage.ScheduleId;
+        message.ApplicationProperties["runKey"] = queueMessage.RunKey;
+        message.ApplicationProperties["scheduledForUtc"] = queueMessage.ScheduledForUtc.ToString("O");
         await sender.SendMessageAsync(message);
     }
 

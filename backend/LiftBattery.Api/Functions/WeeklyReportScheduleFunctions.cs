@@ -8,12 +8,12 @@ namespace LiftBattery.Api.Functions;
 
 public sealed class WeeklyReportScheduleFunctions
 {
-    private readonly IWeeklyReportScheduleService _service;
+    private readonly IWeeklyReportSchedulingService _service;
     private readonly IAuthService _authService;
     private readonly AuthCookieHelper _cookieHelper;
 
     public WeeklyReportScheduleFunctions(
-        IWeeklyReportScheduleService service,
+        IWeeklyReportSchedulingService service,
         IAuthService authService,
         AuthCookieHelper cookieHelper)
     {

@@ -1,32 +1,47 @@
 namespace LiftBattery.Api.DTOs;
 
 public sealed record WeeklyReportScheduleDto(
+    string ScheduleId,
     int UserId,
     bool Enabled,
-    string ScheduledTime,
+    string DayOfWeek,
+    string TimeOfDay,
     string RecipientEmail,
-    string Timezone,
-    string ReportType,
+    string TimeZoneId,
+    DateTimeOffset? LastRunAtUtc,
+    DateTimeOffset? NextRunAtUtc,
+    string? LastRunKey,
+    int? LastRequestedJobId,
     DateTimeOffset CreatedAtUtc,
-    DateTimeOffset UpdatedAtUtc,
-    int DataVersion);
+    DateTimeOffset UpdatedAtUtc);
 
 public sealed record UpdateWeeklyReportScheduleRequestDto(
     bool Enabled,
-    string ScheduledTime,
+    string? DayOfWeek,
+    string TimeOfDay,
     string RecipientEmail,
-    string? Timezone);
+    string? TimeZoneId);
 
-public sealed record WeeklyReportQueueMessageDto(
-    int DataVersion,
-    string MessageType,
+public sealed record WeeklyReportJobDto(
+    int Id,
     int UserId,
+    string ScheduleId,
+    string RunKey,
     string ReportType,
     string WeekStartDate,
     string WeekEndDate,
-    string ScheduledTime,
-    string Timezone,
-    string RecipientEmail,
-    string IdempotencyKey,
-    string CorrelationId,
-    DateTimeOffset RequestedAtUtc);
+    DateTimeOffset ScheduledForUtc,
+    string Status,
+    string? ErrorMessage,
+    DateTimeOffset RequestedAtUtc,
+    DateTimeOffset CreatedAtUtc,
+    DateTimeOffset UpdatedAtUtc,
+    DateTimeOffset? StartedAtUtc,
+    DateTimeOffset? CompletedAtUtc);
+
+public sealed record WeeklyReportQueueMessageDto(
+    int JobId,
+    int UserId,
+    string ScheduleId,
+    string RunKey,
+    DateTimeOffset ScheduledForUtc);
