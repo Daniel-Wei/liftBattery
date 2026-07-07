@@ -1,3 +1,4 @@
+using System.Runtime.InteropServices.JavaScript;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -25,24 +26,23 @@ public sealed class TrendReportService : ITrendReportService
     };
 
     private static readonly JsonSerializerOptions FingerprintJsonOptions = new(JsonSerializerDefaults.Web);
-
-    private readonly ITrendReportJobRepository _jobRepository;
-    private readonly ITrainingRepository _trainingRepository;
-    private readonly IPreCheckRepository _preCheckRepository;
-    private readonly ITrendReportServiceBusQueue _queue;
+    private readonly ITrendReportJobRepository _trendReportJobRepo;
+    private readonly ITrainingRepository _trainingRepo;
+    private readonly IPreCheckRepository _preCheckRepo;
+    private readonly ITrendReportMessageQueueService _trendReportMessageQueueRepo;
     private readonly int _demoDelayMilliseconds;
 
     public TrendReportService(
-        ITrendReportJobRepository jobRepository,
-        ITrainingRepository trainingRepository,
-        IPreCheckRepository preCheckRepository,
-        ITrendReportServiceBusQueue queue,
+        ITrendReportJobRepository trendReportJobRepo,
+        ITrainingRepository trainingRepo,
+        IPreCheckRepository preCheckRepo,
+        ITrendReportMessageQueueService trendReportMessageQueueRepo,
         IConfiguration configuration)
     {
-        _jobRepository = jobRepository;
-        _trainingRepository = trainingRepository;
-        _preCheckRepository = preCheckRepository;
-        _queue = queue;
+        _trendReportJobRepo = trendReportJobRepo;
+        _trainingRepo = trainingRepo;
+        _preCheckRepo = preCheckRepo;
+        _trendReportMessageQueueRepo = trendReportMessageQueueRepo;
         _demoDelayMilliseconds = int.TryParse(
             configuration["TrendReportDemoDelayMilliseconds"],
             out var configuredDelay)
@@ -54,31 +54,33 @@ public sealed class TrendReportService : ITrendReportService
     // 1. validate the request and capture a submission-time data snapshot
     // 2. persist the initial Queued job in Azure Table Storage
     // 3. enqueue the job ID for background processing
-    public async Task<TrendReportJobDto> CreateAsync(int userId, CreateTrendReportRequestDto request)
+    public async Task<TrendReportJobDto> CreateAsync(int userId, CreateTrendReportRequestDto createTrendReportReqDTO)
     {
         ValidateUserId(userId);
         // Validate and normalize the request DTO.
-        var validatedRequest = ValidateRequest(request);
+        var validatedTrendReportReq = ValidateRequest(createTrendReportReqDTO);
 
         // Load the database records used for the submission-time snapshot.
-        var snapshotStart = validatedRequest.ComparisonStartWeek.HasValue
-            ? Min(validatedRequest.StartWeek, validatedRequest.ComparisonStartWeek.Value)
-            : validatedRequest.StartWeek;
-        var rangeEnd = validatedRequest.ComparisonEndWeek.HasValue
-            ? Max(validatedRequest.EndWeek, validatedRequest.ComparisonEndWeek.Value).AddDays(6)
-            : validatedRequest.EndWeek.AddDays(6);
-        var trainingDays = await _trainingRepository.GetByDateRangeAsync(
+        var snapshotStart = validatedTrendReportReq.ComparisonStartWeek.HasValue
+            ? Min(validatedTrendReportReq.StartWeek, validatedTrendReportReq.ComparisonStartWeek.Value)
+            : validatedTrendReportReq.StartWeek;
+        var rangeEnd = validatedTrendReportReq.ComparisonEndWeek.HasValue
+            ? Max(validatedTrendReportReq.EndWeek, validatedTrendReportReq.ComparisonEndWeek.Value).AddDays(6)
+            : validatedTrendReportReq.EndWeek.AddDays(6);
+        var trainingDays = await _trainingRepo.GetByDateRangeAsync(
             userId,
             snapshotStart,
             rangeEnd);
-        var preCheckLogs = await _preCheckRepository.GetByDateRangeAsync(
+        var preCheckLogs = await _preCheckRepo.GetByDateRangeAsync(
             userId,
             snapshotStart,
             rangeEnd);
-        var snapshot = new TrendReportSnapshot(trainingDays, preCheckLogs);
-        var dataVersion = await _jobRepository.GetOrCreateCurrentDataVersionAsync(userId);
-        var reportFingerprint = CreateReportFingerprint(validatedRequest, snapshot, dataVersion);
-        var existingSameVersionJob = await _jobRepository.GetLatestByUserIdAndFingerprintAsync(userId, reportFingerprint);
+        var trendReportReqSnapshot = new TrendReportReqSnapshot(trainingDays, preCheckLogs);
+
+        var trendReportReqDataVersion = await _trendReportJobRepo.GetOrCreateCurrentTrendReportReqDataVersionAsync(userId);
+        
+        var reportReqFingerprint = CreateTrendReportReqFingerprint(validatedTrendReportReq, trendReportReqSnapshot, trendReportReqDataVersion);
+        var existingSameVersionJob = await _trendReportJobRepo.GetLatestByUserIdAndFingerprintAsync(userId, reportReqFingerprint);
 
         if (existingSameVersionJob is not null
             && existingSameVersionJob.Status is not TrendReportJobStatuses.Failed
@@ -88,22 +90,13 @@ public sealed class TrendReportService : ITrendReportService
             return ToDto(existingSameVersionJob);
         }
 
-        var activeJobs = await _jobRepository.GetActiveByUserIdAsync(userId);
-        var existingActiveJob = activeJobs
-            .Where(job => job.ReportFingerprint == reportFingerprint)
-            .OrderByDescending(job => job.CreatedAtUtc)
-            .FirstOrDefault();
-
-        if (existingActiveJob is not null)
-        {
-            return ToDto(existingActiveJob);
-        }
-
+        // cancel any other active jobs for the same user, since they are now superseded by this new request
+        var activeJobs = await _trendReportJobRepo.GetActiveByUserIdAsync(userId);
         var now = DateTimeOffset.UtcNow;
 
         foreach (var activeJob in activeJobs)
         {
-            await _jobRepository.UpdateAsync(activeJob with
+            await _trendReportJobRepo.UpdateAsync(activeJob with
             {
                 Status = TrendReportJobStatuses.Cancelled,
                 CurrentStage = "已取消：用户提交了新的报告请求",
@@ -119,11 +112,11 @@ public sealed class TrendReportService : ITrendReportService
             TrendReportJobStatuses.Queued,
             0,
             "等待后台处理",
-            validatedRequest,
-            dataVersion,
-            reportFingerprint,
+            validatedTrendReportReq,
+            trendReportReqDataVersion,
+            reportReqFingerprint,
             // The request stores the selected report period; the snapshot stores database data at submission time.
-            snapshot,
+            trendReportReqSnapshot,
             null,
             null,
             now,
@@ -132,13 +125,13 @@ public sealed class TrendReportService : ITrendReportService
             now);
 
         // Persist the initial Queued job before publishing its message.
-        await _jobRepository.CreateAsync(job);
+        await _trendReportJobRepo.CreateAsync(job);
 
         try
         {
             // Publish a compact JSON command. The consumer still loads the durable job from Azure Table Storage,
             // but the message carries enough metadata for duplicate detection, correlation, retry, and DLQ debugging.
-            await _queue.EnqueueAsync(CreateQueueMessage(job));
+            await _trendReportMessageQueueRepo.EnqueueAsync(CreateQueueMessageDTO(job));
         }
         catch (Exception exception)
         {
@@ -149,44 +142,39 @@ public sealed class TrendReportService : ITrendReportService
                 ErrorMessage = exception.Message,
                 UpdatedAtUtc = DateTimeOffset.UtcNow,
             };
-            await _jobRepository.UpdateAsync(failedJob);
+            await _trendReportJobRepo.UpdateAsync(failedJob);
             throw;
         }
 
         return ToDto(job);
     }
 
-    public async Task<TrendReportJobDto?> GetByIdAsync(int userId, int id)
-    {
-        ValidateUserId(userId);
-        var job = await _jobRepository.GetByIdAsync(id);
-        return job is null || job.UserId != userId ? null : ToDto(job);
-    }
-
-    public async Task<TrendReportResultDto> GenerateResultAsync(int userId, CreateTrendReportRequestDto request)
-    {
-        ValidateUserId(userId);
-        var validatedRequest = ValidateRequest(request);
-        var snapshot = await LoadSnapshotAsync(userId, validatedRequest);
-        return GenerateResult(validatedRequest, snapshot);
-    }
-
-    // Asynchronous consumer path:
-    // 1. atomically claim an eligible job and mark it Processing
-    // 2. update progress, calculate the report, and persist the completed result
-    // 3. on failure, persist Failed and rethrow so Service Bus can redeliver the message
-    public async Task ProcessAsync(TrendReportQueueMessageDto queueMessage, CancellationToken cancellationToken = default)
+    public async Task ProcessAsync(TrendReportQueueMessageDto queueMessageDTO, CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
 
-        var job = await _jobRepository.TryStartProcessingAsync(queueMessage.JobId, DateTimeOffset.UtcNow);
-
-        if (job is null)
+        if (await StopIfQueueMessageIsStaleAsync(queueMessageDTO, cancellationToken))
         {
             return;
         }
 
-        if (await StopIfQueueMessageIsStaleAsync(queueMessage))
+        var jobId = queueMessageDTO.JobId;
+        var job = await _trendReportJobRepo.GetByIdAsync(jobId, cancellationToken);
+
+        if(job is null)
+        {
+            return;
+        }
+
+        if(!await _trendReportJobRepo.TryStartProcessingAsync(
+            jobId,
+            queueMessageDTO.DataVersion,
+            cancellationToken))
+        {
+            return;
+        }
+
+        if (await StopIfQueueMessageIsStaleAsync(queueMessageDTO, cancellationToken))
         {
             return;
         }
@@ -194,81 +182,91 @@ public sealed class TrendReportService : ITrendReportService
         try
         {
             await DelayForDemoAsync(cancellationToken);
-            cancellationToken.ThrowIfCancellationRequested();
 
-            if (await StopIfQueueMessageIsStaleAsync(queueMessage))
+            if (await StopIfQueueMessageIsStaleAsync(queueMessageDTO, cancellationToken))
             {
                 return;
             }
 
-            job = job with
-            {
-                ProgressPercent = 45,
-                CurrentStage = "正在计算训练周期报告",
-                UpdatedAtUtc = DateTimeOffset.UtcNow,
-            };
-            await _jobRepository.UpdateAsync(job);
-            await DelayForDemoAsync(cancellationToken);
-            cancellationToken.ThrowIfCancellationRequested();
+            var updated = await _trendReportJobRepo.TryUpdateProgressIfCurrentProcessingAsync(
+                jobId,
+                queueMessageDTO.DataVersion,
+                progressPercent: 45,
+                currentStage: "正在计算训练周期报告",
+                cancellationToken);
 
-            if (await StopIfQueueMessageIsStaleAsync(queueMessage))
+            if (!updated)
+            {
+                return;
+            }
+
+            await DelayForDemoAsync(cancellationToken);
+
+            if (await StopIfQueueMessageIsStaleAsync(queueMessageDTO, cancellationToken))
             {
                 return;
             }
 
             var result = GenerateResult(job.Request, job.Snapshot);
 
-            job = job with
-            {
-                ProgressPercent = 80,
-                CurrentStage = "正在整理图表数据",
-                UpdatedAtUtc = DateTimeOffset.UtcNow,
-            };
-            await _jobRepository.UpdateAsync(job);
-            await DelayForDemoAsync(cancellationToken);
-            cancellationToken.ThrowIfCancellationRequested();
+            updated = await _trendReportJobRepo.TryUpdateProgressIfCurrentProcessingAsync(
+                jobId,
+                queueMessageDTO.DataVersion,
+                progressPercent: 80,
+                currentStage: "正在整理图表数据",
+                cancellationToken);
 
-            if (await StopIfQueueMessageIsStaleAsync(queueMessage))
+            if (!updated)
             {
                 return;
             }
 
-            var completedAt = DateTimeOffset.UtcNow;
-            job = job with
+            await DelayForDemoAsync(cancellationToken);
+
+            if (await StopIfQueueMessageIsStaleAsync(queueMessageDTO, cancellationToken))
             {
-                Status = TrendReportJobStatuses.Completed,
-                ProgressPercent = 100,
-                CurrentStage = "报告已生成",
-                Result = result,
-                CompletedAtUtc = completedAt,
-                UpdatedAtUtc = completedAt,
-            };
-            await _jobRepository.UpdateAsync(job);
+                return;
+            }
+
+            await _trendReportJobRepo.TryCompleteIfCurrentProcessingAsync(
+                job.Id,
+                queueMessageDTO.DataVersion,
+                result,
+                cancellationToken);
         }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        catch (OperationCanceledException)
         {
             throw;
         }
-        catch (Exception exception)
+        catch (Exception)
         {
-            if (await StopIfQueueMessageIsStaleAsync(queueMessage))
-            {
-                return;
-            }
+            await _trendReportJobRepo.TryMarkFailedIfCurrentProcessingAsync(
+                job.Id,
+                queueMessageDTO.DataVersion,
+                cancellationToken);
 
-            var failedJob = job with
-            {
-                Status = TrendReportJobStatuses.Failed,
-                CurrentStage = "报告生成失败，等待消息重试",
-                ErrorMessage = exception.Message,
-                UpdatedAtUtc = DateTimeOffset.UtcNow,
-            };
-            await _jobRepository.UpdateAsync(failedJob);
             throw;
         }
     }
+    
+    public async Task<TrendReportJobDto?> GetByIdAsync(int userId, int id)
+    {
+        ValidateUserId(userId);
+        var job = await _trendReportJobRepo.GetByIdAsync(id);
+        return job is null || job.UserId != userId ? null : ToDto(job);
+    }
 
-    private static TrendReportQueueMessageDto CreateQueueMessage(TrendReportJob job)
+    public async Task<TrendReportResultDto> GenerateResultAsync(int userId, CreateTrendReportRequestDto request)
+    {
+        ValidateUserId(userId);
+        var validatedTrendReportReq = ValidateRequest(request);
+        var snapshot = await LoadSnapshotAsync(userId, validatedTrendReportReq);
+        return GenerateResult(validatedTrendReportReq, snapshot);
+    }
+
+    #region: Private Helper Methods
+
+    private static TrendReportQueueMessageDto CreateQueueMessageDTO(TrendReportJob job)
     {
         return new TrendReportQueueMessageDto(
             job.Id,
@@ -280,9 +278,11 @@ public sealed class TrendReportService : ITrendReportService
             job.CreatedAtUtc);
     }
 
-    private async Task<bool> StopIfQueueMessageIsStaleAsync(TrendReportQueueMessageDto queueMessage)
+    private async Task<bool> StopIfQueueMessageIsStaleAsync(TrendReportQueueMessageDto message, CancellationToken cancellationToken = default)
     {
-        var latestJob = await _jobRepository.GetByIdAsync(queueMessage.JobId);
+        cancellationToken.ThrowIfCancellationRequested();
+        
+        var latestJob = await _trendReportJobRepo.GetByIdAsync(message.JobId, cancellationToken);
 
         if (latestJob is null)
         {
@@ -291,51 +291,25 @@ public sealed class TrendReportService : ITrendReportService
 
         if (latestJob.Status == TrendReportJobStatuses.CancelRequested)
         {
-            var completedAt = DateTimeOffset.UtcNow;
-            await _jobRepository.UpdateAsync(latestJob with
-            {
-                Status = TrendReportJobStatuses.Superseded,
-                ProgressPercent = Math.Max(latestJob.ProgressPercent, 80),
-                CurrentStage = "已停止：训练数据已更新，请重新生成报告",
-                ErrorMessage = null,
-                CompletedAtUtc = completedAt,
-                UpdatedAtUtc = completedAt,
-            });
+            await _trendReportJobRepo.TryMarkSupersededIfStatusAsync(
+                latestJob.Id,
+                cancellationToken);
+
             return true;
         }
 
-        if (latestJob.Status is TrendReportJobStatuses.Cancelled or TrendReportJobStatuses.Superseded)
+        if (latestJob.Status is TrendReportJobStatuses.Cancelled
+            or TrendReportJobStatuses.Superseded)
         {
             return true;
         }
 
-        if (QueueMessageMatchesJob(queueMessage, latestJob))
-        {
-            return false;
-        }
+        await _trendReportJobRepo.TryMarkSupersededIfCurrentAsync(
+            latestJob.Id,
+            expectedDataVersion: latestJob.DataVersion,
+            cancellationToken);
 
-        var now = DateTimeOffset.UtcNow;
-        await _jobRepository.UpdateAsync(latestJob with
-        {
-            Status = TrendReportJobStatuses.Superseded,
-            ProgressPercent = Math.Max(latestJob.ProgressPercent, 80),
-            CurrentStage = "已跳过：队列消息的数据版本已过期",
-            ErrorMessage = null,
-            CompletedAtUtc = now,
-            UpdatedAtUtc = now,
-        });
         return true;
-    }
-
-    private static bool QueueMessageMatchesJob(
-        TrendReportQueueMessageDto queueMessage,
-        TrendReportJob job)
-    {
-        return queueMessage.JobId == job.Id
-            && queueMessage.UserId == job.UserId
-            && queueMessage.PeriodStart == job.Request.StartWeek.ToString("yyyy-MM-dd")
-            && queueMessage.PeriodEnd == job.Request.EndWeek.AddDays(6).ToString("yyyy-MM-dd")
-            && string.Equals(queueMessage.DataVersion, job.DataVersion, StringComparison.Ordinal);
     }
 
     private Task DelayForDemoAsync(CancellationToken cancellationToken)
@@ -345,7 +319,7 @@ public sealed class TrendReportService : ITrendReportService
             : Task.Delay(_demoDelayMilliseconds, cancellationToken);
     }
 
-    private async Task<TrendReportSnapshot> LoadSnapshotAsync(int userId, TrendReportRequest request)
+    private async Task<TrendReportReqSnapshot> LoadSnapshotAsync(int userId, TrendReportRequest request)
     {
         var snapshotStart = request.ComparisonStartWeek.HasValue
             ? Min(request.StartWeek, request.ComparisonStartWeek.Value)
@@ -353,22 +327,22 @@ public sealed class TrendReportService : ITrendReportService
         var rangeEnd = request.ComparisonEndWeek.HasValue
             ? Max(request.EndWeek, request.ComparisonEndWeek.Value).AddDays(6)
             : request.EndWeek.AddDays(6);
-        var trainingDays = await _trainingRepository.GetByDateRangeAsync(
+        var trainingDays = await _trainingRepo.GetByDateRangeAsync(
             userId,
             snapshotStart,
             rangeEnd);
-        var preCheckLogs = await _preCheckRepository.GetByDateRangeAsync(
+        var preCheckLogs = await _preCheckRepo.GetByDateRangeAsync(
             userId,
             snapshotStart,
             rangeEnd);
 
-        return new TrendReportSnapshot(trainingDays, preCheckLogs);
+        return new TrendReportReqSnapshot(trainingDays, preCheckLogs);
     }
 
-    private static TrendReportRequest ValidateRequest(CreateTrendReportRequestDto request)
+    private static TrendReportRequest ValidateRequest(CreateTrendReportRequestDto createTrendReportReqDTO)
     {
-        if (!DateOnly.TryParse(request.StartWeek, out var startWeek)
-            || !DateOnly.TryParse(request.EndWeek, out var endWeek))
+        if (!DateOnly.TryParse(createTrendReportReqDTO.StartWeek, out var startWeek)
+            || !DateOnly.TryParse(createTrendReportReqDTO.EndWeek, out var endWeek))
         {
             throw new ArgumentException("Start week and end week must use yyyy-MM-dd format.");
         }
@@ -393,11 +367,11 @@ public sealed class TrendReportService : ITrendReportService
         DateOnly? comparisonStartWeek = null;
         DateOnly? comparisonEndWeek = null;
 
-        if (!string.IsNullOrWhiteSpace(request.ComparisonStartWeek)
-            || !string.IsNullOrWhiteSpace(request.ComparisonEndWeek))
+        if (!string.IsNullOrWhiteSpace(createTrendReportReqDTO.ComparisonStartWeek)
+            || !string.IsNullOrWhiteSpace(createTrendReportReqDTO.ComparisonEndWeek))
         {
-            if (!DateOnly.TryParse(request.ComparisonStartWeek, out var parsedComparisonStartWeek)
-                || !DateOnly.TryParse(request.ComparisonEndWeek, out var parsedComparisonEndWeek))
+            if (!DateOnly.TryParse(createTrendReportReqDTO.ComparisonStartWeek, out var parsedComparisonStartWeek)
+                || !DateOnly.TryParse(createTrendReportReqDTO.ComparisonEndWeek, out var parsedComparisonEndWeek))
             {
                 throw new ArgumentException("Comparison start week and end week must use yyyy-MM-dd format.");
             }
@@ -427,9 +401,9 @@ public sealed class TrendReportService : ITrendReportService
         return new TrendReportRequest(startWeek, endWeek, comparisonStartWeek, comparisonEndWeek);
     }
 
-    private static string CreateReportFingerprint(
+    private static string CreateTrendReportReqFingerprint(
         TrendReportRequest request,
-        TrendReportSnapshot snapshot,
+        TrendReportReqSnapshot snapshot,
         string dataVersion)
     {
         var fingerprintSource = string.Join(
@@ -447,7 +421,7 @@ public sealed class TrendReportService : ITrendReportService
 
     private static TrendReportResultDto GenerateResult(
         TrendReportRequest request,
-        TrendReportSnapshot snapshot)
+        TrendReportReqSnapshot snapshot)
     {
         var reportPeriods = BuildReportPeriods(request);
         var trainingSessions = ToReportSessions(snapshot.TrainingDays);
@@ -471,7 +445,7 @@ public sealed class TrendReportService : ITrendReportService
 
     private static IReadOnlyList<TrendReportSummaryCardDto> CreateTrendSummaryCards(
         TrendReportRequest request,
-        TrendReportSnapshot snapshot,
+        TrendReportReqSnapshot snapshot,
         IReadOnlyList<ReportTrainingSession> trainingSessions)
     {
         var currentWeeks = BuildWeeks(request.StartWeek, request.EndWeek);
@@ -917,6 +891,10 @@ public sealed class TrendReportService : ITrendReportService
             job.Result);
     }
 
+    #endregion
+
+    #region: Private DTOs for internal processing
+
     private sealed record ReportWeek(
         string Label,
         DateOnly StartDate,
@@ -939,4 +917,6 @@ public sealed class TrendReportService : ITrendReportService
         bool IsWarmup);
 
     private sealed record MuscleContribution(string Muscle, decimal Contribution);
+
+    #endregion
 }

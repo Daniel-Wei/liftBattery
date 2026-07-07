@@ -19,7 +19,7 @@ public sealed record TrendReportRequest(
     DateOnly? ComparisonStartWeek,
     DateOnly? ComparisonEndWeek);
 
-public sealed record TrendReportSnapshot(
+public sealed record TrendReportReqSnapshot(
     IReadOnlyList<TrainingDayModel> TrainingDays,
     IReadOnlyList<PreCheckModel> PreCheckLogs);
 
@@ -32,7 +32,7 @@ public sealed record TrendReportJob(
     TrendReportRequest Request,
     string DataVersion,
     string ReportFingerprint,
-    TrendReportSnapshot Snapshot,
+    TrendReportReqSnapshot Snapshot,
     TrendReportResultDto? Result,
     string? ErrorMessage,
     DateTimeOffset CreatedAtUtc,

@@ -5,7 +5,7 @@ using Microsoft.Extensions.Configuration;
 
 namespace LiftBattery.Api.Services;
 
-public sealed class TrendReportServiceBusQueue : ITrendReportServiceBusQueue, IAsyncDisposable
+public sealed class TrendReportMessageQueueService : ITrendReportMessageQueueService, IAsyncDisposable
 {
     private static readonly JsonSerializerOptions QueueMessageJsonOptions = new(JsonSerializerDefaults.Web);
 
@@ -13,7 +13,7 @@ public sealed class TrendReportServiceBusQueue : ITrendReportServiceBusQueue, IA
     private ServiceBusClient? _client;
     private ServiceBusSender? _sender;
 
-    public TrendReportServiceBusQueue(IConfiguration configuration)
+    public TrendReportMessageQueueService(IConfiguration configuration)
     {
         _configuration = configuration;
     }

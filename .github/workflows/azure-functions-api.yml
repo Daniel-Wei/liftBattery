@@ -1,0 +1,42 @@
+name: Deploy Azure Functions API
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - "backend/**"
+      - ".github/workflows/azure-functions-api.yml"
+
+jobs:
+  build-test-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+
+      - name: Restore API
+        run: dotnet restore backend/LiftBattery.Api/LiftBattery.Api.csproj
+
+      - name: Build API
+        run: dotnet build backend/LiftBattery.Api/LiftBattery.Api.csproj --configuration Release --no-restore
+
+      - name: Test API
+        run: dotnet test backend/LiftBattery.Api.Tests/LiftBattery.Api.Tests.csproj --configuration Release
+
+      - name: Publish API package
+        run: dotnet publish backend/LiftBattery.Api/LiftBattery.Api.csproj --configuration Release --output ./publish/liftbattery-api
+
+      - name: Deploy Function App
+        uses: Azure/functions-action@v1
+        with:
+          app-name: ${{ vars.AZURE_FUNCTIONAPP_NAME }}
+          package: ./publish/liftbattery-api
+          publish-profile: ${{ secrets.AZURE_FUNCTIONAPP_PUBLISH_PROFILE }}

@@ -1,0 +1,37 @@
+name: Apply Azure SQL migrations
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: "Type APPLY to run EF Core migrations against beta Azure SQL."
+        required: true
+        default: ""
+
+jobs:
+  migrate:
+    if: ${{ github.event.inputs.confirm == 'APPLY' }}
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+
+      - name: Restore API
+        run: dotnet restore backend/LiftBattery.Api/LiftBattery.Api.csproj
+
+      - name: Install EF Core CLI
+        run: dotnet tool install --global dotnet-ef --version 8.0.8
+
+      - name: Apply database migrations
+        env:
+          ConnectionStrings__LiftBatteryDatabase: ${{ secrets.AZURE_SQL_CONNECTION_STRING }}
+        run: >
+          dotnet ef database update
+          --project backend/LiftBattery.Api/LiftBattery.Api.csproj
+          --startup-project backend/LiftBattery.Api/LiftBattery.Api.csproj

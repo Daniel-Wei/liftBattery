@@ -1,4 +1,4 @@
-namespace LiftBattery.Api.Data.Entities.Training;
+namespace LiftBattery.Api.Entities.Training;
 
 public sealed class TrainingSession
 {

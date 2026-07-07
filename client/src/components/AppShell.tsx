@@ -119,10 +119,6 @@ export function AppShell({
 
           <div className="topbar-actions">
             <span className="topbar-date">{formatToday()}</span>
-            <button type="button" className="icon-button" aria-label="通知">
-              <Bell size={16} />
-              <span />
-            </button>
             {user ? (
               <>
                 <button type="button" className="user-chip" onClick={() => onNavigate(PageKey.Profile)}>
@@ -131,7 +127,6 @@ export function AppShell({
                   </span>
                   <span className="user-chip-copy">
                     <strong>{user.displayName}</strong>
-                    <small>Account settings</small>
                   </span>
                 </button>
                 <button type="button" className="icon-button" onClick={onLogout} aria-label="退出">

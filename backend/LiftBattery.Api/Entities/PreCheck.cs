@@ -1,4 +1,4 @@
-namespace LiftBattery.Api.Data.Entities;
+namespace LiftBattery.Api.Entities;
 
 public sealed class PreCheck
 {

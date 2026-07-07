@@ -151,6 +151,7 @@ public sealed class PreCheckPersistenceTests
             7.5m,
             4,
             8,
+            65,
             3,
             8,
             65);

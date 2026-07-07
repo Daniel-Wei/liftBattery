@@ -4,6 +4,8 @@ using Azure.Data.Tables;
 using LiftBattery.Api.DTOs;
 using LiftBattery.Api.Models;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
+using LiftBattery.Api.Entities;
 
 namespace LiftBattery.Api.Repositories;
 
@@ -13,15 +15,19 @@ public sealed class TrendReportJobRepository : ITrendReportJobRepository
     private const string DataVersionPartitionKeyValue = "trend-report-data-version";
     private readonly TableClient _tableClient;
     private readonly JsonSerializerOptions _jsonOptions = new(JsonSerializerDefaults.Web);
+    private readonly ILogger<TrendReportJobRepository> _logger;
 
     // Uses the AzureWebJobsStorage connection setting to access Azure Table Storage.
-    public TrendReportJobRepository(IConfiguration configuration)
+    public TrendReportJobRepository(IConfiguration configuration, ILogger<TrendReportJobRepository> logger)
     {
         var connectionString = configuration["AzureWebJobsStorage"]
             ?? throw new InvalidOperationException("AzureWebJobsStorage is required.");
         var tableName = configuration["TrendReportTableName"] ?? "TrendReportJobs";
         _tableClient = new TableClient(connectionString, tableName);
+        _logger = logger;
     }
+
+    #region: Create Async
 
     // Persists the initial job as an Azure Table entity.
     public async Task<TrendReportJob> CreateAsync(TrendReportJob job)
@@ -31,7 +37,10 @@ public sealed class TrendReportJobRepository : ITrendReportJobRepository
         return job;
     }
 
-    public async Task<string> GetOrCreateCurrentDataVersionAsync(int userId)
+    #endregion
+
+    #region: Data Version Management
+    public async Task<string> GetOrCreateCurrentTrendReportReqDataVersionAsync(int userId)
     {
         await EnsureTableAsync();
         var rowKey = userId.ToString();
@@ -92,22 +101,28 @@ public sealed class TrendReportJobRepository : ITrendReportJobRepository
         return nextVersion;
     }
 
-    public async Task<IReadOnlyList<TrendReportJob>> GetActiveByUserIdAsync(int userId)
+    #endregion
+
+    #region: Getters
+
+    public async Task<TrendReportJob?> GetByIdAsync(int id, CancellationToken cancellationToken = default)
     {
+        cancellationToken.ThrowIfCancellationRequested();
+
         await EnsureTableAsync();
 
-        var jobs = new List<TrendReportJob>();
-
-        await foreach (var jobEntity in _tableClient.QueryAsync<TrendReportJobEntity>(
-            entity => entity.PartitionKey == PartitionKeyValue && entity.UserId == userId))
+        try
         {
-            if (jobEntity.Status is TrendReportJobStatuses.Queued or TrendReportJobStatuses.Processing)
-            {
-                jobs.Add(ToModel(jobEntity));
-            }
+            var response = await _tableClient.GetEntityAsync<TrendReportJobEntity>(
+                PartitionKeyValue, 
+                id.ToString(),
+                cancellationToken: cancellationToken);
+            return ToModel(response.Value);
         }
-
-        return jobs;
+        catch (RequestFailedException exception) when (exception.Status == 404)
+        {
+            return null;
+        }
     }
 
     public async Task<TrendReportJob?> GetLatestByUserIdAndFingerprintAsync(int userId, string reportFingerprint)
@@ -129,59 +144,228 @@ public sealed class TrendReportJobRepository : ITrendReportJobRepository
             .FirstOrDefault();
     }
 
-    // Atomically claims an eligible job by marking it Processing; the ETag prevents concurrent claims.
-    public async Task<TrendReportJob?> TryStartProcessingAsync(
-        int id,
-        DateTimeOffset startedAtUtc)
+    public async Task<IReadOnlyList<TrendReportJob>> GetActiveByUserIdAsync(int userId)
     {
         await EnsureTableAsync();
 
-        try
-        {
-            var response = await _tableClient.GetEntityAsync<TrendReportJobEntity>(PartitionKeyValue, id.ToString());
-            var entity = response.Value;
-            var processingIsFresh = entity.Status == TrendReportJobStatuses.Processing
-                && entity.UpdatedAtUtc > startedAtUtc.AddMinutes(-10);
+        var jobs = new List<TrendReportJob>();
 
-            if (entity.Status is TrendReportJobStatuses.Completed
-                    or TrendReportJobStatuses.Cancelled
-                    or TrendReportJobStatuses.Superseded
-                    or TrendReportJobStatuses.CancelRequested
-                || processingIsFresh)
+        await foreach (var jobEntity in _tableClient.QueryAsync<TrendReportJobEntity>(
+            entity => entity.PartitionKey == PartitionKeyValue && entity.UserId == userId))
+        {
+            if (jobEntity.Status is TrendReportJobStatuses.Queued or TrendReportJobStatuses.Processing)
             {
-                return null;
+                jobs.Add(ToModel(jobEntity));
             }
+        }
 
-            entity.Status = TrendReportJobStatuses.Processing;
-            entity.ProgressPercent = 15;
-            entity.CurrentStage = "正在读取报告配置";
-            entity.ErrorMessage = null;
-            entity.StartedAtUtc ??= startedAtUtc;
-            entity.UpdatedAtUtc = startedAtUtc;
-            await _tableClient.UpdateEntityAsync(entity, entity.ETag, TableUpdateMode.Replace);
-            return ToModel(entity);
-        }
-        catch (RequestFailedException exception) when (exception.Status is 404 or 412)
-        {
-            return null;
-        }
+        return jobs;
     }
 
-    public async Task<TrendReportJob?> GetByIdAsync(int id)
+
+    #endregion
+
+    #region: Processing State Update Methods 
+    public Task<bool> TryStartProcessingAsync(
+        int jobId,
+        string expectedDataVersion,
+        CancellationToken cancellationToken = default)
     {
-        await EnsureTableAsync();
+        return TryUpdateEntityAsync(
+            jobId,
+            expectedDataVersion,
+            entity =>
+                entity.DataVersion == expectedDataVersion
+                && entity.Status == TrendReportJobStatuses.Queued
+                && entity.ErrorMessage is null,
+            (entity, now) =>
+            {
+                entity.Status = TrendReportJobStatuses.Processing;
+                entity.ProgressPercent = 15;
+                entity.CurrentStage = "正在读取报告配置";
+                entity.StartedAtUtc = now;
+            },
+            operationName: TrendReportRepositoryActions.StartProcessing,
+            cancellationToken);
+    }
+
+    public Task<bool> TryUpdateProgressIfCurrentProcessingAsync(
+        int jobId,
+        string expectedDataVersion,
+        int progressPercent,
+        string currentStage,
+        CancellationToken cancellationToken = default)
+    {
+        return TryUpdateEntityAsync(
+            jobId,
+            expectedDataVersion,
+            entity =>
+                entity.DataVersion == expectedDataVersion
+                && entity.Status == TrendReportJobStatuses.Processing
+                && entity.ErrorMessage is null,
+            (entity, now) =>
+            {
+                entity.ProgressPercent = Math.Clamp(progressPercent, 0, 100);
+                entity.CurrentStage = currentStage;
+            },
+            operationName: TrendReportRepositoryActions.UpdateProgress,
+            cancellationToken);
+    }
+
+    public Task<bool> TryCompleteIfCurrentProcessingAsync(
+        int jobId,
+        string expectedDataVersion,
+        TrendReportResultDto result,
+        CancellationToken cancellationToken = default)
+    {
+        return TryUpdateEntityAsync(
+            jobId,
+            expectedDataVersion,
+            entity =>
+                entity.DataVersion == expectedDataVersion
+                && entity.Status == TrendReportJobStatuses.Processing
+                && entity.ErrorMessage is null,
+            (entity, now) =>
+            {
+                entity.Status = TrendReportJobStatuses.Completed;
+                entity.ProgressPercent = 100;
+                entity.CurrentStage = "训练报告生成完成";
+                entity.ResultJson = JsonSerializer.Serialize(result, _jsonOptions);
+                entity.ErrorMessage = null;
+                entity.CompletedAtUtc = now;
+            },
+            operationName: TrendReportRepositoryActions.MarkCompleted,
+            cancellationToken);
+    }
+
+    public Task<bool> TryMarkFailedIfCurrentProcessingAsync(
+        int jobId,
+        string expectedDataVersion,
+        CancellationToken cancellationToken = default)
+    {
+        return TryUpdateEntityAsync(
+            jobId,
+            expectedDataVersion,
+            entity =>
+                entity.DataVersion == expectedDataVersion
+                && entity.Status == TrendReportJobStatuses.Processing,
+            (entity, now) =>
+            {
+                entity.Status = TrendReportJobStatuses.Failed;
+                entity.ErrorMessage = "训练报告生成失败，请稍后重试或联系管理员。";
+                entity.CompletedAtUtc = now;
+            },
+            operationName: TrendReportRepositoryActions.MarkFailed,
+            cancellationToken);
+    }
+
+    public Task<bool> TryMarkSupersededIfCurrentAsync(
+        int jobId,
+        string expectedDataVersion,
+        CancellationToken cancellationToken = default)
+    {
+        return TryUpdateEntityAsync(
+            jobId,
+            expectedDataVersion,
+            entity =>
+                entity.DataVersion != expectedDataVersion,
+            (entity, now) =>
+            {
+                entity.Status = TrendReportJobStatuses.Superseded;
+                entity.CurrentStage = "已跳过：队列消息的数据版本已过期";
+                entity.CompletedAtUtc = now;
+            },
+            operationName: TrendReportRepositoryActions.MarkSuperseded,
+            cancellationToken);
+    }
+
+     public Task<bool> TryMarkSupersededIfStatusAsync(
+        int jobId,
+        string expectedDataVersion,
+        CancellationToken cancellationToken = default)
+    {
+        return TryUpdateEntityAsync(
+            jobId,
+            expectedDataVersion,
+            entity =>
+                entity.Status == TrendReportJobStatuses.CancelRequested,
+            (entity, now) =>
+            {
+                entity.Status = TrendReportJobStatuses.Superseded;
+                entity.CurrentStage = "已停止：训练数据已更新，请重新生成报告";
+                entity.CompletedAtUtc = now;
+            },
+            operationName: TrendReportRepositoryActions.MarkSuperseded,
+            cancellationToken);
+    }
+
+    private async Task<bool> TryUpdateEntityAsync(
+        int jobId,
+        string expectedDataVersion,
+        Func<TrendReportJobEntity, bool> canUpdate,
+        Action<TrendReportJobEntity, DateTimeOffset> applyUpdate,
+        TrendReportRepositoryActions operationName,
+        CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
 
         try
         {
-            var response = await _tableClient.GetEntityAsync<TrendReportJobEntity>(PartitionKeyValue, id.ToString());
-            return ToModel(response.Value);
+            var response = await _tableClient.GetEntityIfExistsAsync<TrendReportJobEntity>(
+                partitionKey: PartitionKeyValue,
+                rowKey: jobId.ToString(),
+                cancellationToken: cancellationToken);
+
+            if (!response.HasValue || response.Value is null)
+            {
+                return false;
+            }
+
+            var entity = response.Value;
+
+            if (!canUpdate(entity))
+            {
+                return false;
+            }
+
+            var now = DateTimeOffset.UtcNow;
+
+            applyUpdate(entity, now);
+
+            entity.UpdatedAtUtc = now;
+
+            await _tableClient.UpdateEntityAsync(
+                entity,
+                entity.ETag,
+                TableUpdateMode.Merge,
+                cancellationToken);
+
+            return true;
         }
         catch (RequestFailedException exception) when (exception.Status == 404)
         {
-            return null;
+            return false;
+        }
+        catch (RequestFailedException exception) when (exception.Status == 412)
+        {
+            return false;
+        }
+        catch (RequestFailedException exception)
+        {
+            _logger.LogError(
+                exception,
+                "Failed to update trend report job. Operation={Operation}, JobId={JobId}, ExpectedDataVersion={ExpectedDataVersion}.",
+                operationName,
+                jobId,
+                expectedDataVersion);
+
+            return false;
         }
     }
 
+    #endregion
+
+    #region: Update Async   
     // Replaces the current job entity in Azure Table Storage.
     public async Task<TrendReportJob> UpdateAsync(TrendReportJob job)
     {
@@ -215,6 +399,10 @@ public sealed class TrendReportJobRepository : ITrendReportJobRepository
         await _tableClient.UpsertEntityAsync(ToEntity(job), TableUpdateMode.Replace);
         return job;
     }
+
+    #endregion
+
+    #region: Private Helper Methods
 
     private Task EnsureTableAsync()
     {
@@ -250,7 +438,7 @@ public sealed class TrendReportJobRepository : ITrendReportJobRepository
     {
         var request = JsonSerializer.Deserialize<TrendReportRequest>(entity.RequestJson, _jsonOptions)
             ?? throw new InvalidOperationException("Report job request is invalid.");
-        var snapshot = JsonSerializer.Deserialize<TrendReportSnapshot>(entity.SnapshotJson, _jsonOptions)
+        var snapshot = JsonSerializer.Deserialize<TrendReportReqSnapshot>(entity.SnapshotJson, _jsonOptions)
             ?? throw new InvalidOperationException("Report job snapshot is invalid.");
         var result = string.IsNullOrWhiteSpace(entity.ResultJson)
             ? null
@@ -274,28 +462,6 @@ public sealed class TrendReportJobRepository : ITrendReportJobRepository
             entity.UpdatedAtUtc);
     }
 
-    private sealed class TrendReportJobEntity : ITableEntity
-    {
-        public string PartitionKey { get; set; } = PartitionKeyValue;
-        public string RowKey { get; set; } = string.Empty;
-        public DateTimeOffset? Timestamp { get; set; }
-        public ETag ETag { get; set; }
-        public string Status { get; set; } = TrendReportJobStatuses.Queued;
-        public int UserId { get; set; }
-        public int ProgressPercent { get; set; }
-        public string CurrentStage { get; set; } = string.Empty;
-        public string DataVersion { get; set; } = string.Empty;
-        public string ReportFingerprint { get; set; } = string.Empty;
-        public string RequestJson { get; set; } = string.Empty;
-        public string SnapshotJson { get; set; } = string.Empty;
-        public string? ResultJson { get; set; }
-        public string? ErrorMessage { get; set; }
-        public DateTimeOffset CreatedAtUtc { get; set; }
-        public DateTimeOffset? StartedAtUtc { get; set; }
-        public DateTimeOffset? CompletedAtUtc { get; set; }
-        public DateTimeOffset UpdatedAtUtc { get; set; }
-    }
-
     private static string CreateDataVersion(DateTimeOffset updatedAtUtc)
     {
         return $"{updatedAtUtc:yyyyMMddHHmmssfffffff}-{Guid.NewGuid():N}";
@@ -311,4 +477,6 @@ public sealed class TrendReportJobRepository : ITrendReportJobRepository
         public string DataVersion { get; set; } = string.Empty;
         public DateTimeOffset UpdatedAtUtc { get; set; }
     }
+
+    #endregion
 }

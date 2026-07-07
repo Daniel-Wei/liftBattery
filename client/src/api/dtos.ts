@@ -93,7 +93,7 @@ export type MuscleStimulationReportDto = {
 
 export type TrendReportSummaryCardDto = {
   type: string;
-  title: string;
+  title: "Reading" | "Sleep" | "Training Volume" | "Training Load";
   value: number;
   comparisonValue?: number;
   changePercent?: number;

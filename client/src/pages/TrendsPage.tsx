@@ -2,10 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { MuscleStimulationReport } from "../components/MuscleStimulationReport";
 import type { CreateTrendReportRequestDto, TrendReportSummaryCardDto } from "../api/dtos";
 import { TREND_REPORT_JOB_ID_STORAGE_KEY } from "../data/localStorageKeys";
-import {
-  getCurrentTrainingCycle,
-  getTrainingCycles,
-} from "../domain/trainingTrendCharts";
+import { getTrainingCycles } from "../domain/trainingTrendCharts";
 import { useAppDispatch, useAppSelector } from "../store/hooks";
 import {
   createTrendReport,
@@ -13,11 +10,6 @@ import {
 } from "../store/slices/trendReportSlice";
 import { getJobStatusLabel } from "../helpers/TrendsPageHelpers";
 import { selectProgramSettings } from "../store/selectors/programSettingsSelector";
-
-function formatSignedPercent(value: number) {
-  const rounded = Number(value.toFixed(1));
-  return `${rounded > 0 ? "+" : ""}${rounded}%`;
-}
 
 function formatSummaryValue(card: TrendReportSummaryCardDto, value: number | undefined) {
   if (value === undefined || !Number.isFinite(value)) {
@@ -106,32 +98,12 @@ export function TrendsPage() {
   const programSettings = useAppSelector(selectProgramSettings);
 
   const trainingCycles = useMemo(() => getTrainingCycles(programSettings), [programSettings]);
-  const currentTrainingCycle = getCurrentTrainingCycle(programSettings);
-  const [selectedCycleNumber, setSelectedCycleNumber] = useState(currentTrainingCycle.cycleNumber);
+  const [selectedCycleNumber, setSelectedCycleNumber] = useState<number | "">("");
   const [comparisonCycleNumber, setComparisonCycleNumber] = useState<number | "">("");
-  const selectedCycle = trainingCycles.find((cycle) => cycle.cycleNumber === selectedCycleNumber)
-    ?? currentTrainingCycle;
+  const selectedCycle = trainingCycles.find((cycle) => cycle.cycleNumber === selectedCycleNumber);
   const comparisonCycle = comparisonCycleNumber === ""
     ? null
     : trainingCycles.find((cycle) => cycle.cycleNumber === comparisonCycleNumber) ?? null;
-
-  useEffect(() => {
-    if (!trainingCycles.some((cycle) => cycle.cycleNumber === selectedCycleNumber)) {
-      setSelectedCycleNumber(currentTrainingCycle.cycleNumber);
-    }
-  }, [currentTrainingCycle.cycleNumber, selectedCycleNumber, trainingCycles]);
-
-  useEffect(() => {
-    if (
-      comparisonCycleNumber !== ""
-      && (
-        comparisonCycleNumber === selectedCycleNumber
-        || !trainingCycles.some((cycle) => cycle.cycleNumber === comparisonCycleNumber)
-      )
-    ) {
-      setComparisonCycleNumber("");
-    }
-  }, [comparisonCycleNumber, selectedCycleNumber, trainingCycles]);
 
   const currentReportRequest = useMemo<CreateTrendReportRequestDto | null>(() => {
     if (!selectedCycle) {
@@ -165,6 +137,7 @@ export function TrendsPage() {
       ? "重新生成报告"
       : "生成报告";
 
+  // execute any remaining jobs
   useEffect(() => {
     const savedJobId = Number(localStorage.getItem(TREND_REPORT_JOB_ID_STORAGE_KEY));
 
@@ -208,8 +181,14 @@ export function TrendsPage() {
             <select
               className="trend-report-date-input"
               value={selectedCycleNumber}
-              onChange={(event) => setSelectedCycleNumber(Number(event.target.value))}
+              onChange={(event) =>
+                setSelectedCycleNumber(
+                  event.target.value === "" ? "" : Number(event.target.value)
+                )
+              }
             >
+              <option value="">请选择目标训练周期</option>
+
               {trainingCycles.map((cycle) => (
                 <option key={cycle.cycleNumber} value={cycle.cycleNumber}>
                   {cycle.label}
@@ -217,7 +196,7 @@ export function TrendsPage() {
               ))}
             </select>
             <small className="trend-report-period-meta">
-              {selectedCycle.startDate} 至 {selectedCycle.endDate}
+              {selectedCycle ? `${selectedCycle.startDate} 至 ${selectedCycle.endDate}` : ""}
             </small>
           </label>
 
@@ -230,7 +209,7 @@ export function TrendsPage() {
             >
               <option value="">不对比，只看目标周期</option>
               {trainingCycles
-                .filter((cycle) => cycle.cycleNumber !== selectedCycle.cycleNumber)
+                .filter((cycle) => cycle.cycleNumber !== selectedCycle?.cycleNumber)
                 .map((cycle) => (
                   <option key={cycle.cycleNumber} value={cycle.cycleNumber}>
                     {cycle.label}
