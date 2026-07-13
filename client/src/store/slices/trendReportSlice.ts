@@ -39,8 +39,8 @@ function markCurrentReportOutdated(state: TrendReportState) {
 }
 
 export const createTrendReport = createAsyncThunk<
-  TrendReportJobDto,
-  CreateTrendReportRequestDto,
+  TrendReportJobDto, // Return type of the payload creator
+  CreateTrendReportRequestDto, // First argument to the payload creator
   { rejectValue: string }
 >(
   "trendReport/create",
@@ -55,7 +55,7 @@ export const createTrendReport = createAsyncThunk<
 
 export const fetchTrendReportJob = createAsyncThunk<
   TrendReportJobDto,
-  number,
+  number, // First argument to the payload creators
   { rejectValue: string }
 >(
   "trendReport/fetchJob",

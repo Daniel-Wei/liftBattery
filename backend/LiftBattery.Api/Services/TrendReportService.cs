@@ -90,7 +90,8 @@ public sealed class TrendReportService : ITrendReportService
             return ToDto(existingSameVersionJob);
         }
 
-        // cancel any other active jobs for the same user, since they are now superseded by this new request
+        // cancel any other active jobs with different data versions for the same user, 
+        // since they are now superseded by this new request
         var activeJobs = await _trendReportJobRepo.GetActiveByUserIdAsync(userId);
         var now = DateTimeOffset.UtcNow;
 
@@ -273,9 +274,10 @@ public sealed class TrendReportService : ITrendReportService
 
     private static TrendReportQueueMessageDto CreateQueueMessageDTO(TrendReportJob job)
     {
+        var runId = Guid.NewGuid().ToString("N");
         return new TrendReportQueueMessageDto(
             job.Id,
-            $"trend-report:{job.Id}",
+            $"trend-report:{runId}",
             job.UserId,
             job.Request.StartWeek.ToString("yyyy-MM-dd"),
             job.Request.EndWeek.AddDays(6).ToString("yyyy-MM-dd"),
@@ -294,7 +296,7 @@ public sealed class TrendReportService : ITrendReportService
             return true;
         }
 
-        if (latestJob.Status == TrendReportJobStatuses.CancelRequested)
+        if (latestJob.Status == TrendReportJobStatuses.CancelRequested )
         {
             await _trendReportJobRepo.TryMarkSupersededIfCancelRequestedAsync(
                 message.UserId,

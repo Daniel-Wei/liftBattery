@@ -20,24 +20,25 @@ public sealed class TrendReportMessageQueueService : ITrendReportMessageQueueSer
 
     // Sends a self-describing JSON message so the queue record is useful in Azure Portal,
     // logs, retry investigations, and DLQ debugging.
-    public async Task EnqueueAsync(TrendReportQueueMessageDto queueMessage)
+    public async Task EnqueueAsync(TrendReportQueueMessageDto queueMessageDTO, CancellationToken cancellationToken = default)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         var sender = GetSender();
-        var body = JsonSerializer.Serialize(queueMessage, QueueMessageJsonOptions);
+        var body = JsonSerializer.Serialize(queueMessageDTO, QueueMessageJsonOptions);
         var message = new ServiceBusMessage(body)
         {
-            MessageId = CreateMessageId(queueMessage),
-            CorrelationId = queueMessage.RunId,
+            MessageId = CreateMessageId(queueMessageDTO),
+            CorrelationId = queueMessageDTO.RunId,
             ContentType = "application/json",
             Subject = "TrendReportRequested",
         };
         message.ApplicationProperties["jobType"] = "TrendReport";
-        message.ApplicationProperties["runId"] = queueMessage.RunId;
-        message.ApplicationProperties["jobId"] = queueMessage.JobId;
-        message.ApplicationProperties["userId"] = queueMessage.UserId;
-        message.ApplicationProperties["periodStart"] = queueMessage.PeriodStart;
-        message.ApplicationProperties["periodEnd"] = queueMessage.PeriodEnd;
-        message.ApplicationProperties["dataVersion"] = queueMessage.DataVersion;
+        message.ApplicationProperties["runId"] = queueMessageDTO.RunId;
+        message.ApplicationProperties["jobId"] = queueMessageDTO.JobId;
+        message.ApplicationProperties["userId"] = queueMessageDTO.UserId;
+        message.ApplicationProperties["periodStart"] = queueMessageDTO.PeriodStart;
+        message.ApplicationProperties["periodEnd"] = queueMessageDTO.PeriodEnd;
+        message.ApplicationProperties["dataVersion"] = queueMessageDTO.DataVersion;
         await sender.SendMessageAsync(message);
     }
 

@@ -41,9 +41,9 @@ public sealed class TrendReportFunctions
 
         try
         {
-            var trendReportReportDTO = await _trendReportService.CreateAsync(userId.Value, createTrendReportReqDTO);
+            var trendReportDTO = await _trendReportService.CreateAsync(userId.Value, createTrendReportReqDTO);
             var response = requestData.CreateResponse(HttpStatusCode.Accepted);
-            await response.WriteAsJsonAsync(trendReportReportDTO);
+            await response.WriteAsJsonAsync(trendReportDTO);
             return response;
         }
         catch (ArgumentException exception)
