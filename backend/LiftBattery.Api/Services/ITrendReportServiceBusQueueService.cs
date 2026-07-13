@@ -4,5 +4,5 @@ namespace LiftBattery.Api.Services;
 
 public interface ITrendReportMessageQueueService
 {
-    Task EnqueueAsync(TrendReportQueueMessageDto queueMessage);
+    Task EnqueueAsync(TrendReportQueueMessageDto queueMessageDTO, CancellationToken cancellationToken = default);
 }
