@@ -14,7 +14,7 @@ The producer sends a JSON `TrendReportQueueMessageDto` body, not a plain job id.
 trend-report:{UserId}:{PeriodStart}:v{DataVersion}
 ```
 
-`CorrelationId` is the queue message `RunId`, so the same run can be followed through the producer logs, Service Bus message metadata, consumer logs, and Table Storage job row.
+`RunId` is persisted on the Table Storage job row before enqueueing. The queue message carries the same `RunId`, and Service Bus `CorrelationId` is set to that value, so the same run can be followed through the producer logs, Service Bus message metadata, consumer logs, and Table Storage job row.
 
 Runtime flow:
 
@@ -24,8 +24,8 @@ Runtime flow:
 4. If another active job exists for older data, it is marked `Cancelled`.
 5. A durable `Queued` Table job is created and a `TrendReportQueueMessageDto` is sent to Service Bus.
 6. `ProcessTrendReportJob` validates the JSON message. Permanently invalid messages are sent to DLQ with a reason and description.
-7. Valid messages call `TrendReportService.ProcessAsync`, which atomically claims the job using the Table entity ETag.
-8. The consumer checks the message `DataVersion` before progress/result writes, generates selected charts, and stores the result on the job.
+7. Valid messages call `TrendReportService.ProcessAsync`, which verifies the queue message `RunId` still matches the persisted job `RunId`, then atomically claims the job using the Table entity ETag.
+8. The consumer checks both `RunId` and `DataVersion` before progress/result writes, generates selected charts, and stores the result on the job.
 9. `GetTrendReport` returns status and results for frontend polling and refresh recovery.
 
 Training CRUD invalidation:

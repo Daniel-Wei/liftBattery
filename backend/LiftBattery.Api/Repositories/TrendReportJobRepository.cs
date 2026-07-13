@@ -220,15 +220,18 @@ public sealed class TrendReportJobRepository : ITrendReportJobRepository
     public Task<bool> TryStartProcessingAsync(
         int userId,
         int jobId,
+        string expectedRunId,
         string expectedDataVersion,
         CancellationToken cancellationToken = default)
     {
         return TryUpdateEntityAsync(
             userId,
             jobId,
+            expectedRunId,
             expectedDataVersion,
             entity =>
                 entity.DataVersion == expectedDataVersion
+                && entity.RunId == expectedRunId
                 && entity.Status == TrendReportJobStatuses.Queued
                 && entity.ErrorMessage is null,
             (entity, now) =>
@@ -245,6 +248,7 @@ public sealed class TrendReportJobRepository : ITrendReportJobRepository
     public Task<bool> TryUpdateProgressIfCurrentProcessingAsync(
         int userId,
         int jobId,
+        string expectedRunId,
         string expectedDataVersion,
         int progressPercent,
         string currentStage,
@@ -253,9 +257,11 @@ public sealed class TrendReportJobRepository : ITrendReportJobRepository
         return TryUpdateEntityAsync(
             userId,
             jobId,
+            expectedRunId,
             expectedDataVersion,
             entity =>
                 entity.DataVersion == expectedDataVersion
+                && entity.RunId == expectedRunId
                 && entity.Status == TrendReportJobStatuses.Processing
                 && entity.ErrorMessage is null,
             (entity, now) =>
@@ -270,6 +276,7 @@ public sealed class TrendReportJobRepository : ITrendReportJobRepository
     public Task<bool> TryCompleteIfCurrentProcessingAsync(
         int userId,
         int jobId,
+        string expectedRunId,
         string expectedDataVersion,
         TrendReportResultDto result,
         CancellationToken cancellationToken = default)
@@ -277,9 +284,11 @@ public sealed class TrendReportJobRepository : ITrendReportJobRepository
         return TryUpdateEntityAsync(
             userId,
             jobId,
+            expectedRunId,
             expectedDataVersion,
             entity =>
                 entity.DataVersion == expectedDataVersion
+                && entity.RunId == expectedRunId
                 && entity.Status == TrendReportJobStatuses.Processing
                 && entity.ErrorMessage is null,
             (entity, now) =>
@@ -298,15 +307,18 @@ public sealed class TrendReportJobRepository : ITrendReportJobRepository
     public Task<bool> TryMarkFailedIfCurrentProcessingAsync(
         int userId,
         int jobId,
+        string expectedRunId,
         string expectedDataVersion,
         CancellationToken cancellationToken = default)
     {
         return TryUpdateEntityAsync(
             userId,
             jobId,
+            expectedRunId,
             expectedDataVersion,
             entity =>
                 entity.DataVersion == expectedDataVersion
+                && entity.RunId == expectedRunId
                 && entity.Status == TrendReportJobStatuses.Processing
                 && entity.ErrorMessage is null,
             (entity, now) =>
@@ -329,6 +341,7 @@ public sealed class TrendReportJobRepository : ITrendReportJobRepository
         return TryUpdateEntityAsync(
             userId,
             jobId,
+            null,
             expectedDataVersion,
             entity =>
                 entity.DataVersion != expectedDataVersion
@@ -352,6 +365,7 @@ public sealed class TrendReportJobRepository : ITrendReportJobRepository
         return TryUpdateEntityAsync(
             userId,
             jobId,
+            null,
             expectedDataVersion,
             entity =>
                 entity.DataVersion == expectedDataVersion
@@ -369,6 +383,7 @@ public sealed class TrendReportJobRepository : ITrendReportJobRepository
     private async Task<bool> TryUpdateEntityAsync(
         int userId,
         int jobId,
+        string? expectedRunId,
         string expectedDataVersion,
         Func<TrendReportJobEntity, bool> canUpdate,
         Action<TrendReportJobEntity, DateTimeOffset> applyUpdate,
@@ -424,9 +439,10 @@ public sealed class TrendReportJobRepository : ITrendReportJobRepository
         {
             _logger.LogError(
                 exception,
-                "Failed to update trend report job. Operation={Operation}, JobId={JobId}, ExpectedDataVersion={ExpectedDataVersion}.",
+                "Failed to update trend report job. Operation={Operation}, JobId={JobId}, ExpectedRunId={ExpectedRunId}, ExpectedDataVersion={ExpectedDataVersion}.",
                 operationName,
                 jobId,
+                expectedRunId,
                 expectedDataVersion);
 
             return false;
@@ -558,6 +574,7 @@ public sealed class TrendReportJobRepository : ITrendReportJobRepository
             UserId = job.UserId,
             ProgressPercent = job.ProgressPercent,
             CurrentStage = job.CurrentStage,
+            RunId = job.RunId,
             DataVersion = job.DataVersion,
             ReportFingerprint = job.ReportFingerprint,
             RequestJson = JsonSerializer.Serialize(job.Request, _jsonOptions),
@@ -590,6 +607,7 @@ public sealed class TrendReportJobRepository : ITrendReportJobRepository
             entity.ProgressPercent,
             entity.CurrentStage,
             request,
+            entity.RunId,
             string.IsNullOrWhiteSpace(entity.DataVersion) ? entity.ReportFingerprint : entity.DataVersion,
             entity.ReportFingerprint,
             snapshot,

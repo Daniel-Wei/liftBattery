@@ -30,6 +30,7 @@ public sealed record TrendReportJob(
     int ProgressPercent,
     string CurrentStage,
     TrendReportRequest Request,
+    string RunId,
     string DataVersion,
     string ReportFingerprint,
     TrendReportReqSnapshot Snapshot,

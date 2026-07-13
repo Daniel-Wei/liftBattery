@@ -133,11 +133,11 @@ Migration:
 4. Service 用 `request + snapshot` 生成 `reportFingerprint`。
 5. 如果当前用户已有相同 fingerprint 的 `Queued` / `Processing` job，直接返回已有 job，不再 enqueue。
 6. 如果已有 active job 但 fingerprint 不同，说明用户改了报告输入或底层数据快照；旧 job 标记为 `Cancelled`。
-7. `TrendReportJobRepository` 将新的 Queued Job 写入 Azure Table。
-8. `TrendReportServiceBusQueue` 只把 `jobId` 放入 `trend-report-jobs` Queue。
+7. `TrendReportJobRepository` 将带 `RunId` 的新 Queued Job 写入 Azure Table。
+8. `TrendReportJobQueue` 将包含 `jobId` / `runId` / `dataVersion` 的 JSON message 放入 `trend-report-jobs` Queue。
 9. `ProcessTrendReportJob` Service Bus Trigger 调用 `ProcessAsync`。
-10. Consumer 以 ETag 保护的方式 claim Job，跳过 `Completed` / `Cancelled` / fresh `Processing` job。
-11. Consumer 在写入进度和结果前再次检查是否已 `Cancelled`，避免旧 worker 覆盖新状态。
+10. Consumer 先确认 message `RunId` 与 Table job `RunId` 一致，再以 ETag 保护的方式 claim Job。
+11. Consumer 在写入进度和结果前再次检查 `RunId` / `DataVersion` / 状态，避免旧 worker 覆盖新状态。
 12. 结果写回 Azure Table；前端按 job id polling，直到 `Completed` / `Failed` / `Cancelled`。
 
 这个流程的业务含义：

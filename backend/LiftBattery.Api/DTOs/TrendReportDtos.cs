@@ -41,6 +41,7 @@ public sealed record TrendReportResultDto(
 
 public sealed record TrendReportJobDto(
     int Id,
+    string RunId,
     string DataVersion,
     string ReportFingerprint,
     string Status,

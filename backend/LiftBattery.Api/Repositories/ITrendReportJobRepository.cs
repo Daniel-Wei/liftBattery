@@ -24,11 +24,13 @@ public interface ITrendReportJobRepository
     Task<bool> TryStartProcessingAsync(
         int userId,
         int jobId,
+        string expectedRunId,
         string expectedDataVersion,
         CancellationToken cancellationToken = default);
     Task<bool> TryUpdateProgressIfCurrentProcessingAsync(
         int userId,
         int jobId,
+        string expectedRunId,
         string expectedDataVersion,
         int progressPercent,
         string currentStage,
@@ -37,6 +39,7 @@ public interface ITrendReportJobRepository
     Task<bool> TryCompleteIfCurrentProcessingAsync(
         int userId,
         int jobId,
+        string expectedRunId,
         string expectedDataVersion,
         TrendReportResultDto result,
         CancellationToken cancellationToken = default);
@@ -44,6 +47,7 @@ public interface ITrendReportJobRepository
     Task<bool> TryMarkFailedIfCurrentProcessingAsync(
         int userId,
         int jobId,
+        string expectedRunId,
         string expectedDataVersion,
         CancellationToken cancellationToken = default);
 

@@ -124,6 +124,7 @@ export type TrendReportJobStatus =
 
 export type TrendReportJobDto = {
   id: number;
+  runId: string;
   dataVersion: string;
   reportFingerprint: string;
   status: TrendReportJobStatus;

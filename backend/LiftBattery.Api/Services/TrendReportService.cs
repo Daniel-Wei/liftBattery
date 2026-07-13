@@ -117,6 +117,7 @@ public sealed class TrendReportService : ITrendReportService
             }, cancellationToken);
         }
 
+        var runId = CreateRunId();
         var job = new TrendReportJob(
             Random.Shared.Next(1, int.MaxValue),
             userId,
@@ -124,6 +125,7 @@ public sealed class TrendReportService : ITrendReportService
             0,
             "等待后台处理",
             validatedTrendReportReq,
+            runId,
             trendReportReqDataVersion,
             reportReqFingerprint,
             // The request stores the selected report period; the snapshot stores database data at submission time.
@@ -180,6 +182,7 @@ public sealed class TrendReportService : ITrendReportService
         if(!await _trendReportJobRepo.TryStartProcessingAsync(
             queueMessageDTO.UserId,
             jobId,
+            queueMessageDTO.RunId,
             queueMessageDTO.DataVersion,
             cancellationToken))
         {
@@ -203,6 +206,7 @@ public sealed class TrendReportService : ITrendReportService
             var updated = await _trendReportJobRepo.TryUpdateProgressIfCurrentProcessingAsync(
                 queueMessageDTO.UserId,
                 jobId,
+                queueMessageDTO.RunId,
                 queueMessageDTO.DataVersion,
                 progressPercent: 45,
                 currentStage: "正在计算训练周期报告",
@@ -225,6 +229,7 @@ public sealed class TrendReportService : ITrendReportService
             updated = await _trendReportJobRepo.TryUpdateProgressIfCurrentProcessingAsync(
                 queueMessageDTO.UserId,
                 jobId,
+                queueMessageDTO.RunId,
                 queueMessageDTO.DataVersion,
                 progressPercent: 80,
                 currentStage: "正在整理图表数据",
@@ -245,6 +250,7 @@ public sealed class TrendReportService : ITrendReportService
             await _trendReportJobRepo.TryCompleteIfCurrentProcessingAsync(
                 queueMessageDTO.UserId,
                 job.Id,
+                queueMessageDTO.RunId,
                 queueMessageDTO.DataVersion,
                 result,
                 cancellationToken);
@@ -258,6 +264,7 @@ public sealed class TrendReportService : ITrendReportService
             await _trendReportJobRepo.TryMarkFailedIfCurrentProcessingAsync(
                 queueMessageDTO.UserId,
                 job.Id,
+                queueMessageDTO.RunId,
                 queueMessageDTO.DataVersion,
                 cancellationToken);
 
@@ -284,15 +291,19 @@ public sealed class TrendReportService : ITrendReportService
 
     private static TrendReportQueueMessageDto CreateQueueMessageDTO(TrendReportJob job)
     {
-        var runId = Guid.NewGuid().ToString("N");
         return new TrendReportQueueMessageDto(
             job.Id,
-            $"trend-report:{runId}",
+            job.RunId,
             job.UserId,
             job.Request.StartWeek.ToString("yyyy-MM-dd"),
             job.Request.EndWeek.AddDays(6).ToString("yyyy-MM-dd"),
             job.DataVersion,
             job.CreatedAtUtc);
+    }
+
+    private static string CreateRunId()
+    {
+        return $"trend-report:{Guid.NewGuid():N}";
     }
 
     private async Task<bool> StopIfQueueMessageIsStaleAsync(TrendReportQueueMessageDto message, CancellationToken cancellationToken = default)
@@ -302,6 +313,11 @@ public sealed class TrendReportService : ITrendReportService
         var latestJob = await _trendReportJobRepo.GetByIdAsync(message.UserId, message.JobId, cancellationToken);
 
         if (latestJob is null)
+        {
+            return true;
+        }
+
+        if (latestJob.RunId != message.RunId)
         {
             return true;
         }
@@ -903,6 +919,7 @@ public sealed class TrendReportService : ITrendReportService
     {
         return new TrendReportJobDto(
             job.Id,
+            job.RunId,
             job.DataVersion,
             job.ReportFingerprint,
             job.Status,

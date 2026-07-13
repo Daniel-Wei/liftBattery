@@ -15,6 +15,7 @@ public sealed class TrendReportJobEntity : ITableEntity
     public int UserId { get; set; }
     public int ProgressPercent { get; set; }
     public string CurrentStage { get; set; } = string.Empty;
+    public string RunId { get; set; } = string.Empty;
     public string DataVersion { get; set; } = string.Empty;
     public string ReportFingerprint { get; set; } = string.Empty;
     public string RequestJson { get; set; } = string.Empty;
