@@ -113,6 +113,7 @@ export type TrendReportResultDto = {
 };
 
 export type TrendReportJobStatus =
+  | "EnqueuePending"
   | "Queued"
   | "Processing"
   | "Completed"

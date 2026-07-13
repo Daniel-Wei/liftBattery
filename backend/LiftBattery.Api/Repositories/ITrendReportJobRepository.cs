@@ -17,11 +17,21 @@ public interface ITrendReportJobRepository
     Task<IReadOnlyList<TrendReportJob>> GetActiveByUserIdAsync(
         int userId,
         CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<TrendReportJob>> GetUnstartedJobsForEnqueueRecoveryAsync(
+        DateTimeOffset olderThanUtc,
+        int maxCount,
+        CancellationToken cancellationToken = default);
     Task<TrendReportJob?> GetLatestByUserIdAndFingerprintAsync(int userId, string dataVersion,
         string reportFingerprint, CancellationToken cancellationToken = default);
     Task<TrendReportJob?> GetByIdAsync(int userId, int id, CancellationToken cancellationToken = default);
     Task<TrendReportJob> UpdateAsync(TrendReportJob job, CancellationToken cancellationToken = default);
     Task<bool> TryStartProcessingAsync(
+        int userId,
+        int jobId,
+        string expectedRunId,
+        string expectedDataVersion,
+        CancellationToken cancellationToken = default);
+    Task<bool> TryMarkQueuedIfEnqueuePendingAsync(
         int userId,
         int jobId,
         string expectedRunId,
@@ -72,5 +82,6 @@ public enum TrendReportRepositoryActions
     Complete,
     MarkFailed,
     MarkSuperseded,
+    MarkQueued,
     MarkCompleted,
 }

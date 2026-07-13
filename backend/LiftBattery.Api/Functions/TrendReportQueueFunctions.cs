@@ -22,6 +22,28 @@ public sealed class TrendReportQueueFunctions
         _logger = logger;
     }
 
+    [Function("RecoverPendingTrendReportEnqueues")]
+    public async Task RecoverPendingTrendReportEnqueues(
+        [TimerTrigger("%TrendReportEnqueueRecoveryTimer%")] TimerInfo timerInfo,
+        CancellationToken cancellationToken)
+    {
+        var cutoffUtc = DateTimeOffset.UtcNow.AddMinutes(-2);
+        var recoveredCount = await _service.RecoverUnstartedEnqueuesAsync(
+            cutoffUtc,
+            maxCount: 50,
+            cancellationToken);
+
+        if (recoveredCount > 0)
+        {
+            _logger.LogWarning(
+                "Recovered unstarted trend report enqueue jobs. Count={RecoveredCount}, CutoffUtc={CutoffUtc}, Last={Last}, Next={Next}.",
+                recoveredCount,
+                cutoffUtc,
+                timerInfo.ScheduleStatus?.Last,
+                timerInfo.ScheduleStatus?.Next);
+        }
+    }
+
     // Azure Functions invokes this when a queue message is available, including redeliveries.
     // Invalid permanent messages go straight to DLQ; transient failures are thrown so Service Bus can retry.
     [Function("ProcessTrendReportJob")]

@@ -11,6 +11,10 @@ export function normalizeToMonday(value: string) {
 }
 
 export function getJobStatusLabel(status: string) {
+  if (status === "EnqueuePending") {
+    return "准备入队";
+  }
+
   if (status === "Queued") {
     return "排队中";
   }

@@ -52,7 +52,7 @@ public sealed class TrendReportService : ITrendReportService
 
     // Synchronous submission path:
     // 1. validate the request and capture a submission-time data snapshot
-    // 2. persist the initial Queued job in Azure Table Storage
+    // 2. persist the initial EnqueuePending job in Azure Table Storage
     // 3. enqueue a compact job command for background processing
     public async Task<TrendReportJobDto> SubmitAsync(
         int userId,
@@ -121,9 +121,9 @@ public sealed class TrendReportService : ITrendReportService
         var job = new TrendReportJob(
             Random.Shared.Next(1, int.MaxValue),
             userId,
-            TrendReportJobStatuses.Queued,
+            TrendReportJobStatuses.EnqueuePending,
             0,
-            "等待后台处理",
+            "正在提交后台队列",
             validatedTrendReportReq,
             runId,
             trendReportReqDataVersion,
@@ -144,7 +144,7 @@ public sealed class TrendReportService : ITrendReportService
         {
             // Publish a compact JSON command. The consumer still loads the durable job from Azure Table Storage,
             // but the message carries enough metadata for duplicate detection, correlation, retry, and DLQ debugging.
-            await _trendReportJobQueue.EnqueueAsync(CreateQueueMessageDTO(job), cancellationToken);
+            return ToDto(await PublishPendingJobAsync(job, cancellationToken));
         }
         catch (Exception exception)
         {
@@ -158,8 +158,6 @@ public sealed class TrendReportService : ITrendReportService
             await _trendReportJobRepo.UpdateAsync(failedJob, cancellationToken);
             throw;
         }
-
-        return ToDto(job);
     }
 
     public async Task ProcessAsync(TrendReportQueueMessageDto queueMessageDTO, CancellationToken cancellationToken = default)
@@ -287,6 +285,29 @@ public sealed class TrendReportService : ITrendReportService
         return GenerateResult(validatedTrendReportReq, snapshot);
     }
 
+    public async Task<int> RecoverUnstartedEnqueuesAsync(
+        DateTimeOffset olderThanUtc,
+        int maxCount,
+        CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+
+        var pendingJobs = await _trendReportJobRepo.GetUnstartedJobsForEnqueueRecoveryAsync(
+            olderThanUtc,
+            Math.Max(1, maxCount),
+            cancellationToken);
+        var recoveredCount = 0;
+
+        foreach (var job in pendingJobs)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            await PublishPendingJobAsync(job, cancellationToken);
+            recoveredCount++;
+        }
+
+        return recoveredCount;
+    }
+
     #region: Private Helper Methods
 
     private static TrendReportQueueMessageDto CreateQueueMessageDTO(TrendReportJob job)
@@ -299,6 +320,23 @@ public sealed class TrendReportService : ITrendReportService
             job.Request.EndWeek.AddDays(6).ToString("yyyy-MM-dd"),
             job.DataVersion,
             job.CreatedAtUtc);
+    }
+
+    private async Task<TrendReportJob> PublishPendingJobAsync(
+        TrendReportJob job,
+        CancellationToken cancellationToken)
+    {
+        await _trendReportJobQueue.EnqueueAsync(CreateQueueMessageDTO(job), cancellationToken);
+
+        await _trendReportJobRepo.TryMarkQueuedIfEnqueuePendingAsync(
+            job.UserId,
+            job.Id,
+            job.RunId,
+            job.DataVersion,
+            cancellationToken);
+
+        return await _trendReportJobRepo.GetByIdAsync(job.UserId, job.Id, cancellationToken)
+            ?? job;
     }
 
     private static string CreateRunId()

@@ -4,6 +4,7 @@ namespace LiftBattery.Api.Models;
 
 public static class TrendReportJobStatuses
 {
+    public const string EnqueuePending = "EnqueuePending";
     public const string Queued = "Queued";
     public const string Processing = "Processing";
     public const string Completed = "Completed";

@@ -20,6 +20,8 @@ public sealed class TrendReportRunIdTests
 
         Assert.NotNull(jobRepository.CreatedJob);
         Assert.NotNull(queue.EnqueuedMessage);
+        Assert.Equal(TrendReportJobStatuses.EnqueuePending, jobRepository.CreatedJob.Status);
+        Assert.Equal(TrendReportJobStatuses.Queued, dto.Status);
         Assert.StartsWith("trend-report:", jobRepository.CreatedJob.RunId);
         Assert.Equal(jobRepository.CreatedJob.RunId, queue.EnqueuedMessage.RunId);
         Assert.Equal(jobRepository.CreatedJob.RunId, dto.RunId);
@@ -54,6 +56,33 @@ public sealed class TrendReportRunIdTests
         Assert.Equal(1, jobRepository.TryStartProcessingCallCount);
         Assert.Equal("trend-report:current", jobRepository.LastExpectedRunId);
     }
+
+    [Fact]
+    public async Task RecoverUnstartedEnqueuesAsyncReenqueuesPendingJobAndMarksQueued()
+    {
+        var jobRepository = new FakeTrendReportJobRepository
+        {
+            Job = CreateJob(
+                runId: "trend-report:pending",
+                dataVersion: "v1") with
+            {
+                Status = TrendReportJobStatuses.EnqueuePending,
+                CurrentStage = "正在提交后台队列",
+            },
+        };
+        var queue = new FakeTrendReportJobQueue();
+        var service = CreateService(jobRepository, queue);
+
+        var recovered = await service.RecoverUnstartedEnqueuesAsync(
+            DateTimeOffset.Parse("2026-07-06T00:05:00Z"),
+            maxCount: 10);
+
+        Assert.Equal(1, recovered);
+        Assert.Equal(1, queue.EnqueueCount);
+        Assert.Equal("trend-report:pending", queue.EnqueuedMessage?.RunId);
+        Assert.Equal(TrendReportJobStatuses.Queued, jobRepository.Job?.Status);
+    }
+
 
     private static TrendReportService CreateService(
         FakeTrendReportJobRepository jobRepository,
@@ -165,6 +194,18 @@ public sealed class TrendReportRunIdTests
             return Task.FromResult<IReadOnlyList<TrendReportJob>>(Array.Empty<TrendReportJob>());
         }
 
+        public Task<IReadOnlyList<TrendReportJob>> GetUnstartedJobsForEnqueueRecoveryAsync(
+            DateTimeOffset olderThanUtc,
+            int maxCount,
+            CancellationToken cancellationToken = default)
+        {
+            var jobs = Job is { Status: TrendReportJobStatuses.EnqueuePending or TrendReportJobStatuses.Queued, StartedAtUtc: null }
+                ? new[] { Job }
+                : Array.Empty<TrendReportJob>();
+
+            return Task.FromResult<IReadOnlyList<TrendReportJob>>(jobs);
+        }
+
         public Task<TrendReportJob?> GetLatestByUserIdAndFingerprintAsync(
             int userId,
             string dataVersion,
@@ -200,6 +241,32 @@ public sealed class TrendReportRunIdTests
             TryStartProcessingCallCount++;
             LastExpectedRunId = expectedRunId;
             return Task.FromResult(TryStartProcessingResult);
+        }
+
+        public Task<bool> TryMarkQueuedIfEnqueuePendingAsync(
+            int userId,
+            int jobId,
+            string expectedRunId,
+            string expectedDataVersion,
+            CancellationToken cancellationToken = default)
+        {
+            if (Job is null
+                || Job.UserId != userId
+                || Job.Id != jobId
+                || Job.RunId != expectedRunId
+                || Job.DataVersion != expectedDataVersion
+                || Job.Status != TrendReportJobStatuses.EnqueuePending)
+            {
+                return Task.FromResult(false);
+            }
+
+            Job = Job with
+            {
+                Status = TrendReportJobStatuses.Queued,
+                CurrentStage = "等待后台处理",
+            };
+
+            return Task.FromResult(true);
         }
 
         public Task<bool> TryUpdateProgressIfCurrentProcessingAsync(
@@ -257,11 +324,13 @@ public sealed class TrendReportRunIdTests
     private sealed class FakeTrendReportJobQueue : ITrendReportJobQueue
     {
         public TrendReportQueueMessageDto? EnqueuedMessage { get; private set; }
+        public int EnqueueCount { get; private set; }
 
         public Task EnqueueAsync(
             TrendReportQueueMessageDto queueMessage,
             CancellationToken cancellationToken = default)
         {
+            EnqueueCount++;
             EnqueuedMessage = queueMessage;
             return Task.CompletedTask;
         }

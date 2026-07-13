@@ -213,6 +213,38 @@ public sealed class TrendReportJobRepository : ITrendReportJobRepository
         return jobs;
     }
 
+    public async Task<IReadOnlyList<TrendReportJob>> GetUnstartedJobsForEnqueueRecoveryAsync(
+        DateTimeOffset olderThanUtc,
+        int maxCount,
+        CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+
+        await EnsureTableAsync();
+
+        var jobs = new List<TrendReportJob>();
+
+        await foreach (var jobEntity in _tableClient.QueryAsync<TrendReportJobEntity>(
+            entity => (entity.Status == TrendReportJobStatuses.EnqueuePending
+                    || entity.Status == TrendReportJobStatuses.Queued)
+                && entity.StartedAtUtc == null
+                && entity.CreatedAtUtc <= olderThanUtc,
+            maxPerPage: Math.Max(1, maxCount),
+            cancellationToken: cancellationToken))
+        {
+            jobs.Add(ToModel(jobEntity));
+
+            if (jobs.Count >= maxCount)
+            {
+                break;
+            }
+        }
+
+        return jobs
+            .OrderBy(job => job.CreatedAtUtc)
+            .ToArray();
+    }
+
 
     #endregion
 
@@ -232,7 +264,8 @@ public sealed class TrendReportJobRepository : ITrendReportJobRepository
             entity =>
                 entity.DataVersion == expectedDataVersion
                 && entity.RunId == expectedRunId
-                && entity.Status == TrendReportJobStatuses.Queued
+                && entity.Status is TrendReportJobStatuses.EnqueuePending
+                    or TrendReportJobStatuses.Queued
                 && entity.ErrorMessage is null,
             (entity, now) =>
             {
@@ -242,6 +275,33 @@ public sealed class TrendReportJobRepository : ITrendReportJobRepository
                 entity.StartedAtUtc = now;
             },
             operationName: TrendReportRepositoryActions.StartProcessing,
+            cancellationToken);
+    }
+
+    public Task<bool> TryMarkQueuedIfEnqueuePendingAsync(
+        int userId,
+        int jobId,
+        string expectedRunId,
+        string expectedDataVersion,
+        CancellationToken cancellationToken = default)
+    {
+        return TryUpdateEntityAsync(
+            userId,
+            jobId,
+            expectedRunId,
+            expectedDataVersion,
+            entity =>
+                entity.DataVersion == expectedDataVersion
+                && entity.RunId == expectedRunId
+                && entity.Status == TrendReportJobStatuses.EnqueuePending
+                && entity.ErrorMessage is null,
+            (entity, now) =>
+            {
+                entity.Status = TrendReportJobStatuses.Queued;
+                entity.ProgressPercent = 0;
+                entity.CurrentStage = "等待后台处理";
+            },
+            operationName: TrendReportRepositoryActions.MarkQueued,
             cancellationToken);
     }
 
@@ -535,6 +595,7 @@ public sealed class TrendReportJobRepository : ITrendReportJobRepository
     private static bool IsActiveStatus(string status)
     {
         return status is TrendReportJobStatuses.Queued
+            or TrendReportJobStatuses.EnqueuePending
             or TrendReportJobStatuses.Processing;
     }
 

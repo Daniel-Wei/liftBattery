@@ -123,7 +123,9 @@ export function TrendsPage() {
     return nextRequest;
   }, [comparisonCycle, selectedCycle]);
 
-  const activeJobIsGenerating = job?.status === "Queued" || job?.status === "Processing";
+  const activeJobIsGenerating = job?.status === "EnqueuePending"
+    || job?.status === "Queued"
+    || job?.status === "Processing";
   const progressPercent = Math.max(0, Math.min(100, job?.progressPercent ?? 0));
   const completedResult = job?.status === "Completed" ? job.result : undefined;
   const summaryCards = completedResult?.summaryCards ?? [];
@@ -153,7 +155,11 @@ export function TrendsPage() {
 
     localStorage.setItem(TREND_REPORT_JOB_ID_STORAGE_KEY, job.id.toString());
 
-    if (job.status !== "Queued" && job.status !== "Processing") {
+    if (
+      job.status !== "EnqueuePending"
+      && job.status !== "Queued"
+      && job.status !== "Processing"
+    ) {
       return;
     }
 

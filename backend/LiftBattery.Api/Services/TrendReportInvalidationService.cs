@@ -35,7 +35,8 @@ public sealed class TrendReportInvalidationService : ITrendReportInvalidationSer
 
             var outdatedStage = $"训练数据已在 {changedDate:yyyy-MM-dd} 更新，请重新生成报告。";
 
-            if (job.Status == TrendReportJobStatuses.Queued)
+            if (job.Status is TrendReportJobStatuses.EnqueuePending
+                or TrendReportJobStatuses.Queued)
             {
                 await _jobRepository.UpdateAsync(job with
                 {
