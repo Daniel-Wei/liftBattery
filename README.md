@@ -128,7 +128,7 @@ Migration:
 ## Trends Azure Service Bus 流程
 
 1. 前端提交训练周期、可选对比周期、动作选择和报告类型。
-2. `TrendReportFunctions` 调用 `TrendReportService.CreateAsync`。
+2. `TrendReportFunctions` 调用 `TrendReportService.SubmitAsync`。
 3. Service 验证请求并读取 Training 与 PreCheck 快照。
 4. Service 用 `request + snapshot` 生成 `reportFingerprint`。
 5. 如果当前用户已有相同 fingerprint 的 `Queued` / `Processing` job，直接返回已有 job，不再 enqueue。

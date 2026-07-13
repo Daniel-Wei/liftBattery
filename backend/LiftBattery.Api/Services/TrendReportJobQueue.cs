@@ -5,7 +5,7 @@ using Microsoft.Extensions.Configuration;
 
 namespace LiftBattery.Api.Services;
 
-public sealed class TrendReportMessageQueueService : ITrendReportMessageQueueService, IAsyncDisposable
+public sealed class TrendReportJobQueue : ITrendReportJobQueue, IAsyncDisposable
 {
     private static readonly JsonSerializerOptions QueueMessageJsonOptions = new(JsonSerializerDefaults.Web);
 
@@ -13,33 +13,35 @@ public sealed class TrendReportMessageQueueService : ITrendReportMessageQueueSer
     private ServiceBusClient? _client;
     private ServiceBusSender? _sender;
 
-    public TrendReportMessageQueueService(IConfiguration configuration)
+    public TrendReportJobQueue(IConfiguration configuration)
     {
         _configuration = configuration;
     }
 
     // Sends a self-describing JSON message so the queue record is useful in Azure Portal,
     // logs, retry investigations, and DLQ debugging.
-    public async Task EnqueueAsync(TrendReportQueueMessageDto queueMessageDTO, CancellationToken cancellationToken = default)
+    public async Task EnqueueAsync(
+        TrendReportQueueMessageDto queueMessage,
+        CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
         var sender = GetSender();
-        var body = JsonSerializer.Serialize(queueMessageDTO, QueueMessageJsonOptions);
+        var body = JsonSerializer.Serialize(queueMessage, QueueMessageJsonOptions);
         var message = new ServiceBusMessage(body)
         {
-            MessageId = CreateMessageId(queueMessageDTO),
-            CorrelationId = queueMessageDTO.RunId,
+            MessageId = CreateMessageId(queueMessage),
+            CorrelationId = queueMessage.RunId,
             ContentType = "application/json",
             Subject = "TrendReportRequested",
         };
         message.ApplicationProperties["jobType"] = "TrendReport";
-        message.ApplicationProperties["runId"] = queueMessageDTO.RunId;
-        message.ApplicationProperties["jobId"] = queueMessageDTO.JobId;
-        message.ApplicationProperties["userId"] = queueMessageDTO.UserId;
-        message.ApplicationProperties["periodStart"] = queueMessageDTO.PeriodStart;
-        message.ApplicationProperties["periodEnd"] = queueMessageDTO.PeriodEnd;
-        message.ApplicationProperties["dataVersion"] = queueMessageDTO.DataVersion;
-        await sender.SendMessageAsync(message);
+        message.ApplicationProperties["runId"] = queueMessage.RunId;
+        message.ApplicationProperties["jobId"] = queueMessage.JobId;
+        message.ApplicationProperties["userId"] = queueMessage.UserId;
+        message.ApplicationProperties["periodStart"] = queueMessage.PeriodStart;
+        message.ApplicationProperties["periodEnd"] = queueMessage.PeriodEnd;
+        message.ApplicationProperties["dataVersion"] = queueMessage.DataVersion;
+        await sender.SendMessageAsync(message, cancellationToken);
     }
 
     public async ValueTask DisposeAsync()

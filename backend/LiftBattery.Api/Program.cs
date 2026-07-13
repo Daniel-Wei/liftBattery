@@ -55,7 +55,7 @@ var host = new HostBuilder()
         services.AddScoped<ITrainingSessionService, TrainingSessionService>();
         services.AddScoped<ITrendReportJobRepository, TrendReportJobRepository>();
         services.AddScoped<ITrendReportInvalidationService, TrendReportInvalidationService>();
-        services.AddScoped<ITrendReportMessageQueueService, TrendReportMessageQueueService>();
+        services.AddScoped<ITrendReportJobQueue, TrendReportJobQueue>();
         services.AddScoped<ITrendReportService, TrendReportService>();
         services.AddScoped<IWeeklyReportScheduleRepository, WeeklyReportScheduleBlobRepository>();
         services.AddScoped<IWeeklyReportJobRepository, WeeklyReportRepository>();

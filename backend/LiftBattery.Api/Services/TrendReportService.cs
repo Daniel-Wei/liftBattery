@@ -29,20 +29,20 @@ public sealed class TrendReportService : ITrendReportService
     private readonly ITrendReportJobRepository _trendReportJobRepo;
     private readonly ITrainingRepository _trainingRepo;
     private readonly IPreCheckRepository _preCheckRepo;
-    private readonly ITrendReportMessageQueueService _trendReportMessageQueueRepo;
+    private readonly ITrendReportJobQueue _trendReportJobQueue;
     private readonly int _demoDelayMilliseconds;
 
     public TrendReportService(
         ITrendReportJobRepository trendReportJobRepo,
         ITrainingRepository trainingRepo,
         IPreCheckRepository preCheckRepo,
-        ITrendReportMessageQueueService trendReportMessageQueueRepo,
+        ITrendReportJobQueue trendReportJobQueue,
         IConfiguration configuration)
     {
         _trendReportJobRepo = trendReportJobRepo;
         _trainingRepo = trainingRepo;
         _preCheckRepo = preCheckRepo;
-        _trendReportMessageQueueRepo = trendReportMessageQueueRepo;
+        _trendReportJobQueue = trendReportJobQueue;
         _demoDelayMilliseconds = int.TryParse(
             configuration["TrendReportDemoDelayMilliseconds"],
             out var configuredDelay)
@@ -50,12 +50,16 @@ public sealed class TrendReportService : ITrendReportService
                 : 0;
     }
 
-    // Synchronous producer path:
+    // Synchronous submission path:
     // 1. validate the request and capture a submission-time data snapshot
     // 2. persist the initial Queued job in Azure Table Storage
-    // 3. enqueue the job ID for background processing
-    public async Task<TrendReportJobDto> CreateAsync(int userId, CreateTrendReportRequestDto createTrendReportReqDTO)
+    // 3. enqueue a compact job command for background processing
+    public async Task<TrendReportJobDto> SubmitAsync(
+        int userId,
+        CreateTrendReportRequestDto createTrendReportReqDTO,
+        CancellationToken cancellationToken = default)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         ValidateUserId(userId);
         // Validate and normalize the request DTO.
         var validatedTrendReportReq = ValidateRequest(createTrendReportReqDTO);
@@ -70,17 +74,24 @@ public sealed class TrendReportService : ITrendReportService
         var trainingDays = await _trainingRepo.GetByDateRangeAsync(
             userId,
             snapshotStart,
-            rangeEnd);
+            rangeEnd,
+            cancellationToken);
         var preCheckLogs = await _preCheckRepo.GetByDateRangeAsync(
             userId,
             snapshotStart,
-            rangeEnd);
+            rangeEnd,
+            cancellationToken);
         var trendReportReqSnapshot = new TrendReportReqSnapshot(trainingDays, preCheckLogs);
 
-        var trendReportReqDataVersion = await _trendReportJobRepo.GetOrCreateCurrentTrendReportReqDataVersionAsync(userId);
+        var trendReportReqDataVersion = await _trendReportJobRepo
+            .GetOrCreateCurrentTrendReportReqDataVersionAsync(userId, cancellationToken);
         
         var reportReqFingerprint = CreateTrendReportReqFingerprint(validatedTrendReportReq, trendReportReqSnapshot, trendReportReqDataVersion);
-        var existingSameVersionJob = await _trendReportJobRepo.GetLatestByUserIdAndFingerprintAsync(userId, trendReportReqDataVersion, reportReqFingerprint);
+        var existingSameVersionJob = await _trendReportJobRepo.GetLatestByUserIdAndFingerprintAsync(
+            userId,
+            trendReportReqDataVersion,
+            reportReqFingerprint,
+            cancellationToken);
 
         if (existingSameVersionJob is not null
             && existingSameVersionJob.Status is not TrendReportJobStatuses.Failed
@@ -90,9 +101,8 @@ public sealed class TrendReportService : ITrendReportService
             return ToDto(existingSameVersionJob);
         }
 
-        // cancel any other active jobs with different data versions for the same user, 
-        // since they are now superseded by this new request
-        var activeJobs = await _trendReportJobRepo.GetActiveByUserIdAsync(userId);
+        // Cancel any other active jobs for the same user, since this new submission supersedes them.
+        var activeJobs = await _trendReportJobRepo.GetActiveByUserIdAsync(userId, cancellationToken);
         var now = DateTimeOffset.UtcNow;
 
         foreach (var activeJob in activeJobs)
@@ -104,7 +114,7 @@ public sealed class TrendReportService : ITrendReportService
                 ErrorMessage = null,
                 CompletedAtUtc = now,
                 UpdatedAtUtc = now,
-            });
+            }, cancellationToken);
         }
 
         var job = new TrendReportJob(
@@ -126,13 +136,13 @@ public sealed class TrendReportService : ITrendReportService
             now);
 
         // Persist the initial Queued job before publishing its message.
-        await _trendReportJobRepo.CreateAsync(job);
+        await _trendReportJobRepo.CreateAsync(job, cancellationToken);
 
         try
         {
             // Publish a compact JSON command. The consumer still loads the durable job from Azure Table Storage,
             // but the message carries enough metadata for duplicate detection, correlation, retry, and DLQ debugging.
-            await _trendReportMessageQueueRepo.EnqueueAsync(CreateQueueMessageDTO(job));
+            await _trendReportJobQueue.EnqueueAsync(CreateQueueMessageDTO(job), cancellationToken);
         }
         catch (Exception exception)
         {
@@ -143,7 +153,7 @@ public sealed class TrendReportService : ITrendReportService
                 ErrorMessage = exception.Message,
                 UpdatedAtUtc = DateTimeOffset.UtcNow,
             };
-            await _trendReportJobRepo.UpdateAsync(failedJob);
+            await _trendReportJobRepo.UpdateAsync(failedJob, cancellationToken);
             throw;
         }
 

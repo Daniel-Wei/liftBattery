@@ -19,7 +19,7 @@ trend-report:{UserId}:{PeriodStart}:v{DataVersion}
 Runtime flow:
 
 1. `CreateTrendReport` validates the request and captures the SQL snapshot.
-2. `TrendReportService.CreateAsync` reads the current user `DataVersion` and calculates a report fingerprint from request + snapshot + `DataVersion`.
+2. `TrendReportService.SubmitAsync` reads the current user `DataVersion` and calculates a report fingerprint from request + snapshot + `DataVersion`.
 3. If a usable job already exists for the same fingerprint and `DataVersion`, the existing job is returned and no new message is sent.
 4. If another active job exists for older data, it is marked `Cancelled`.
 5. A durable `Queued` Table job is created and a `TrendReportQueueMessageDto` is sent to Service Bus.

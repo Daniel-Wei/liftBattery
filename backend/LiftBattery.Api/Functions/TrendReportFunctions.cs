@@ -22,7 +22,7 @@ public sealed class TrendReportFunctions
         _cookieHelper = cookieHelper;
     }
 
-    // Passes the request DTO to the service to persist and enqueue a report job.
+    // Passes the request DTO to the service to submit a durable background report job.
     // Returns 202 with the initial job state after enqueueing; the report is calculated later.
     [Function("CreateTrendReport")]
     public async Task<HttpResponseData> CreateTrendReport(
@@ -41,7 +41,10 @@ public sealed class TrendReportFunctions
 
         try
         {
-            var trendReportDTO = await _trendReportService.CreateAsync(userId.Value, createTrendReportReqDTO);
+            var trendReportDTO = await _trendReportService.SubmitAsync(
+                userId.Value,
+                createTrendReportReqDTO,
+                cancellationToken);
             var response = requestData.CreateResponse(HttpStatusCode.Accepted);
             await response.WriteAsJsonAsync(trendReportDTO);
             return response;
