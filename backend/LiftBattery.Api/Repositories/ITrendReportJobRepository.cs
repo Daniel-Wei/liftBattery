@@ -37,6 +37,24 @@ public interface ITrendReportJobRepository
         string expectedRunId,
         string expectedDataVersion,
         CancellationToken cancellationToken = default);
+
+    Task<TrendReportJob?> TryBeginEnqueueRecoveryAttemptAsync(
+        int userId,
+        int jobId,
+        string expectedRunId,
+        string expectedDataVersion,
+        int maxAttempts,
+        CancellationToken cancellationToken = default);
+
+    Task<bool> TryRecordEnqueueRecoveryFailureAsync(
+        int userId,
+        int jobId,
+        string expectedRunId,
+        string expectedDataVersion,
+        string errorMessage,
+        int maxAttempts,
+        CancellationToken cancellationToken = default);
+
     Task<bool> TryUpdateProgressIfCurrentProcessingAsync(
         int userId,
         int jobId,
@@ -69,6 +87,7 @@ public interface ITrendReportJobRepository
 
     Task<bool> TryMarkSupersededIfCurrentAsync(
         int userId,
+        string runId,
         int jobId,
         string expectedDataVersion,
         CancellationToken cancellationToken = default);
@@ -84,4 +103,6 @@ public enum TrendReportRepositoryActions
     MarkSuperseded,
     MarkQueued,
     MarkCompleted,
+    BeginEnqueueRecoveryAttempt,
+    RecordEnqueueRecoveryFailure,
 }

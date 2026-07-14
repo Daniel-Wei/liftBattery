@@ -83,15 +83,58 @@ public sealed class TrendReportRunIdTests
         Assert.Equal(TrendReportJobStatuses.Queued, jobRepository.Job?.Status);
     }
 
+    [Fact]
+    public async Task RecoverUnstartedEnqueuesAsyncMarksPendingJobFailedAfterRetryLimit()
+    {
+        var jobRepository = new FakeTrendReportJobRepository
+        {
+            Job = CreateJob(
+                runId: "trend-report:pending",
+                dataVersion: "v1") with
+            {
+                Status = TrendReportJobStatuses.EnqueuePending,
+                CurrentStage = "Submitting background queue",
+            },
+        };
+        var queue = new FakeTrendReportJobQueue { ThrowOnEnqueue = true };
+        var service = CreateService(jobRepository, queue, enqueueRecoveryMaxAttempts: 2);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.RecoverUnstartedEnqueuesAsync(
+                DateTimeOffset.Parse("2026-07-06T00:05:00Z"),
+                maxCount: 10));
+
+        Assert.Equal(TrendReportJobStatuses.EnqueuePending, jobRepository.Job?.Status);
+        Assert.Equal(1, jobRepository.EnqueueRecoveryAttemptCount);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.RecoverUnstartedEnqueuesAsync(
+                DateTimeOffset.Parse("2026-07-06T00:05:00Z"),
+                maxCount: 10));
+
+        Assert.Equal(TrendReportJobStatuses.Failed, jobRepository.Job?.Status);
+        Assert.Equal(2, jobRepository.EnqueueRecoveryAttemptCount);
+        Assert.Equal("Service Bus send failed.", jobRepository.Job?.ErrorMessage);
+
+        var recovered = await service.RecoverUnstartedEnqueuesAsync(
+            DateTimeOffset.Parse("2026-07-06T00:05:00Z"),
+            maxCount: 10);
+
+        Assert.Equal(0, recovered);
+        Assert.Equal(2, queue.EnqueueCount);
+    }
+
 
     private static TrendReportService CreateService(
         FakeTrendReportJobRepository jobRepository,
-        FakeTrendReportJobQueue queue)
+        FakeTrendReportJobQueue queue,
+        int enqueueRecoveryMaxAttempts = 5)
     {
         var configuration = new ConfigurationBuilder()
             .AddInMemoryCollection(new Dictionary<string, string?>
             {
                 ["TrendReportDemoDelayMilliseconds"] = "0",
+                ["TrendReportEnqueueRecoveryMaxAttempts"] = enqueueRecoveryMaxAttempts.ToString(),
             })
             .Build();
 
@@ -161,6 +204,7 @@ public sealed class TrendReportRunIdTests
         public TrendReportJob? Job { get; set; }
         public bool TryStartProcessingResult { get; set; }
         public int TryStartProcessingCallCount { get; private set; }
+        public int EnqueueRecoveryAttemptCount { get; private set; }
         public string? LastExpectedRunId { get; private set; }
 
         public Task<TrendReportJob> CreateAsync(
@@ -220,7 +264,7 @@ public sealed class TrendReportRunIdTests
             int id,
             CancellationToken cancellationToken = default)
         {
-            return Task.FromResult(Job);
+            return Task.FromResult<TrendReportJob?>(Job);
         }
 
         public Task<TrendReportJob> UpdateAsync(
@@ -269,6 +313,78 @@ public sealed class TrendReportRunIdTests
             return Task.FromResult(true);
         }
 
+        public Task<TrendReportJob?> TryBeginEnqueueRecoveryAttemptAsync(
+            int userId,
+            int jobId,
+            string expectedRunId,
+            string expectedDataVersion,
+            int maxAttempts,
+            CancellationToken cancellationToken = default)
+        {
+            if (Job is null
+                || Job.UserId != userId
+                || Job.Id != jobId
+                || Job.RunId != expectedRunId
+                || Job.DataVersion != expectedDataVersion
+                || Job.Status != TrendReportJobStatuses.EnqueuePending
+                || Job.ErrorMessage is not null)
+            {
+                return Task.FromResult<TrendReportJob?>(Job);
+            }
+
+            if (EnqueueRecoveryAttemptCount >= Math.Max(1, maxAttempts))
+            {
+                Job = Job with
+                {
+                    Status = TrendReportJobStatuses.Failed,
+                    CurrentStage = "报告任务提交后台队列失败",
+                    ErrorMessage = $"Trend report enqueue recovery retry limit exceeded after {EnqueueRecoveryAttemptCount} attempts.",
+                    CompletedAtUtc = DateTimeOffset.UtcNow,
+                    UpdatedAtUtc = DateTimeOffset.UtcNow,
+                };
+            }
+            else
+            {
+                EnqueueRecoveryAttemptCount++;
+            }
+
+            return Task.FromResult<TrendReportJob?>(Job);
+        }
+
+        public Task<bool> TryRecordEnqueueRecoveryFailureAsync(
+            int userId,
+            int jobId,
+            string expectedRunId,
+            string expectedDataVersion,
+            string errorMessage,
+            int maxAttempts,
+            CancellationToken cancellationToken = default)
+        {
+            if (Job is null
+                || Job.UserId != userId
+                || Job.Id != jobId
+                || Job.RunId != expectedRunId
+                || Job.DataVersion != expectedDataVersion
+                || Job.Status != TrendReportJobStatuses.EnqueuePending)
+            {
+                return Task.FromResult(false);
+            }
+
+            if (EnqueueRecoveryAttemptCount >= Math.Max(1, maxAttempts))
+            {
+                Job = Job with
+                {
+                    Status = TrendReportJobStatuses.Failed,
+                    CurrentStage = "报告任务提交后台队列失败",
+                    ErrorMessage = errorMessage,
+                    CompletedAtUtc = DateTimeOffset.UtcNow,
+                    UpdatedAtUtc = DateTimeOffset.UtcNow,
+                };
+            }
+
+            return Task.FromResult(true);
+        }
+
         public Task<bool> TryUpdateProgressIfCurrentProcessingAsync(
             int userId,
             int jobId,
@@ -313,6 +429,7 @@ public sealed class TrendReportRunIdTests
 
         public Task<bool> TryMarkSupersededIfCurrentAsync(
             int userId,
+            string runId,
             int jobId,
             string expectedDataVersion,
             CancellationToken cancellationToken = default)
@@ -325,6 +442,7 @@ public sealed class TrendReportRunIdTests
     {
         public TrendReportQueueMessageDto? EnqueuedMessage { get; private set; }
         public int EnqueueCount { get; private set; }
+        public bool ThrowOnEnqueue { get; init; }
 
         public Task EnqueueAsync(
             TrendReportQueueMessageDto queueMessage,
@@ -332,6 +450,12 @@ public sealed class TrendReportRunIdTests
         {
             EnqueueCount++;
             EnqueuedMessage = queueMessage;
+
+            if (ThrowOnEnqueue)
+            {
+                throw new InvalidOperationException("Service Bus send failed.");
+            }
+
             return Task.CompletedTask;
         }
     }

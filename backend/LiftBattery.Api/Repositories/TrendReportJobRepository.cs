@@ -225,10 +225,9 @@ public sealed class TrendReportJobRepository : ITrendReportJobRepository
         var jobs = new List<TrendReportJob>();
 
         await foreach (var jobEntity in _tableClient.QueryAsync<TrendReportJobEntity>(
-            entity => (entity.Status == TrendReportJobStatuses.EnqueuePending
-                    || entity.Status == TrendReportJobStatuses.Queued)
-                && entity.StartedAtUtc == null
-                && entity.CreatedAtUtc <= olderThanUtc,
+            entity => entity.Status == TrendReportJobStatuses.EnqueuePending
+                        && entity.StartedAtUtc == null
+                        && entity.CreatedAtUtc <= olderThanUtc,
             maxPerPage: Math.Max(1, maxCount),
             cancellationToken: cancellationToken))
         {
@@ -302,6 +301,118 @@ public sealed class TrendReportJobRepository : ITrendReportJobRepository
                 entity.CurrentStage = "等待后台处理";
             },
             operationName: TrendReportRepositoryActions.MarkQueued,
+            cancellationToken);
+    }
+
+    public async Task<TrendReportJob?> TryBeginEnqueueRecoveryAttemptAsync(
+        int userId,
+        int jobId,
+        string expectedRunId,
+        string expectedDataVersion,
+        int maxAttempts,
+        CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+
+        await EnsureTableAsync();
+
+        try
+        {
+            var response = await _tableClient.GetEntityIfExistsAsync<TrendReportJobEntity>(
+                partitionKey: GetJobPartitionKey(userId),
+                rowKey: jobId.ToString(),
+                cancellationToken: cancellationToken);
+
+            if (!response.HasValue || response.Value is null)
+            {
+                throw new InvalidOperationException("Trend report job not found.");
+            }
+
+            var entity = response.Value;
+
+            if (entity.DataVersion != expectedDataVersion
+                || entity.RunId != expectedRunId
+                || entity.Status != TrendReportJobStatuses.EnqueuePending
+                || entity.ErrorMessage is not null)
+            {
+                throw new InvalidOperationException("Trend report job not found.");
+            }
+
+            var now = DateTimeOffset.UtcNow;
+            var effectiveMaxAttempts = Math.Max(1, maxAttempts);
+
+            if (entity.EnqueueRecoveryAttemptCount >= effectiveMaxAttempts)
+            {
+                MarkEnqueueRecoveryFailed(
+                    entity,
+                    now,
+                    $"Trend report enqueue recovery retry limit exceeded after {entity.EnqueueRecoveryAttemptCount} attempts.");
+            }
+            else
+            {
+                entity.EnqueueRecoveryAttemptCount++;
+                entity.LastEnqueueRecoveryAttemptAtUtc = now;
+                entity.LastEnqueueRecoveryError = null;
+                entity.UpdatedAtUtc = now;
+            }
+
+            await _tableClient.UpdateEntityAsync(
+                entity,
+                entity.ETag,
+                TableUpdateMode.Merge,
+                cancellationToken);
+
+            return ToModel(entity);
+        }
+        catch (RequestFailedException exception) when (exception.Status == 404)
+        {
+            throw new InvalidOperationException("Trend report job not found.");
+        }
+        catch (RequestFailedException exception) when (exception.Status == 412)
+        {
+            throw new InvalidOperationException("Trend report job not found.");
+        }
+        catch (RequestFailedException exception)
+        {
+            _logger.LogError(
+                exception,
+                "Failed to begin trend report enqueue recovery attempt. JobId={JobId}, ExpectedRunId={ExpectedRunId}, ExpectedDataVersion={ExpectedDataVersion}.",
+                jobId,
+                expectedRunId,
+                expectedDataVersion);
+
+            throw;
+        }
+    }
+
+    public Task<bool> TryRecordEnqueueRecoveryFailureAsync(
+        int userId,
+        int jobId,
+        string expectedRunId,
+        string expectedDataVersion,
+        string errorMessage,
+        int maxAttempts,
+        CancellationToken cancellationToken = default)
+    {
+        return TryUpdateEntityAsync(
+            userId,
+            jobId,
+            expectedRunId,
+            expectedDataVersion,
+            entity =>
+                entity.DataVersion == expectedDataVersion
+                && entity.RunId == expectedRunId
+                && entity.Status == TrendReportJobStatuses.EnqueuePending,
+            (entity, now) =>
+            {
+                entity.LastEnqueueRecoveryError = errorMessage;
+
+                if (entity.EnqueueRecoveryAttemptCount >= Math.Max(1, maxAttempts))
+                {
+                    MarkEnqueueRecoveryFailed(entity, now, errorMessage);
+                }
+            },
+            operationName: TrendReportRepositoryActions.RecordEnqueueRecoveryFailure,
             cancellationToken);
     }
 
@@ -394,6 +505,7 @@ public sealed class TrendReportJobRepository : ITrendReportJobRepository
 
     public Task<bool> TryMarkSupersededIfCurrentAsync(
         int userId,
+        string runId,
         int jobId,
         string expectedDataVersion,
         CancellationToken cancellationToken = default)
@@ -404,8 +516,9 @@ public sealed class TrendReportJobRepository : ITrendReportJobRepository
             null,
             expectedDataVersion,
             entity =>
-                entity.DataVersion != expectedDataVersion
-                && IsActiveStatus(entity.Status),
+                entity.DataVersion == expectedDataVersion
+                    && entity.RunId == runId.ToString()
+                    && IsActiveStatus(entity.Status),
             (entity, now) =>
             {
                 entity.Status = TrendReportJobStatuses.Superseded;
@@ -487,11 +600,7 @@ public sealed class TrendReportJobRepository : ITrendReportJobRepository
 
             return true;
         }
-        catch (RequestFailedException exception) when (exception.Status == 404)
-        {
-            return false;
-        }
-        catch (RequestFailedException exception) when (exception.Status == 412)
+        catch (RequestFailedException exception) when (exception.Status == 404 || exception.Status == 412)
         {
             return false;
         }
@@ -505,7 +614,7 @@ public sealed class TrendReportJobRepository : ITrendReportJobRepository
                 expectedRunId,
                 expectedDataVersion);
 
-            return false;
+            throw;
         }
     }
 
@@ -608,6 +717,19 @@ public sealed class TrendReportJobRepository : ITrendReportJobRepository
             or TrendReportJobStatuses.CancelRequested;
     }
 
+    private static void MarkEnqueueRecoveryFailed(
+        TrendReportJobEntity entity,
+        DateTimeOffset now,
+        string errorMessage)
+    {
+        entity.Status = TrendReportJobStatuses.Failed;
+        entity.CurrentStage = "报告任务提交后台队列失败";
+        entity.ErrorMessage = errorMessage;
+        entity.CompletedAtUtc = now;
+        entity.UpdatedAtUtc = now;
+        entity.LastEnqueueRecoveryError = errorMessage;
+    }
+
     private static bool BlocksStaleWorkerOverwrite(string status)
     {
         return status is TrendReportJobStatuses.Cancelled
@@ -644,6 +766,9 @@ public sealed class TrendReportJobRepository : ITrendReportJobRepository
                 ? null
                 : JsonSerializer.Serialize(job.Result, _jsonOptions),
             ErrorMessage = job.ErrorMessage,
+            EnqueueRecoveryAttemptCount = 0,
+            LastEnqueueRecoveryAttemptAtUtc = null,
+            LastEnqueueRecoveryError = null,
             CreatedAtUtc = job.CreatedAtUtc,
             StartedAtUtc = job.StartedAtUtc,
             CompletedAtUtc = job.CompletedAtUtc,

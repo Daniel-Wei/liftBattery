@@ -15,6 +15,7 @@
     "TrendReportTableName": "TrendReportJobs",
     "TrendReportDemoDelayMilliseconds": "2000",
     "TrendReportEnqueueRecoveryTimer": "0 */5 * * * *",
+    "TrendReportEnqueueRecoveryMaxAttempts": "5",
     "WeeklyReportQueueName": "weekly-report-jobs",
     "WeeklyReportTableName": "WeeklyReportJobs",
     "WeeklyReportBlobContainerName": "weekly-reports",

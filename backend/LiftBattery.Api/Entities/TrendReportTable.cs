@@ -22,6 +22,9 @@ public sealed class TrendReportJobEntity : ITableEntity
     public string SnapshotJson { get; set; } = string.Empty;
     public string? ResultJson { get; set; }
     public string? ErrorMessage { get; set; }
+    public int EnqueueRecoveryAttemptCount { get; set; }
+    public DateTimeOffset? LastEnqueueRecoveryAttemptAtUtc { get; set; }
+    public string? LastEnqueueRecoveryError { get; set; }
     public DateTimeOffset CreatedAtUtc { get; set; }
     public DateTimeOffset? StartedAtUtc { get; set; }
     public DateTimeOffset? CompletedAtUtc { get; set; }
