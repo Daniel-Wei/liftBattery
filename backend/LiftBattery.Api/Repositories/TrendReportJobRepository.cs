@@ -1,3 +1,4 @@
+using System.Security.Cryptography;
 using System.Text.Json;
 using Azure;
 using Azure.Data.Tables;
@@ -11,7 +12,12 @@ namespace LiftBattery.Api.Repositories;
 
 public sealed class TrendReportJobRepository : ITrendReportJobRepository
 {
+    private const int CreateOrGetMaxAttempts = 5;
+    private const int HttpNotFoundStatusCode = 404;
+    private const int HttpConflictStatusCode = 409;
+    private const int HttpPreconditionFailedStatusCode = 412;
     private const string DataVersionPartitionKeyValue = "trend-report-data-version";
+    private const string DedupRowKeyPrefix = "job-dedup:";
     private const string JobPartitionKeyPrefix = "trend-report-user-";
     private readonly TableClient _tableClient;
     private readonly JsonSerializerOptions _jsonOptions = new(JsonSerializerDefaults.Web);
@@ -58,6 +64,85 @@ public sealed class TrendReportJobRepository : ITrendReportJobRepository
         return job;
     }
 
+    public async Task<CreateOrGetTrendReportJobResult> CreateOrGetByFingerprintAsync(
+        TrendReportJob candidate,
+        CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+
+        await EnsureTableAsync();
+
+        var partitionKey = GetJobPartitionKey(candidate.UserId);
+        var dedupRowKey = GetDedupRowKey(candidate.DataVersion, candidate.ReportFingerprint);
+
+        for (var attempt = 0; attempt < CreateOrGetMaxAttempts; attempt++)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            var dedup = await GetDedupEntityIfExistsAsync(partitionKey, dedupRowKey, cancellationToken);
+
+            if (dedup is not null)
+            {
+                var result = await TryCreateOrGetFromDedupAsync(candidate, dedup, cancellationToken);
+
+                if (result is not null)
+                {
+                    return result;
+                }
+
+                continue;
+            }
+
+
+            var createdJob = CreateNewJob(candidate, preserveCandidateRunId: true);
+            var dedupPointer = ToDedupEntity(
+                partitionKey,
+                dedupRowKey,
+                createdJob,
+                createdJob.UpdatedAtUtc,
+                createdJob.CreatedAtUtc);
+
+            try
+            {
+                await _tableClient.SubmitTransactionAsync(
+                    new[]
+                    {
+                        new TableTransactionAction(TableTransactionActionType.Add, dedupPointer),
+                        new TableTransactionAction(TableTransactionActionType.Add, ToEntity(createdJob)),
+                    },
+                    cancellationToken);
+
+                return new CreateOrGetTrendReportJobResult(createdJob, WasCreated: true);
+            }
+            catch (RequestFailedException exception) when (IsConcurrencyConflict(exception))
+            {
+                var winningDedup = await GetDedupEntityIfExistsAsync(partitionKey, dedupRowKey, cancellationToken);
+
+                if (winningDedup is null)
+                {
+                    // Most likely a random numeric Job RowKey collision. Generate another JobId and retry.
+                    continue;
+                }
+
+                // Another process won the race to create the dedup pointer. Try to create or get the job from the winning dedup pointer.
+                var result = await TryCreateOrGetFromDedupAsync(candidate, winningDedup, cancellationToken);
+
+                if (result is not null)
+                {
+                    return result;
+                }
+            }
+            catch (RequestFailedException exception)
+            {
+                LogCreateOrGetFailure(exception, candidate, "AddDedupAndJobTransaction");
+                throw;
+            }
+        }
+
+        throw new InvalidOperationException(
+            $"Unable to create or get trend report job for user {candidate.UserId} and fingerprint {candidate.ReportFingerprint} after {CreateOrGetMaxAttempts} attempts.");
+    }
+
     #endregion
 
     #region: Data Version Management
@@ -82,7 +167,7 @@ public sealed class TrendReportJobRepository : ITrendReportJobRepository
                 ? await BumpDataVersionAsync(userId, DateTimeOffset.UtcNow, cancellationToken)
                 : response.Value.DataVersion;
         }
-        catch (RequestFailedException ex) when (ex.Status == 404)
+        catch (RequestFailedException ex) when (ex.Status == HttpNotFoundStatusCode)
         {
             var now = DateTimeOffset.UtcNow;
             var initialVersion = CreateDataVersion(now);
@@ -101,7 +186,7 @@ public sealed class TrendReportJobRepository : ITrendReportJobRepository
                 await _tableClient.AddEntityAsync(entity, cancellationToken);
                 return initialVersion;
             }
-            catch (RequestFailedException e) when (e.Status == 409)
+            catch (RequestFailedException e) when (e.Status == HttpConflictStatusCode)
             {
                 var existing =
                     await _tableClient.GetEntityAsync<TrendReportDataVersionEntity>(
@@ -158,7 +243,7 @@ public sealed class TrendReportJobRepository : ITrendReportJobRepository
                 cancellationToken: cancellationToken);
             return ToModel(response.Value);
         }
-        catch (RequestFailedException exception) when (exception.Status == 404)
+        catch (RequestFailedException exception) when (exception.Status == HttpNotFoundStatusCode)
         {
             return null;
         }
@@ -169,20 +254,7 @@ public sealed class TrendReportJobRepository : ITrendReportJobRepository
     {
         cancellationToken.ThrowIfCancellationRequested();
 
-        await EnsureTableAsync();
-
-        var jobs = new List<TrendReportJob>();
-        var partitionKey = GetJobPartitionKey(userId);
-
-        await foreach (var jobEntity in _tableClient.QueryAsync<TrendReportJobEntity>(
-            entity => entity.PartitionKey == partitionKey
-                && entity.UserId == userId
-                && entity.DataVersion == dataVersion
-                && entity.ReportFingerprint == reportFingerprint,
-            cancellationToken: cancellationToken))
-        {
-            jobs.Add(ToModel(jobEntity));
-        }
+        var jobs = await GetJobsByFingerprintAsync(userId, dataVersion, reportFingerprint, cancellationToken);
 
         return jobs
             .OrderByDescending(job => job.CreatedAtUtc)
@@ -204,6 +276,11 @@ public sealed class TrendReportJobRepository : ITrendReportJobRepository
             entity => entity.PartitionKey == partitionKey && entity.UserId == userId,
             cancellationToken: cancellationToken))
         {
+            if (IsDedupRowKey(jobEntity.RowKey))
+            {
+                continue;
+            }
+
             if (IsActiveStatus(jobEntity.Status))
             {
                 jobs.Add(ToModel(jobEntity));
@@ -364,11 +441,11 @@ public sealed class TrendReportJobRepository : ITrendReportJobRepository
 
             return ToModel(entity);
         }
-        catch (RequestFailedException exception) when (exception.Status == 404)
+        catch (RequestFailedException exception) when (exception.Status == HttpNotFoundStatusCode)
         {
             throw new InvalidOperationException("Trend report job not found.");
         }
-        catch (RequestFailedException exception) when (exception.Status == 412)
+        catch (RequestFailedException exception) when (exception.Status == HttpPreconditionFailedStatusCode)
         {
             throw new InvalidOperationException("Trend report job not found.");
         }
@@ -600,7 +677,8 @@ public sealed class TrendReportJobRepository : ITrendReportJobRepository
 
             return true;
         }
-        catch (RequestFailedException exception) when (exception.Status == 404 || exception.Status == 412)
+        catch (RequestFailedException exception) when (exception.Status == HttpNotFoundStatusCode
+            || exception.Status == HttpPreconditionFailedStatusCode)
         {
             return false;
         }
@@ -659,11 +737,11 @@ public sealed class TrendReportJobRepository : ITrendReportJobRepository
 
             return job;
         }
-        catch (RequestFailedException exception) when (exception.Status == 404)
+        catch (RequestFailedException exception) when (exception.Status == HttpNotFoundStatusCode)
         {
             throw CreateMissingJobException(job.UserId, job.Id, exception);
         }
-        catch (RequestFailedException exception) when (exception.Status == 412)
+        catch (RequestFailedException exception) when (exception.Status == HttpPreconditionFailedStatusCode)
         {
             var latest = await GetByIdAsync(job.UserId, job.Id, cancellationToken);
 
@@ -696,9 +774,160 @@ public sealed class TrendReportJobRepository : ITrendReportJobRepository
         return _ensureTableOnce.Value;
     }
 
+    private async Task<CreateOrGetTrendReportJobResult?> TryCreateOrGetFromDedupAsync(
+        TrendReportJob candidate,
+        TrendReportJobDedupEntity dedup,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+
+        if (dedup.UserId != candidate.UserId
+            || dedup.DataVersion != candidate.DataVersion
+            || dedup.ReportFingerprint != candidate.ReportFingerprint)
+        {
+            throw new InvalidOperationException(
+                $"Trend report dedup pointer {dedup.RowKey} is corrupt for user {candidate.UserId}.");
+        }
+
+        var existingJob = await GetByIdAsync(dedup.UserId, dedup.JobId, cancellationToken);
+
+        if (existingJob is null)
+        {
+            throw new InvalidOperationException(
+                $"Trend report dedup pointer {dedup.RowKey} references missing job {dedup.JobId} for user {dedup.UserId}.");
+        }
+
+        if (IsReusableDedupJobStatus(existingJob.Status))
+        {
+            return new CreateOrGetTrendReportJobResult(existingJob, WasCreated: false);
+        }
+
+        var replacementJob = CreateNewJob(candidate, preserveCandidateRunId: false);
+        var updatedDedup = ToDedupEntity(
+            dedup.PartitionKey,
+            dedup.RowKey,
+            replacementJob,
+            replacementJob.UpdatedAtUtc,
+            dedup.CreatedAtUtc);
+
+        try
+        {
+            await _tableClient.SubmitTransactionAsync(
+                new[]
+                {
+                    new TableTransactionAction(TableTransactionActionType.UpdateMerge, updatedDedup, dedup.ETag),
+                    new TableTransactionAction(TableTransactionActionType.Add, ToEntity(replacementJob)),
+                },
+                cancellationToken);
+
+            return new CreateOrGetTrendReportJobResult(replacementJob, WasCreated: true);
+        }
+        catch (RequestFailedException exception) when (IsConcurrencyConflict(exception))
+        {
+            return null;
+        }
+        catch (RequestFailedException exception)
+        {
+            LogCreateOrGetFailure(exception, candidate, "ReplaceTerminalDedupPointerTransaction");
+            throw;
+        }
+    }
+
+    private async Task<TrendReportJobDedupEntity?> GetDedupEntityIfExistsAsync(
+        string partitionKey,
+        string rowKey,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var response = await _tableClient.GetEntityIfExistsAsync<TrendReportJobDedupEntity>(
+                partitionKey,
+                rowKey,
+                cancellationToken: cancellationToken);
+
+            return response.HasValue ? response.Value : null;
+        }
+        catch (RequestFailedException exception)
+        {
+            _logger.LogError(
+                exception,
+                "Failed to read trend report dedup pointer. PartitionKey={PartitionKey}, RowKey={RowKey}.",
+                partitionKey,
+                rowKey);
+
+            throw;
+        }
+    }
+
+    private async Task<IReadOnlyList<TrendReportJob>> GetJobsByFingerprintAsync(
+        int userId,
+        string dataVersion,
+        string reportFingerprint,
+        CancellationToken cancellationToken)
+    {
+        await EnsureTableAsync();
+
+        var jobs = new List<TrendReportJob>();
+        var partitionKey = GetJobPartitionKey(userId);
+
+        await foreach (var jobEntity in _tableClient.QueryAsync<TrendReportJobEntity>(
+            entity => entity.PartitionKey == partitionKey
+                && entity.UserId == userId
+                && entity.DataVersion == dataVersion
+                && entity.ReportFingerprint == reportFingerprint,
+            cancellationToken: cancellationToken))
+        {
+            if (IsDedupRowKey(jobEntity.RowKey))
+            {
+                continue;
+            }
+
+            jobs.Add(ToModel(jobEntity));
+        }
+
+        return jobs;
+    }
+
     private static string GetJobPartitionKey(int userId)
     {
         return $"{JobPartitionKeyPrefix}{userId}";
+    }
+
+    private static string GetDedupRowKey(string dataVersion, string reportFingerprint)
+    {
+        var rowKey = $"{DedupRowKeyPrefix}{dataVersion}:{reportFingerprint}";
+        ValidateTableKey(rowKey, "Trend report dedup RowKey");
+        return rowKey;
+    }
+
+    private static bool IsDedupRowKey(string rowKey)
+    {
+        return rowKey.StartsWith(DedupRowKeyPrefix, StringComparison.Ordinal);
+    }
+
+    private static void ValidateTableKey(string key, string name)
+    {
+        if (string.IsNullOrWhiteSpace(key))
+        {
+            throw new ArgumentException($"{name} must not be empty.", nameof(key));
+        }
+
+        if (key.Any(IsInvalidTableKeyCharacter))
+        {
+            throw new ArgumentException($"{name} contains an invalid Azure Table key character.", nameof(key));
+        }
+    }
+
+    private static bool IsInvalidTableKeyCharacter(char character)
+    {
+        return character is '/' or '\\' or '#' or '?'
+            || char.IsControl(character);
+    }
+
+    private static bool IsConcurrencyConflict(RequestFailedException exception)
+    {
+        return exception.Status is HttpConflictStatusCode
+            or HttpPreconditionFailedStatusCode;
     }
 
     private static bool IsActiveStatus(string status)
@@ -715,6 +944,13 @@ public sealed class TrendReportJobRepository : ITrendReportJobRepository
             or TrendReportJobStatuses.Cancelled
             or TrendReportJobStatuses.Superseded
             or TrendReportJobStatuses.CancelRequested;
+    }
+
+    private static bool IsReusableDedupJobStatus(string status)
+    {
+        return status is not TrendReportJobStatuses.Failed
+            and not TrendReportJobStatuses.Cancelled
+            and not TrendReportJobStatuses.Superseded;
     }
 
     private static void MarkEnqueueRecoveryFailed(
@@ -745,6 +981,70 @@ public sealed class TrendReportJobRepository : ITrendReportJobRepository
         return new InvalidOperationException(
             $"Trend report job {jobId} for user {userId} no longer exists.",
             innerException);
+    }
+
+    private static TrendReportJob CreateNewJob(
+        TrendReportJob candidate,
+        bool preserveCandidateRunId)
+    {
+        var now = DateTimeOffset.UtcNow;
+        var runId = preserveCandidateRunId && !string.IsNullOrWhiteSpace(candidate.RunId)
+            ? candidate.RunId
+            : CreateRunId();
+
+        return candidate with
+        {
+            Id = RandomNumberGenerator.GetInt32(1, int.MaxValue),
+            Status = TrendReportJobStatuses.EnqueuePending,
+            ProgressPercent = 0,
+            RunId = runId,
+            Result = null,
+            ErrorMessage = null,
+            StartedAtUtc = null,
+            CompletedAtUtc = null,
+            CreatedAtUtc = now,
+            UpdatedAtUtc = now,
+        };
+    }
+
+    private static string CreateRunId()
+    {
+        return $"trend-report:{Guid.NewGuid():N}";
+    }
+
+    private static TrendReportJobDedupEntity ToDedupEntity(
+        string partitionKey,
+        string rowKey,
+        TrendReportJob job,
+        DateTimeOffset updatedAtUtc,
+        DateTimeOffset createdAtUtc)
+    {
+        return new TrendReportJobDedupEntity
+        {
+            PartitionKey = partitionKey,
+            RowKey = rowKey,
+            UserId = job.UserId,
+            JobId = job.Id,
+            RunId = job.RunId,
+            DataVersion = job.DataVersion,
+            ReportFingerprint = job.ReportFingerprint,
+            CreatedAtUtc = createdAtUtc,
+            UpdatedAtUtc = updatedAtUtc,
+        };
+    }
+
+    private void LogCreateOrGetFailure(
+        RequestFailedException exception,
+        TrendReportJob candidate,
+        string operationName)
+    {
+        _logger.LogError(
+            exception,
+            "Failed to create or get trend report job. Operation={Operation}, UserId={UserId}, DataVersion={DataVersion}, ReportFingerprint={ReportFingerprint}.",
+            operationName,
+            candidate.UserId,
+            candidate.DataVersion,
+            candidate.ReportFingerprint);
     }
 
     private TrendReportJobEntity ToEntity(TrendReportJob job)

@@ -93,24 +93,11 @@ public sealed class TrendReportService : ITrendReportService
             .GetOrCreateCurrentTrendReportReqDataVersionAsync(userId, cancellationToken);
         
         var reportReqFingerprint = CreateTrendReportReqFingerprint(validatedTrendReportReq, trendReportReqSnapshot, trendReportReqDataVersion);
-        var existingSameVersionJob = await _trendReportJobRepo.GetLatestByUserIdAndFingerprintAsync(
-            userId,
-            trendReportReqDataVersion,
-            reportReqFingerprint,
-            cancellationToken);
-
-        if (existingSameVersionJob is not null
-            && existingSameVersionJob.Status is not TrendReportJobStatuses.Failed
-                and not TrendReportJobStatuses.Cancelled
-                and not TrendReportJobStatuses.Superseded)
-        {
-            return ToDto(existingSameVersionJob);
-        }
 
         var now = DateTimeOffset.UtcNow;
         var runId = CreateRunId();
-        var job = new TrendReportJob(
-            Random.Shared.Next(1, int.MaxValue),
+        var candidate = new TrendReportJob(
+            0,
             userId,
             TrendReportJobStatuses.EnqueuePending,
             0,
@@ -128,10 +115,19 @@ public sealed class TrendReportService : ITrendReportService
             null,
             now);
 
-        // Persist the initial Queued job before publishing its message.
-        await _trendReportJobRepo.CreateAsync(job, cancellationToken);
+        var createResult = await _trendReportJobRepo.CreateOrGetByFingerprintAsync(
+            candidate,
+            cancellationToken);
+        var job = createResult.Job;
 
-        // Cancel any other active jobs for the same user, since this new submission supersedes them.
+        // If the job was not newly created, it means a job with the same fingerprint already exists.
+        // In that case, we return the existing job without enqueuing it again.
+        if (!createResult.WasCreated)
+        {
+            return ToDto(job);
+        }
+
+        // Cancel any other active jobs for the same user, since the incoming new submission will supersede them.
         var activeJobs = await _trendReportJobRepo.GetActiveByUserIdAsync(userId, cancellationToken);
 
         foreach (var activeJob in activeJobs.Where(j => j.Id != job.Id))
@@ -337,6 +333,7 @@ public sealed class TrendReportService : ITrendReportService
                         ?? throw new InvalidOperationException(
                             $"Trend report job {candidate.Id} was not found.");
 
+        // other process may have already published this job, or the job may have been superseded by a newer submission.
         if (current.RunId != candidate.RunId)
         {
             // candidate old runId, cannot be published
@@ -348,6 +345,7 @@ public sealed class TrendReportService : ITrendReportService
                                         current.UserId,
                                         cancellationToken);
 
+        // training and/or precheck data has changed since the job was submitted, so this job is no longer valid and cannot be published.
         if (currentUserDataVersion != candidate.DataVersion)
         {
             // candidate old data version, cannot be published
@@ -362,7 +360,7 @@ public sealed class TrendReportService : ITrendReportService
             case TrendReportJobStatuses.Queued:
             case TrendReportJobStatuses.Processing:
             case TrendReportJobStatuses.Completed:
-                // alredy published, no need to enqueue again
+                // already published, no need to enqueue again
                 return current;
 
             case TrendReportJobStatuses.Cancelled:
@@ -394,6 +392,11 @@ public sealed class TrendReportService : ITrendReportService
 
         try
         {
+            if (isRecoveryAttempt)
+            {
+                await CancelOtherActiveJobsAsync(current, cancellationToken);
+            }
+
             await _trendReportJobQueue.EnqueueAsync(
                 CreateQueueMessageDTO(current),
                 cancellationToken);
@@ -424,6 +427,26 @@ public sealed class TrendReportService : ITrendReportService
                 current.Id,
                 cancellationToken)
             ?? current;
+    }
+
+    private async Task CancelOtherActiveJobsAsync(
+        TrendReportJob job,
+        CancellationToken cancellationToken)
+    {
+        var now = DateTimeOffset.UtcNow;
+        var activeJobs = await _trendReportJobRepo.GetActiveByUserIdAsync(job.UserId, cancellationToken);
+
+        foreach (var activeJob in activeJobs.Where(activeJob => activeJob.Id != job.Id))
+        {
+            await _trendReportJobRepo.UpdateAsync(activeJob with
+            {
+                Status = TrendReportJobStatuses.Cancelled,
+                CurrentStage = "已取消：用户提交了新的报告请求",
+                ErrorMessage = null,
+                CompletedAtUtc = now,
+                UpdatedAtUtc = now,
+            }, cancellationToken);
+        }
     }
 
     private static string CreateRunId()

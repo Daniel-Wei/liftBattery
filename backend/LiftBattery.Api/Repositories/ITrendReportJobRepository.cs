@@ -4,9 +4,16 @@ using LiftBattery.Api.Entities;
 
 namespace LiftBattery.Api.Repositories;
 
+public sealed record CreateOrGetTrendReportJobResult(
+    TrendReportJob Job,
+    bool WasCreated);
+
 public interface ITrendReportJobRepository
 {
     Task<TrendReportJob> CreateAsync(TrendReportJob job, CancellationToken cancellationToken = default);
+    Task<CreateOrGetTrendReportJobResult> CreateOrGetByFingerprintAsync(
+        TrendReportJob candidate,
+        CancellationToken cancellationToken = default);
     Task<string> GetOrCreateCurrentTrendReportReqDataVersionAsync(
         int userId,
         CancellationToken cancellationToken = default);
