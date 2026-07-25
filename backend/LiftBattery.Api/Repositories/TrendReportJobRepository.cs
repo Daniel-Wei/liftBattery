@@ -262,6 +262,58 @@ public sealed class TrendReportJobRepository : ITrendReportJobRepository
     #endregion
 
     #region: Processing State Update Methods 
+    public Task<bool> TryMarkCancelledIfActiveAsync(
+        int userId,
+        Guid jobId,
+        string expectedRunId,
+        string expectedDataVersion,
+        CancellationToken cancellationToken = default)
+    {
+        return TryUpdateEntityAsync(
+            userId,
+            jobId,
+            expectedRunId,
+            expectedDataVersion,
+            entity =>
+                entity.RunId == expectedRunId
+                && entity.DataVersion == expectedDataVersion
+                && IsActiveStatus(entity.Status),
+            (entity, now) =>
+            {
+                entity.Status = TrendReportJobStatuses.Cancelled;
+                entity.CurrentStage = "已取消：用户提交了新的报告请求";
+                entity.ErrorMessage = null;
+                entity.CompletedAtUtc = now;
+            },
+            operationName: TrendReportRepositoryActions.MarkCancelled,
+            cancellationToken);
+    }
+
+    public Task<bool> TryRecordInitialEnqueueFailureAsync(
+        int userId,
+        Guid jobId,
+        string expectedRunId,
+        string expectedDataVersion,
+        CancellationToken cancellationToken = default)
+    {
+        return TryUpdateEntityAsync(
+            userId,
+            jobId,
+            expectedRunId,
+            expectedDataVersion,
+            entity =>
+                entity.RunId == expectedRunId
+                && entity.DataVersion == expectedDataVersion
+                && entity.Status == TrendReportJobStatuses.EnqueuePending,
+            (entity, _) =>
+            {
+                entity.CurrentStage = "提交后台队列失败，等待自动重试。";
+                entity.ErrorMessage = null;
+            },
+            operationName: TrendReportRepositoryActions.RecordInitialEnqueueFailure,
+            cancellationToken);
+    }
+
     public Task<bool> TryStartProcessingAsync(
         int userId,
         Guid jobId,
@@ -611,75 +663,6 @@ public sealed class TrendReportJobRepository : ITrendReportJobRepository
 
     #endregion
 
-    #region: Update Async   
-    // Replaces the current job entity in Azure Table Storage.
-    public async Task<TrendReportJob> UpdateAsync(
-        TrendReportJob job,
-        CancellationToken cancellationToken = default)
-    {
-        cancellationToken.ThrowIfCancellationRequested();
-
-        await EnsureTableAsync();
-        var partitionKey = GetJobPartitionKey(job.UserId);
-
-        try
-        {
-            var current = await _tableClient.GetEntityIfExistsAsync<TrendReportJobEntity>(
-                partitionKey,
-                GetJobRowKey(job.Id),
-                cancellationToken: cancellationToken);
-
-            if (!current.HasValue || current.Value is null)
-            {
-                throw CreateMissingJobException(job.UserId, job.Id);
-            }
-
-            if (!BlocksStaleWorkerOverwrite(job.Status)
-                && BlocksStaleWorkerOverwrite(current.Value.Status))
-            {
-                return ToModel(current.Value);
-            }
-
-            var entity = ToEntity(job);
-
-            await _tableClient.UpdateEntityAsync(
-                entity,
-                current.Value.ETag,
-                TableUpdateMode.Replace,
-                cancellationToken);
-
-            return job;
-        }
-        catch (RequestFailedException exception) when (exception.Status == HttpNotFoundStatusCode)
-        {
-            throw CreateMissingJobException(job.UserId, job.Id, exception);
-        }
-        catch (RequestFailedException exception) when (exception.Status == HttpPreconditionFailedStatusCode)
-        {
-            var latest = await GetByIdAsync(job.UserId, job.Id, cancellationToken);
-
-            if (latest is not null)
-            {
-                return latest;
-            }
-
-            throw CreateMissingJobException(job.UserId, job.Id, exception);
-        }
-        catch (RequestFailedException exception)
-        {
-            _logger.LogError(
-                exception,
-                "Failed to replace trend report job. JobId={JobId}, UserId={UserId}, Status={Status}.",
-                job.Id,
-                job.UserId,
-                job.Status);
-
-            throw;
-        }
-    }
-
-    #endregion
-
     #region: Private Helper Methods
 
     private Task EnsureTableAsync()
@@ -823,22 +806,6 @@ public sealed class TrendReportJobRepository : ITrendReportJobRepository
         entity.CompletedAtUtc = now;
         entity.UpdatedAtUtc = now;
         entity.LastEnqueueRecoveryError = errorMessage;
-    }
-
-    private static bool BlocksStaleWorkerOverwrite(string status)
-    {
-        return status is TrendReportJobStatuses.Cancelled
-            or TrendReportJobStatuses.Superseded;
-    }
-
-    private static InvalidOperationException CreateMissingJobException(
-        int userId,
-        Guid jobId,
-        Exception? innerException = null)
-    {
-        return new InvalidOperationException(
-            $"Trend report job {jobId} for user {userId} no longer exists.",
-            innerException);
     }
 
     private static TrendReportJob CreateNewJob(NewTrendReportJob newJob)

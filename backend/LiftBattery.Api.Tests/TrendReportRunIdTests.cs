@@ -77,6 +77,21 @@ public sealed class TrendReportRunIdTests
     }
 
     [Fact]
+    public async Task SubmitAsyncKeepsJobPendingWhenInitialEnqueueFails()
+    {
+        var jobRepository = new FakeTrendReportJobRepository();
+        var queue = new FakeTrendReportJobQueue { ThrowOnEnqueue = true };
+        var service = CreateService(jobRepository, queue);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(
+            () => service.SubmitAsync(1, CreateRequest()));
+
+        Assert.Equal(TrendReportJobStatuses.EnqueuePending, jobRepository.Job?.Status);
+        Assert.Equal("提交后台队列失败，等待自动重试。", jobRepository.Job?.CurrentStage);
+        Assert.Null(jobRepository.Job?.ErrorMessage);
+    }
+
+    [Fact]
     public async Task SubmitAsyncConcurrentIdenticalRequestsShareOneCreatedJobAndOneEnqueue()
     {
         var jobRepository = new FakeTrendReportJobRepository();
@@ -543,33 +558,83 @@ public sealed class TrendReportRunIdTests
             return Task.FromResult<TrendReportJob?>(Job);
         }
 
-        public Task<TrendReportJob> UpdateAsync(
-            TrendReportJob job,
+        public Task<bool> TryMarkCancelledIfActiveAsync(
+            int userId,
+            Guid jobId,
+            string expectedRunId,
+            string expectedDataVersion,
             CancellationToken cancellationToken = default)
         {
-            if (job.Status == TrendReportJobStatuses.Cancelled)
+            if (ThrowOnCancelUpdate)
             {
-                if (ThrowOnCancelUpdate)
-                {
-                    throw new InvalidOperationException("Cancel old active job failed.");
-                }
-
-                CancelledUpdateCount++;
+                throw new InvalidOperationException("Cancel old active job failed.");
             }
 
-            if (Job?.Id == job.Id)
+            var activeIndex = AdditionalActiveJobs.FindIndex(activeJob => activeJob.Id == jobId);
+            var current = Job?.Id == jobId
+                ? Job
+                : activeIndex >= 0
+                    ? AdditionalActiveJobs[activeIndex]
+                    : null;
+
+            if (current is null
+                || current.UserId != userId
+                || current.RunId != expectedRunId
+                || current.DataVersion != expectedDataVersion
+                || current.Status is not (TrendReportJobStatuses.EnqueuePending
+                    or TrendReportJobStatuses.Queued
+                    or TrendReportJobStatuses.Processing))
             {
-                Job = job;
+                return Task.FromResult(false);
             }
 
-            var activeIndex = AdditionalActiveJobs.FindIndex(activeJob => activeJob.Id == job.Id);
+            var cancelled = current with
+            {
+                Status = TrendReportJobStatuses.Cancelled,
+                CurrentStage = "已取消：用户提交了新的报告请求",
+                ErrorMessage = null,
+                CompletedAtUtc = DateTimeOffset.UtcNow,
+                UpdatedAtUtc = DateTimeOffset.UtcNow,
+            };
+
+            if (Job?.Id == jobId)
+            {
+                Job = cancelled;
+            }
 
             if (activeIndex >= 0)
             {
-                AdditionalActiveJobs[activeIndex] = job;
+                AdditionalActiveJobs[activeIndex] = cancelled;
             }
 
-            return Task.FromResult(job);
+            CancelledUpdateCount++;
+            return Task.FromResult(true);
+        }
+
+        public Task<bool> TryRecordInitialEnqueueFailureAsync(
+            int userId,
+            Guid jobId,
+            string expectedRunId,
+            string expectedDataVersion,
+            CancellationToken cancellationToken = default)
+        {
+            if (Job is null
+                || Job.UserId != userId
+                || Job.Id != jobId
+                || Job.RunId != expectedRunId
+                || Job.DataVersion != expectedDataVersion
+                || Job.Status != TrendReportJobStatuses.EnqueuePending)
+            {
+                return Task.FromResult(false);
+            }
+
+            Job = Job with
+            {
+                CurrentStage = "提交后台队列失败，等待自动重试。",
+                ErrorMessage = null,
+                UpdatedAtUtc = DateTimeOffset.UtcNow,
+            };
+            return Task.FromResult(true);
         }
 
         public Task<bool> TryStartProcessingAsync(

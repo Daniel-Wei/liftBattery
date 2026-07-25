@@ -112,20 +112,7 @@ public sealed class TrendReportService : ITrendReportService
         }
 
         // Cancel any other active jobs for the same user, since the incoming new submission will supersede them.
-        var now = DateTimeOffset.UtcNow;
-        var activeJobs = await _trendReportJobRepo.GetActiveByUserIdAsync(userId, cancellationToken);
-
-        foreach (var activeJob in activeJobs.Where(j => j.Id != job.Id))
-        {
-            await _trendReportJobRepo.UpdateAsync(activeJob with
-            {
-                Status = TrendReportJobStatuses.Cancelled,
-                CurrentStage = "已取消：用户提交了新的报告请求",
-                ErrorMessage = null,
-                CompletedAtUtc = now,
-                UpdatedAtUtc = now,
-            }, cancellationToken);
-        }
+        await CancelOtherActiveJobsAsync(job, cancellationToken);
 
         try
         {
@@ -135,14 +122,12 @@ public sealed class TrendReportService : ITrendReportService
         }
         catch (Exception)
         {
-            var failedJob = job with
-            {
-                Status = TrendReportJobStatuses.EnqueuePending,
-                CurrentStage = "提交后台队列失败，等待自动重试。",
-                ErrorMessage = null,
-                UpdatedAtUtc = DateTimeOffset.UtcNow,
-            };
-            await _trendReportJobRepo.UpdateAsync(failedJob, cancellationToken);
+            await _trendReportJobRepo.TryRecordInitialEnqueueFailureAsync(
+                job.UserId,
+                job.Id,
+                job.RunId,
+                job.DataVersion,
+                cancellationToken);
             throw;
         }
     }
@@ -418,19 +403,16 @@ public sealed class TrendReportService : ITrendReportService
         TrendReportJob job,
         CancellationToken cancellationToken)
     {
-        var now = DateTimeOffset.UtcNow;
         var activeJobs = await _trendReportJobRepo.GetActiveByUserIdAsync(job.UserId, cancellationToken);
 
         foreach (var activeJob in activeJobs.Where(activeJob => activeJob.Id != job.Id))
         {
-            await _trendReportJobRepo.UpdateAsync(activeJob with
-            {
-                Status = TrendReportJobStatuses.Cancelled,
-                CurrentStage = "已取消：用户提交了新的报告请求",
-                ErrorMessage = null,
-                CompletedAtUtc = now,
-                UpdatedAtUtc = now,
-            }, cancellationToken);
+            await _trendReportJobRepo.TryMarkCancelledIfActiveAsync(
+                activeJob.UserId,
+                activeJob.Id,
+                activeJob.RunId,
+                activeJob.DataVersion,
+                cancellationToken);
         }
     }
 
