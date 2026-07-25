@@ -9,11 +9,16 @@ public sealed class PreCheckService : IPreCheckService
 {
     private readonly IPreCheckRepository _repository;
     private readonly TimeProvider _timeProvider;
+    private readonly ITrendReportInvalidationService _trendReportInvalidationService;
 
-    public PreCheckService(IPreCheckRepository repository, TimeProvider timeProvider)
+    public PreCheckService(
+        IPreCheckRepository repository,
+        TimeProvider timeProvider,
+        ITrendReportInvalidationService trendReportInvalidationService)
     {
         _repository = repository;
         _timeProvider = timeProvider;
+        _trendReportInvalidationService = trendReportInvalidationService;
     }
 
     public async Task<PreCheckDto?> GetByDateAsync(
@@ -68,6 +73,10 @@ public sealed class PreCheckService : IPreCheckService
         var now = _timeProvider.GetUtcNow();
         var log = PreCheckMapping.ToModel(dto, normalizedUserId, date, now, existing);
         var savedLog = await _repository.UpsertAsync(log, cancellationToken);
+        await _trendReportInvalidationService.InvalidateForReportDataChangeAsync(
+            userId,
+            date,
+            cancellationToken);
         return PreCheckMapping.ToDto(savedLog);
     }
 
@@ -87,7 +96,17 @@ public sealed class PreCheckService : IPreCheckService
             userId,
             id,
             cancellationToken);
-        return deletedLog is null ? null : PreCheckMapping.ToDto(deletedLog);
+
+        if (deletedLog is null)
+        {
+            return null;
+        }
+
+        await _trendReportInvalidationService.InvalidateForReportDataChangeAsync(
+            userId,
+            deletedLog.Date,
+            cancellationToken);
+        return PreCheckMapping.ToDto(deletedLog);
     }
 
     private static DateOnly ParseDate(string value)

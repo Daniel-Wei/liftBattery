@@ -14,7 +14,7 @@ public interface ITrendReportJobRepository
     Task<CreateOrGetTrendReportJobResult> CreateOrGetByFingerprintAsync(
         TrendReportJob candidate,
         CancellationToken cancellationToken = default);
-    Task<string> GetOrCreateCurrentTrendReportReqDataVersionAsync(
+    Task<string?> GetCurrentTrendReportReqDataVersionAsync(
         int userId,
         CancellationToken cancellationToken = default);
     Task<string> BumpDataVersionAsync(

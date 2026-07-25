@@ -19,7 +19,7 @@ trend-report:{UserId}:{PeriodStart}:v{DataVersion}
 Runtime flow:
 
 1. `CreateTrendReport` validates the request and captures the SQL snapshot.
-2. `TrendReportService.SubmitAsync` reads the current user `DataVersion` and calculates a report fingerprint from request + snapshot + `DataVersion`.
+2. `TrendReportService.SubmitAsync` returns 422 without creating a job when the selected period contains no training or pre-check data. Otherwise it reads the current user `DataVersion` and calculates a report fingerprint from request + snapshot + `DataVersion`. A non-empty snapshot without a stored version is treated as a consistency error.
 3. If a usable job already exists for the same fingerprint and `DataVersion`, the existing job is returned and no new message is sent.
 4. If another active job exists for older data, it is marked `Cancelled`.
 5. A durable `EnqueuePending` Table job is created, then a `TrendReportQueueMessageDto` is sent to Service Bus. After send succeeds, the job is marked `Queued`.
@@ -29,9 +29,9 @@ Runtime flow:
 9. `RecoverPendingTrendReportEnqueues` periodically re-enqueues unstarted `EnqueuePending` / `Queued` jobs older than the recovery cutoff, using the same deterministic `MessageId`.
 10. `GetTrendReport` returns status and results for frontend polling and refresh recovery.
 
-Training CRUD invalidation:
+Report source data CRUD invalidation:
 
-1. After training save/delete succeeds, `TrendReportInvalidationService` bumps the user's Table `DataVersion`.
+1. After pre-check or training save/delete succeeds, `TrendReportInvalidationService` initializes or bumps the user's Table `DataVersion`.
 2. It scans active jobs for that user.
 3. If the changed training date is inside a job's target period or comparison period:
    - `EnqueuePending` and `Queued` jobs are marked `Superseded`.

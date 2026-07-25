@@ -12,7 +12,7 @@ public sealed class TrendReportInvalidationService : ITrendReportInvalidationSer
         _jobRepository = jobRepository;
     }
 
-    public async Task InvalidateForTrainingDataChangeAsync(
+    public async Task InvalidateForReportDataChangeAsync(
         int userId,
         DateOnly changedDate,
         CancellationToken cancellationToken = default)

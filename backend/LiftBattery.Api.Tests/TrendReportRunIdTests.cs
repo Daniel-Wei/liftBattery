@@ -10,6 +10,51 @@ namespace LiftBattery.Api.Tests;
 public sealed class TrendReportRunIdTests
 {
     [Fact]
+    public async Task SubmitAsyncReturnsNoDataWithoutCreatingJobWhenSnapshotIsEmpty()
+    {
+        var jobRepository = new FakeTrendReportJobRepository
+        {
+            CurrentDataVersion = null,
+        };
+        var queue = new FakeTrendReportJobQueue();
+        var service = CreateService(
+            jobRepository,
+            queue,
+            trainingRepository: new FakeTrainingRepository());
+
+        var exception = await Assert.ThrowsAsync<TrendReportNoDataException>(
+            () => service.SubmitAsync(1, CreateRequest()));
+
+        Assert.Contains("No training or pre-check data", exception.Message);
+        Assert.Null(jobRepository.CreatedJob);
+        Assert.Equal(0, queue.EnqueueCount);
+        Assert.Equal(0, jobRepository.DataVersionReadCallCount);
+        Assert.Equal(0, jobRepository.BumpDataVersionCallCount);
+    }
+
+    [Fact]
+    public async Task SubmitAsyncFailsWhenSourceDataExistsWithoutDataVersion()
+    {
+        var jobRepository = new FakeTrendReportJobRepository
+        {
+            CurrentDataVersion = null,
+        };
+        var trainingRepository = new FakeTrainingRepository();
+        trainingRepository.TrainingDays.Add(CreateTrainingDay());
+        var service = CreateService(
+            jobRepository,
+            new FakeTrendReportJobQueue(),
+            trainingRepository: trainingRepository);
+
+        var exception = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => service.SubmitAsync(1, CreateRequest()));
+
+        Assert.Contains("no DataVersion was found", exception.Message);
+        Assert.Null(jobRepository.CreatedJob);
+        Assert.Equal(0, jobRepository.BumpDataVersionCallCount);
+    }
+
+    [Fact]
     public async Task SubmitAsyncPersistsRunIdAndEnqueuesMessageWithSameRunId()
     {
         var jobRepository = new FakeTrendReportJobRepository();
@@ -268,7 +313,8 @@ public sealed class TrendReportRunIdTests
     private static TrendReportService CreateService(
         FakeTrendReportJobRepository jobRepository,
         FakeTrendReportJobQueue queue,
-        int enqueueRecoveryMaxAttempts = 5)
+        int enqueueRecoveryMaxAttempts = 5,
+        FakeTrainingRepository? trainingRepository = null)
     {
         var configuration = new ConfigurationBuilder()
             .AddInMemoryCollection(new Dictionary<string, string?>
@@ -280,10 +326,28 @@ public sealed class TrendReportRunIdTests
 
         return new TrendReportService(
             jobRepository,
-            new FakeTrainingRepository(),
+            trainingRepository ?? CreatePopulatedTrainingRepository(),
             new FakePreCheckRepository(),
             queue,
             configuration);
+    }
+
+    private static FakeTrainingRepository CreatePopulatedTrainingRepository()
+    {
+        var repository = new FakeTrainingRepository();
+        repository.TrainingDays.Add(CreateTrainingDay());
+        return repository;
+    }
+
+    private static TrainingDayModel CreateTrainingDay()
+    {
+        return new TrainingDayModel(
+            Id: 1,
+            UserId: 1,
+            Date: new DateOnly(2026, 7, 6),
+            Sessions: Array.Empty<TrainingSessionModel>(),
+            CreatedAtUtc: DateTimeOffset.UtcNow,
+            UpdatedAtUtc: DateTimeOffset.UtcNow);
     }
 
     private static CreateTrendReportRequestDto CreateRequest()
@@ -355,6 +419,8 @@ public sealed class TrendReportRunIdTests
         public bool TryStartProcessingResult { get; set; }
         public int TryStartProcessingCallCount { get; private set; }
         public int EnqueueRecoveryAttemptCount { get; private set; }
+        public int DataVersionReadCallCount { get; private set; }
+        public int BumpDataVersionCallCount { get; private set; }
         public string? LastExpectedRunId { get; private set; }
 
         public Task<TrendReportJob> CreateAsync(
@@ -397,11 +463,14 @@ public sealed class TrendReportRunIdTests
             }
         }
 
-        public Task<string> GetOrCreateCurrentTrendReportReqDataVersionAsync(
+        public string? CurrentDataVersion { get; set; } = "v1";
+
+        public Task<string?> GetCurrentTrendReportReqDataVersionAsync(
             int userId,
             CancellationToken cancellationToken = default)
         {
-            return Task.FromResult("v1");
+            DataVersionReadCallCount++;
+            return Task.FromResult(CurrentDataVersion);
         }
 
         public Task<string> BumpDataVersionAsync(
@@ -409,6 +478,7 @@ public sealed class TrendReportRunIdTests
             DateTimeOffset updatedAtUtc,
             CancellationToken cancellationToken = default)
         {
+            BumpDataVersionCallCount++;
             return Task.FromResult("v2");
         }
 
@@ -674,13 +744,15 @@ public sealed class TrendReportRunIdTests
 
     private sealed class FakeTrainingRepository : ITrainingRepository
     {
+        public List<TrainingDayModel> TrainingDays { get; } = new();
+
         public Task<IReadOnlyList<TrainingDayModel>> GetByDateRangeAsync(
             int userId,
             DateOnly from,
             DateOnly to,
             CancellationToken cancellationToken = default)
         {
-            return Task.FromResult<IReadOnlyList<TrainingDayModel>>(Array.Empty<TrainingDayModel>());
+            return Task.FromResult<IReadOnlyList<TrainingDayModel>>(TrainingDays);
         }
 
         public Task<TrainingDayModel> AddSessionAsync(

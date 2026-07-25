@@ -146,7 +146,7 @@ public sealed class TrendReportJobRepository : ITrendReportJobRepository
     #endregion
 
     #region: Data Version Management
-    public async Task<string> GetOrCreateCurrentTrendReportReqDataVersionAsync(
+    public async Task<string?> GetCurrentTrendReportReqDataVersionAsync(
         int userId,
         CancellationToken cancellationToken = default)
     {
@@ -164,40 +164,12 @@ public sealed class TrendReportJobRepository : ITrendReportJobRepository
                     cancellationToken: cancellationToken);
 
             return string.IsNullOrWhiteSpace(response.Value.DataVersion)
-                ? await BumpDataVersionAsync(userId, DateTimeOffset.UtcNow, cancellationToken)
+                ? null
                 : response.Value.DataVersion;
         }
         catch (RequestFailedException ex) when (ex.Status == HttpNotFoundStatusCode)
         {
-            var now = DateTimeOffset.UtcNow;
-            var initialVersion = CreateDataVersion(now);
-
-            var entity = new TrendReportDataVersionEntity
-            {
-                PartitionKey = DataVersionPartitionKeyValue,
-                RowKey = rowKey,
-                UserId = userId,
-                DataVersion = initialVersion,
-                UpdatedAtUtc = now
-            };
-
-            try
-            {
-                await _tableClient.AddEntityAsync(entity, cancellationToken);
-                return initialVersion;
-            }
-            catch (RequestFailedException e) when (e.Status == HttpConflictStatusCode)
-            {
-                var existing =
-                    await _tableClient.GetEntityAsync<TrendReportDataVersionEntity>(
-                        DataVersionPartitionKeyValue,
-                        rowKey,
-                        cancellationToken: cancellationToken);
-
-                return string.IsNullOrWhiteSpace(existing.Value.DataVersion)
-                    ? await BumpDataVersionAsync(userId, DateTimeOffset.UtcNow, cancellationToken)
-                    : existing.Value.DataVersion;
-            }
+            return null;
         }
     }
 

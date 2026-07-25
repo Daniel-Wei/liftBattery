@@ -55,7 +55,7 @@ public sealed class TrainingSessionService : ITrainingSessionService
         ValidateSession(dto);
         var session = TrainingMapping.ToModel(dto, DateTimeOffset.UtcNow);
         var day = await _repository.AddSessionAsync(userId, date, session, cancellationToken);
-        await _trendReportInvalidationService.InvalidateForTrainingDataChangeAsync(
+        await _trendReportInvalidationService.InvalidateForReportDataChangeAsync(
             userId,
             date,
             cancellationToken);
@@ -83,7 +83,7 @@ public sealed class TrainingSessionService : ITrainingSessionService
 
         if (deleted.Date is DateOnly deletedDate)
         {
-            await _trendReportInvalidationService.InvalidateForTrainingDataChangeAsync(
+            await _trendReportInvalidationService.InvalidateForReportDataChangeAsync(
                 userId,
                 deletedDate,
                 cancellationToken);

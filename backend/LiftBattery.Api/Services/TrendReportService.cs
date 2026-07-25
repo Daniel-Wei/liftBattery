@@ -89,8 +89,11 @@ public sealed class TrendReportService : ITrendReportService
             cancellationToken);
         var trendReportReqSnapshot = new TrendReportReqSnapshot(trainingDays, preCheckLogs);
 
-        var trendReportReqDataVersion = await _trendReportJobRepo
-            .GetOrCreateCurrentTrendReportReqDataVersionAsync(userId, cancellationToken);
+        EnsureSnapshotHasData(trendReportReqSnapshot);
+
+        var storedDataVersion = await _trendReportJobRepo
+            .GetCurrentTrendReportReqDataVersionAsync(userId, cancellationToken);
+        var trendReportReqDataVersion = RequireStoredDataVersion(userId, storedDataVersion);
         
         var reportReqFingerprint = CreateTrendReportReqFingerprint(validatedTrendReportReq, trendReportReqSnapshot, trendReportReqDataVersion);
 
@@ -341,7 +344,7 @@ public sealed class TrendReportService : ITrendReportService
         }
 
         var currentUserDataVersion = await _trendReportJobRepo
-                                    .GetOrCreateCurrentTrendReportReqDataVersionAsync(
+                                    .GetCurrentTrendReportReqDataVersionAsync(
                                         current.UserId,
                                         cancellationToken);
 
@@ -488,7 +491,7 @@ public sealed class TrendReportService : ITrendReportService
         }
 
         var currentUserDataVersion = await _trendReportJobRepo
-                                        .GetOrCreateCurrentTrendReportReqDataVersionAsync(latestJob.UserId, cancellationToken);
+                                        .GetCurrentTrendReportReqDataVersionAsync(latestJob.UserId, cancellationToken);
 
         if (latestJob.DataVersion != currentUserDataVersion)
         {
@@ -1057,6 +1060,26 @@ public sealed class TrendReportService : ITrendReportService
     private static DateOnly Max(DateOnly first, DateOnly second)
     {
         return first >= second ? first : second;
+    }
+
+    private static void EnsureSnapshotHasData(TrendReportReqSnapshot snapshot)
+    {
+        if (snapshot.TrainingDays.Count == 0 && snapshot.PreCheckLogs.Count == 0)
+        {
+            throw new TrendReportNoDataException(
+                "No training or pre-check data was found for the selected report period.");
+        }
+    }
+
+    private static string RequireStoredDataVersion(int userId, string? storedDataVersion)
+    {
+        if (!string.IsNullOrWhiteSpace(storedDataVersion))
+        {
+            return storedDataVersion;
+        }
+
+        throw new InvalidOperationException(
+            $"Trend report source data exists for user {userId}, but no DataVersion was found.");
     }
 
     private static void ValidateUserId(int userId)

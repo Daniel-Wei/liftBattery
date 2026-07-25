@@ -53,6 +53,13 @@ public sealed class TrendReportFunctions
         {
             return await WriteErrorAsync(requestData, HttpStatusCode.BadRequest, exception.Message);
         }
+        catch (TrendReportNoDataException exception)
+        {
+            return await WriteErrorAsync(
+                requestData,
+                HttpStatusCode.UnprocessableEntity,
+                exception.Message);
+        }
         catch (InvalidOperationException exception)
         {
             return await WriteErrorAsync(requestData, HttpStatusCode.ServiceUnavailable, exception.Message);

@@ -34,6 +34,8 @@ public sealed class PreCheckPersistenceTests
 
         Assert.NotNull(saved.Id);
         Assert.Equal(1, await database.Context.PreChecks.CountAsync());
+        Assert.Equal(1, database.InvalidationService.CallCount);
+        Assert.Equal(TestDate, database.InvalidationService.LastChangedDate);
     }
 
     [Fact]
@@ -50,6 +52,21 @@ public sealed class PreCheckPersistenceTests
         Assert.Equal(9, updated.SleepHours);
         Assert.Equal(9, updated.MotivationRating);
         Assert.Equal(1, await database.Context.PreChecks.CountAsync());
+        Assert.Equal(2, database.InvalidationService.CallCount);
+    }
+
+    [Fact]
+    public async Task DeletingExistingRecordInvalidatesTrendReports()
+    {
+        await using var database = await TestDatabase.CreateAsync();
+        var service = database.CreateService();
+        var saved = await service.SaveAsync(1, CreateDto());
+
+        var deleted = await service.DeleteAsync(1, saved.Id!.Value);
+
+        Assert.NotNull(deleted);
+        Assert.Equal(2, database.InvalidationService.CallCount);
+        Assert.Equal(TestDate, database.InvalidationService.LastChangedDate);
     }
 
     [Fact]
@@ -100,7 +117,10 @@ public sealed class PreCheckPersistenceTests
         var secondRepository = new PreCheckRepository(
             secondContext,
             Microsoft.Extensions.Options.Options.Create(new PreCheckOptions()));
-        var secondService = new PreCheckService(secondRepository, TimeProvider.System);
+        var secondService = new PreCheckService(
+            secondRepository,
+            TimeProvider.System,
+            new FakeTrendReportInvalidationService());
         var reloaded = await secondService.GetByDateAsync(1, TestDate);
 
         Assert.NotNull(reloaded);
@@ -194,6 +214,8 @@ public sealed class PreCheckPersistenceTests
 
         public LiftBatteryDbContext Context { get; }
 
+        public FakeTrendReportInvalidationService InvalidationService { get; } = new();
+
         public static async Task<TestDatabase> CreateAsync()
         {
             var connection = new SqliteConnection("Data Source=:memory:");
@@ -243,13 +265,32 @@ public sealed class PreCheckPersistenceTests
             var repository = new PreCheckRepository(
                 Context,
                 Microsoft.Extensions.Options.Options.Create(new PreCheckOptions()));
-            return new PreCheckService(repository, TimeProvider.System);
+            return new PreCheckService(
+                repository,
+                TimeProvider.System,
+                InvalidationService);
         }
 
         public async ValueTask DisposeAsync()
         {
             await Context.DisposeAsync();
             await _connection.DisposeAsync();
+        }
+    }
+
+    private sealed class FakeTrendReportInvalidationService : ITrendReportInvalidationService
+    {
+        public int CallCount { get; private set; }
+        public DateOnly? LastChangedDate { get; private set; }
+
+        public Task InvalidateForReportDataChangeAsync(
+            int userId,
+            DateOnly changedDate,
+            CancellationToken cancellationToken = default)
+        {
+            CallCount++;
+            LastChangedDate = changedDate;
+            return Task.CompletedTask;
         }
     }
 
