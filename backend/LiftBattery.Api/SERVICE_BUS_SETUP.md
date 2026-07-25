@@ -19,8 +19,8 @@ trend-report:{UserId}:{PeriodStart}:v{DataVersion}
 Runtime flow:
 
 1. `CreateTrendReport` validates the request and captures the SQL snapshot.
-2. `TrendReportService.SubmitAsync` returns 422 without creating a job when the selected period contains no training or pre-check data. Otherwise it reads the current user `DataVersion` and calculates a report fingerprint from request + snapshot + `DataVersion`. A non-empty snapshot without a stored version is treated as a consistency error.
-3. If a usable job already exists for the same fingerprint and `DataVersion`, the existing job is returned and no new message is sent.
+2. `TrendReportService.SubmitAsync` returns 422 without creating a job when the selected period contains no training or pre-check data. Otherwise it reads the current user `DataVersion`. A non-empty snapshot without a stored version is treated as a consistency error.
+3. The repository hashes normalized request dates + `DataVersion` into an internal dedup RowKey. If that RowKey points to a usable job, the existing job is returned and no new message is sent.
 4. If another active job exists for older data, it is marked `Cancelled`.
 5. A durable `EnqueuePending` Table job is created, then a `TrendReportQueueMessageDto` is sent to Service Bus. After send succeeds, the job is marked `Queued`.
 6. `ProcessTrendReportJob` validates the JSON message. Permanently invalid messages are sent to DLQ with a reason and description.

@@ -1,7 +1,3 @@
-using System.Runtime.InteropServices.JavaScript;
-using System.Security.Cryptography;
-using System.Text;
-using System.Text.Json;
 using LiftBattery.Api.DTOs;
 using LiftBattery.Api.Models;
 using LiftBattery.Api.Repositories;
@@ -25,7 +21,6 @@ public sealed class TrendReportService : ITrendReportService
         "Abs",
     };
 
-    private static readonly JsonSerializerOptions FingerprintJsonOptions = new(JsonSerializerDefaults.Web);
     private readonly ITrendReportJobRepository _trendReportJobRepo;
     private readonly ITrainingRepository _trainingRepo;
     private readonly IPreCheckRepository _preCheckRepo;
@@ -95,35 +90,22 @@ public sealed class TrendReportService : ITrendReportService
             .GetCurrentTrendReportReqDataVersionAsync(userId, cancellationToken);
         var trendReportReqDataVersion = RequireStoredDataVersion(userId, storedDataVersion);
         
-        var reportReqFingerprint = CreateTrendReportReqFingerprint(validatedTrendReportReq, trendReportReqSnapshot, trendReportReqDataVersion);
-
-        var now = DateTimeOffset.UtcNow;
         var runId = CreateRunId();
-        var candidate = new TrendReportJob(
-            0,
+        var newJob = new NewTrendReportJob(
             userId,
-            TrendReportJobStatuses.EnqueuePending,
-            0,
             "正在提交后台队列",
             validatedTrendReportReq,
             runId,
             trendReportReqDataVersion,
-            reportReqFingerprint,
             // The request stores the selected report period; the snapshot stores database data at submission time.
-            trendReportReqSnapshot,
-            null,
-            null,
-            now,
-            null,
-            null,
-            now);
+            trendReportReqSnapshot);
 
-        var createResult = await _trendReportJobRepo.CreateOrGetByFingerprintAsync(
-            candidate,
+        var createResult = await _trendReportJobRepo.CreateOrGetAsync(
+            newJob,
             cancellationToken);
         var job = createResult.Job;
 
-        // If the job was not newly created, it means a job with the same fingerprint already exists.
+        // If the job was not newly created, an equivalent job already exists.
         // In that case, we return the existing job without enqueuing it again.
         if (!createResult.WasCreated)
         {
@@ -131,6 +113,7 @@ public sealed class TrendReportService : ITrendReportService
         }
 
         // Cancel any other active jobs for the same user, since the incoming new submission will supersede them.
+        var now = DateTimeOffset.UtcNow;
         var activeJobs = await _trendReportJobRepo.GetActiveByUserIdAsync(userId, cancellationToken);
 
         foreach (var activeJob in activeJobs.Where(j => j.Id != job.Id))
@@ -595,24 +578,6 @@ public sealed class TrendReportService : ITrendReportService
         }
 
         return new TrendReportRequest(startWeek, endWeek, comparisonStartWeek, comparisonEndWeek);
-    }
-
-    private static string CreateTrendReportReqFingerprint(
-        TrendReportRequest request,
-        TrendReportReqSnapshot snapshot,
-        string dataVersion)
-    {
-        var fingerprintSource = string.Join(
-            "\n",
-            request.StartWeek.ToString("yyyy-MM-dd"),
-            request.EndWeek.ToString("yyyy-MM-dd"),
-            request.ComparisonStartWeek?.ToString("yyyy-MM-dd") ?? string.Empty,
-            request.ComparisonEndWeek?.ToString("yyyy-MM-dd") ?? string.Empty,
-            dataVersion,
-            JsonSerializer.Serialize(snapshot, FingerprintJsonOptions));
-
-        return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(fingerprintSource)))
-            .ToLowerInvariant();
     }
 
     private static TrendReportResultDto GenerateResult(
@@ -1096,7 +1061,6 @@ public sealed class TrendReportService : ITrendReportService
             job.Id,
             job.RunId,
             job.DataVersion,
-            job.ReportFingerprint,
             job.Status,
             job.ProgressPercent,
             job.CurrentStage,

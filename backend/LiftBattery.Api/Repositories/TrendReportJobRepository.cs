@@ -1,4 +1,6 @@
+using System.Globalization;
 using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 using Azure;
 using Azure.Data.Tables;
@@ -52,28 +54,16 @@ public sealed class TrendReportJobRepository : ITrendReportJobRepository
 
     #region: Create Async
 
-    // Persists the initial job as an Azure Table entity.
-    public async Task<TrendReportJob> CreateAsync(
-        TrendReportJob job,
-        CancellationToken cancellationToken = default)
-    {
-        cancellationToken.ThrowIfCancellationRequested();
-
-        await EnsureTableAsync();
-        await _tableClient.AddEntityAsync(ToEntity(job), cancellationToken);
-        return job;
-    }
-
-    public async Task<CreateOrGetTrendReportJobResult> CreateOrGetByFingerprintAsync(
-        TrendReportJob candidate,
+    public async Task<CreateOrGetTrendReportJobResult> CreateOrGetAsync(
+        NewTrendReportJob newJob,
         CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
 
         await EnsureTableAsync();
 
-        var partitionKey = GetJobPartitionKey(candidate.UserId);
-        var dedupRowKey = GetDedupRowKey(candidate.DataVersion, candidate.ReportFingerprint);
+        var partitionKey = GetJobPartitionKey(newJob.UserId);
+        var dedupRowKey = GetDedupRowKey(newJob);
 
         for (var attempt = 0; attempt < CreateOrGetMaxAttempts; attempt++)
         {
@@ -83,7 +73,7 @@ public sealed class TrendReportJobRepository : ITrendReportJobRepository
 
             if (dedup is not null)
             {
-                var result = await TryCreateOrGetFromDedupAsync(candidate, dedup, cancellationToken);
+                var result = await TryCreateOrGetFromDedupAsync(newJob, dedup, cancellationToken);
 
                 if (result is not null)
                 {
@@ -94,7 +84,7 @@ public sealed class TrendReportJobRepository : ITrendReportJobRepository
             }
 
 
-            var createdJob = CreateNewJob(candidate, preserveCandidateRunId: true);
+            var createdJob = CreateNewJob(newJob, preserveNewJobRunId: true);
             var dedupPointer = ToDedupEntity(
                 partitionKey,
                 dedupRowKey,
@@ -125,7 +115,7 @@ public sealed class TrendReportJobRepository : ITrendReportJobRepository
                 }
 
                 // Another process won the race to create the dedup pointer. Try to create or get the job from the winning dedup pointer.
-                var result = await TryCreateOrGetFromDedupAsync(candidate, winningDedup, cancellationToken);
+                var result = await TryCreateOrGetFromDedupAsync(newJob, winningDedup, cancellationToken);
 
                 if (result is not null)
                 {
@@ -134,13 +124,13 @@ public sealed class TrendReportJobRepository : ITrendReportJobRepository
             }
             catch (RequestFailedException exception)
             {
-                LogCreateOrGetFailure(exception, candidate, "AddDedupAndJobTransaction");
+                LogCreateOrGetFailure(exception, newJob, "AddDedupAndJobTransaction");
                 throw;
             }
         }
 
         throw new InvalidOperationException(
-            $"Unable to create or get trend report job for user {candidate.UserId} and fingerprint {candidate.ReportFingerprint} after {CreateOrGetMaxAttempts} attempts.");
+            $"Unable to create or get trend report job for user {newJob.UserId} after {CreateOrGetMaxAttempts} attempts.");
     }
 
     #endregion
@@ -219,18 +209,6 @@ public sealed class TrendReportJobRepository : ITrendReportJobRepository
         {
             return null;
         }
-    }
-
-    public async Task<TrendReportJob?> GetLatestByUserIdAndFingerprintAsync(int userId, string dataVersion,
-        string reportFingerprint, CancellationToken cancellationToken = default)
-    {
-        cancellationToken.ThrowIfCancellationRequested();
-
-        var jobs = await GetJobsByFingerprintAsync(userId, dataVersion, reportFingerprint, cancellationToken);
-
-        return jobs
-            .OrderByDescending(job => job.CreatedAtUtc)
-            .FirstOrDefault();
     }
 
     public async Task<IReadOnlyList<TrendReportJob>> GetActiveByUserIdAsync(
@@ -747,18 +725,17 @@ public sealed class TrendReportJobRepository : ITrendReportJobRepository
     }
 
     private async Task<CreateOrGetTrendReportJobResult?> TryCreateOrGetFromDedupAsync(
-        TrendReportJob candidate,
+        NewTrendReportJob newJob,
         TrendReportJobDedupEntity dedup,
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
 
-        if (dedup.UserId != candidate.UserId
-            || dedup.DataVersion != candidate.DataVersion
-            || dedup.ReportFingerprint != candidate.ReportFingerprint)
+        if (dedup.UserId != newJob.UserId
+            || dedup.DataVersion != newJob.DataVersion)
         {
             throw new InvalidOperationException(
-                $"Trend report dedup pointer {dedup.RowKey} is corrupt for user {candidate.UserId}.");
+                $"Trend report dedup pointer {dedup.RowKey} is corrupt for user {newJob.UserId}.");
         }
 
         var existingJob = await GetByIdAsync(dedup.UserId, dedup.JobId, cancellationToken);
@@ -769,12 +746,19 @@ public sealed class TrendReportJobRepository : ITrendReportJobRepository
                 $"Trend report dedup pointer {dedup.RowKey} references missing job {dedup.JobId} for user {dedup.UserId}.");
         }
 
+        if (existingJob.DataVersion != newJob.DataVersion
+            || existingJob.Request != newJob.Request)
+        {
+            throw new InvalidOperationException(
+                $"Trend report dedup pointer {dedup.RowKey} references a non-matching job {existingJob.Id}.");
+        }
+
         if (IsReusableDedupJobStatus(existingJob.Status))
         {
             return new CreateOrGetTrendReportJobResult(existingJob, WasCreated: false);
         }
 
-        var replacementJob = CreateNewJob(candidate, preserveCandidateRunId: false);
+        var replacementJob = CreateNewJob(newJob, preserveNewJobRunId: false);
         var updatedDedup = ToDedupEntity(
             dedup.PartitionKey,
             dedup.RowKey,
@@ -800,7 +784,7 @@ public sealed class TrendReportJobRepository : ITrendReportJobRepository
         }
         catch (RequestFailedException exception)
         {
-            LogCreateOrGetFailure(exception, candidate, "ReplaceTerminalDedupPointerTransaction");
+            LogCreateOrGetFailure(exception, newJob, "ReplaceTerminalDedupPointerTransaction");
             throw;
         }
     }
@@ -831,43 +815,25 @@ public sealed class TrendReportJobRepository : ITrendReportJobRepository
         }
     }
 
-    private async Task<IReadOnlyList<TrendReportJob>> GetJobsByFingerprintAsync(
-        int userId,
-        string dataVersion,
-        string reportFingerprint,
-        CancellationToken cancellationToken)
-    {
-        await EnsureTableAsync();
-
-        var jobs = new List<TrendReportJob>();
-        var partitionKey = GetJobPartitionKey(userId);
-
-        await foreach (var jobEntity in _tableClient.QueryAsync<TrendReportJobEntity>(
-            entity => entity.PartitionKey == partitionKey
-                && entity.UserId == userId
-                && entity.DataVersion == dataVersion
-                && entity.ReportFingerprint == reportFingerprint,
-            cancellationToken: cancellationToken))
-        {
-            if (IsDedupRowKey(jobEntity.RowKey))
-            {
-                continue;
-            }
-
-            jobs.Add(ToModel(jobEntity));
-        }
-
-        return jobs;
-    }
-
     private static string GetJobPartitionKey(int userId)
     {
         return $"{JobPartitionKeyPrefix}{userId}";
     }
 
-    private static string GetDedupRowKey(string dataVersion, string reportFingerprint)
+    private static string GetDedupRowKey(NewTrendReportJob newJob)
     {
-        var rowKey = $"{DedupRowKeyPrefix}{dataVersion}:{reportFingerprint}";
+        var request = newJob.Request;
+        var dedupSource = string.Join(
+            "\n",
+            newJob.DataVersion,
+            request.StartWeek.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+            request.EndWeek.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+            request.ComparisonStartWeek?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) ?? string.Empty,
+            request.ComparisonEndWeek?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) ?? string.Empty);
+        var dedupHash = Convert.ToHexString(
+                SHA256.HashData(Encoding.UTF8.GetBytes(dedupSource)))
+            .ToLowerInvariant();
+        var rowKey = $"{DedupRowKeyPrefix}{dedupHash}";
         ValidateTableKey(rowKey, "Trend report dedup RowKey");
         return rowKey;
     }
@@ -956,27 +922,30 @@ public sealed class TrendReportJobRepository : ITrendReportJobRepository
     }
 
     private static TrendReportJob CreateNewJob(
-        TrendReportJob candidate,
-        bool preserveCandidateRunId)
+        NewTrendReportJob newJob,
+        bool preserveNewJobRunId)
     {
         var now = DateTimeOffset.UtcNow;
-        var runId = preserveCandidateRunId && !string.IsNullOrWhiteSpace(candidate.RunId)
-            ? candidate.RunId
+        var runId = preserveNewJobRunId && !string.IsNullOrWhiteSpace(newJob.RunId)
+            ? newJob.RunId
             : CreateRunId();
 
-        return candidate with
-        {
-            Id = RandomNumberGenerator.GetInt32(1, int.MaxValue),
-            Status = TrendReportJobStatuses.EnqueuePending,
-            ProgressPercent = 0,
-            RunId = runId,
-            Result = null,
-            ErrorMessage = null,
-            StartedAtUtc = null,
-            CompletedAtUtc = null,
-            CreatedAtUtc = now,
-            UpdatedAtUtc = now,
-        };
+        return new TrendReportJob(
+            Id: RandomNumberGenerator.GetInt32(1, int.MaxValue),
+            UserId: newJob.UserId,
+            Status: TrendReportJobStatuses.EnqueuePending,
+            ProgressPercent: 0,
+            CurrentStage: newJob.CurrentStage,
+            Request: newJob.Request,
+            RunId: runId,
+            DataVersion: newJob.DataVersion,
+            Snapshot: newJob.Snapshot,
+            Result: null,
+            ErrorMessage: null,
+            CreatedAtUtc: now,
+            StartedAtUtc: null,
+            CompletedAtUtc: null,
+            UpdatedAtUtc: now);
     }
 
     private static string CreateRunId()
@@ -999,7 +968,6 @@ public sealed class TrendReportJobRepository : ITrendReportJobRepository
             JobId = job.Id,
             RunId = job.RunId,
             DataVersion = job.DataVersion,
-            ReportFingerprint = job.ReportFingerprint,
             CreatedAtUtc = createdAtUtc,
             UpdatedAtUtc = updatedAtUtc,
         };
@@ -1007,16 +975,15 @@ public sealed class TrendReportJobRepository : ITrendReportJobRepository
 
     private void LogCreateOrGetFailure(
         RequestFailedException exception,
-        TrendReportJob candidate,
+        NewTrendReportJob newJob,
         string operationName)
     {
         _logger.LogError(
             exception,
-            "Failed to create or get trend report job. Operation={Operation}, UserId={UserId}, DataVersion={DataVersion}, ReportFingerprint={ReportFingerprint}.",
+            "Failed to create or get trend report job. Operation={Operation}, UserId={UserId}, DataVersion={DataVersion}.",
             operationName,
-            candidate.UserId,
-            candidate.DataVersion,
-            candidate.ReportFingerprint);
+            newJob.UserId,
+            newJob.DataVersion);
     }
 
     private TrendReportJobEntity ToEntity(TrendReportJob job)
@@ -1031,7 +998,6 @@ public sealed class TrendReportJobRepository : ITrendReportJobRepository
             CurrentStage = job.CurrentStage,
             RunId = job.RunId,
             DataVersion = job.DataVersion,
-            ReportFingerprint = job.ReportFingerprint,
             RequestJson = JsonSerializer.Serialize(job.Request, _jsonOptions),
             SnapshotJson = JsonSerializer.Serialize(job.Snapshot, _jsonOptions),
             ResultJson = job.Result is null
@@ -1066,8 +1032,7 @@ public sealed class TrendReportJobRepository : ITrendReportJobRepository
             entity.CurrentStage,
             request,
             entity.RunId,
-            string.IsNullOrWhiteSpace(entity.DataVersion) ? entity.ReportFingerprint : entity.DataVersion,
-            entity.ReportFingerprint,
+            entity.DataVersion,
             snapshot,
             result,
             entity.ErrorMessage,

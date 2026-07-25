@@ -130,9 +130,9 @@ Migration:
 1. 前端提交训练周期、可选对比周期、动作选择和报告类型。
 2. `TrendReportFunctions` 调用 `TrendReportService.SubmitAsync`。
 3. Service 验证请求并读取 Training 与 PreCheck 快照。
-4. Service 用 `request + snapshot` 生成 `reportFingerprint`。
-5. 如果当前用户已有相同 fingerprint 的 `EnqueuePending` / `Queued` / `Processing` job，直接返回已有 job，不再 enqueue。
-6. 如果已有 active job 但 fingerprint 不同，说明用户改了报告输入或底层数据快照；旧 job 标记为 `Cancelled`。
+4. Repository 用标准化后的 `request + DataVersion` 生成内部 dedup RowKey hash。
+5. 如果当前用户已有相同 dedup RowKey 的 `EnqueuePending` / `Queued` / `Processing` job，直接返回已有 job，不再 enqueue。
+6. 如果已有其他 active job，说明用户改了报告输入或底层数据；旧 job 标记为 `Cancelled`。
 7. `TrendReportJobRepository` 将带 `RunId` 的新 `EnqueuePending` Job 写入 Azure Table。
 8. `TrendReportJobQueue` 将包含 `jobId` / `runId` / `dataVersion` 的 JSON message 放入 `trend-report-jobs` Queue，发送成功后把 job 标成 `Queued`。
 9. `ProcessTrendReportJob` Service Bus Trigger 调用 `ProcessAsync`。

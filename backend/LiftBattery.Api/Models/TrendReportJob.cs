@@ -24,6 +24,14 @@ public sealed record TrendReportReqSnapshot(
     IReadOnlyList<TrainingDayModel> TrainingDays,
     IReadOnlyList<PreCheckModel> PreCheckLogs);
 
+public sealed record NewTrendReportJob(
+    int UserId,
+    string CurrentStage,
+    TrendReportRequest Request,
+    string RunId,
+    string DataVersion,
+    TrendReportReqSnapshot Snapshot);
+
 public sealed record TrendReportJob(
     int Id,
     int UserId,
@@ -33,7 +41,6 @@ public sealed record TrendReportJob(
     TrendReportRequest Request,
     string RunId,
     string DataVersion,
-    string ReportFingerprint,
     TrendReportReqSnapshot Snapshot,
     TrendReportResultDto? Result,
     string? ErrorMessage,

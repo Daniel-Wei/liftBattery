@@ -64,6 +64,7 @@ public sealed class TrendReportRunIdTests
         var dto = await service.SubmitAsync(1, CreateRequest());
 
         Assert.NotNull(jobRepository.CreatedJob);
+        Assert.True(jobRepository.CreatedJob.Id > 0);
         Assert.NotNull(queue.EnqueuedMessage);
         Assert.Equal(TrendReportJobStatuses.EnqueuePending, jobRepository.CreatedJob.Status);
         Assert.Equal(TrendReportJobStatuses.Queued, dto.Status);
@@ -393,7 +394,6 @@ public sealed class TrendReportRunIdTests
                 null),
             RunId: runId,
             DataVersion: dataVersion,
-            ReportFingerprint: "fingerprint",
             Snapshot: new TrendReportReqSnapshot(
                 Array.Empty<TrainingDayModel>(),
                 Array.Empty<PreCheckModel>()),
@@ -423,17 +423,8 @@ public sealed class TrendReportRunIdTests
         public int BumpDataVersionCallCount { get; private set; }
         public string? LastExpectedRunId { get; private set; }
 
-        public Task<TrendReportJob> CreateAsync(
-            TrendReportJob job,
-            CancellationToken cancellationToken = default)
-        {
-            CreatedJob = job;
-            Job = job;
-            return Task.FromResult(job);
-        }
-
-        public Task<CreateOrGetTrendReportJobResult> CreateOrGetByFingerprintAsync(
-            TrendReportJob candidate,
+        public Task<CreateOrGetTrendReportJobResult> CreateOrGetAsync(
+            NewTrendReportJob newJob,
             CancellationToken cancellationToken = default)
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -441,9 +432,9 @@ public sealed class TrendReportRunIdTests
             lock (_sync)
             {
                 if (Job is not null
-                    && Job.UserId == candidate.UserId
-                    && Job.DataVersion == candidate.DataVersion
-                    && Job.ReportFingerprint == candidate.ReportFingerprint
+                    && Job.UserId == newJob.UserId
+                    && Job.DataVersion == newJob.DataVersion
+                    && Job.Request == newJob.Request
                     && Job.Status is not TrendReportJobStatuses.Failed
                         and not TrendReportJobStatuses.Cancelled
                         and not TrendReportJobStatuses.Superseded)
@@ -451,10 +442,23 @@ public sealed class TrendReportRunIdTests
                     return Task.FromResult(new CreateOrGetTrendReportJobResult(Job, WasCreated: false));
                 }
 
-                var created = candidate with
-                {
-                    Id = _nextJobId++,
-                };
+                var now = DateTimeOffset.UtcNow;
+                var created = new TrendReportJob(
+                    Id: _nextJobId++,
+                    UserId: newJob.UserId,
+                    Status: TrendReportJobStatuses.EnqueuePending,
+                    ProgressPercent: 0,
+                    CurrentStage: newJob.CurrentStage,
+                    Request: newJob.Request,
+                    RunId: newJob.RunId,
+                    DataVersion: newJob.DataVersion,
+                    Snapshot: newJob.Snapshot,
+                    Result: null,
+                    ErrorMessage: null,
+                    CreatedAtUtc: now,
+                    StartedAtUtc: null,
+                    CompletedAtUtc: null,
+                    UpdatedAtUtc: now);
 
                 CreatedJob = created;
                 Job = created;
@@ -509,15 +513,6 @@ public sealed class TrendReportRunIdTests
                 : Array.Empty<TrendReportJob>();
 
             return Task.FromResult<IReadOnlyList<TrendReportJob>>(jobs);
-        }
-
-        public Task<TrendReportJob?> GetLatestByUserIdAndFingerprintAsync(
-            int userId,
-            string dataVersion,
-            string reportFingerprint,
-            CancellationToken cancellationToken = default)
-        {
-            return Task.FromResult<TrendReportJob?>(null);
         }
 
         public Task<TrendReportJob?> GetByIdAsync(

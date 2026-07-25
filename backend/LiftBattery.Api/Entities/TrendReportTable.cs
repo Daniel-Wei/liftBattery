@@ -17,7 +17,6 @@ public sealed class TrendReportJobEntity : ITableEntity
     public string CurrentStage { get; set; } = string.Empty;
     public string RunId { get; set; } = string.Empty;
     public string DataVersion { get; set; } = string.Empty;
-    public string ReportFingerprint { get; set; } = string.Empty;
     public string RequestJson { get; set; } = string.Empty;
     public string SnapshotJson { get; set; } = string.Empty;
     public string? ResultJson { get; set; }
@@ -41,7 +40,6 @@ public sealed class TrendReportJobDedupEntity : ITableEntity
     public int JobId { get; set; }
     public string RunId { get; set; } = string.Empty;
     public string DataVersion { get; set; } = string.Empty;
-    public string ReportFingerprint { get; set; } = string.Empty;
     public DateTimeOffset CreatedAtUtc { get; set; }
     public DateTimeOffset UpdatedAtUtc { get; set; }
 }

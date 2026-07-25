@@ -10,9 +10,8 @@ public sealed record CreateOrGetTrendReportJobResult(
 
 public interface ITrendReportJobRepository
 {
-    Task<TrendReportJob> CreateAsync(TrendReportJob job, CancellationToken cancellationToken = default);
-    Task<CreateOrGetTrendReportJobResult> CreateOrGetByFingerprintAsync(
-        TrendReportJob candidate,
+    Task<CreateOrGetTrendReportJobResult> CreateOrGetAsync(
+        NewTrendReportJob newJob,
         CancellationToken cancellationToken = default);
     Task<string?> GetCurrentTrendReportReqDataVersionAsync(
         int userId,
@@ -28,8 +27,6 @@ public interface ITrendReportJobRepository
         DateTimeOffset olderThanUtc,
         int maxCount,
         CancellationToken cancellationToken = default);
-    Task<TrendReportJob?> GetLatestByUserIdAndFingerprintAsync(int userId, string dataVersion,
-        string reportFingerprint, CancellationToken cancellationToken = default);
     Task<TrendReportJob?> GetByIdAsync(int userId, int id, CancellationToken cancellationToken = default);
     Task<TrendReportJob> UpdateAsync(TrendReportJob job, CancellationToken cancellationToken = default);
     Task<bool> TryStartProcessingAsync(
