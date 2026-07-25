@@ -83,12 +83,6 @@ public interface ITrendReportJobRepository
         string expectedDataVersion,
         CancellationToken cancellationToken = default);
 
-    Task<bool> TryMarkSupersededIfCancelRequestedAsync(
-        int userId,
-        Guid jobId,
-        string expectedDataVersion,
-        CancellationToken cancellationToken = default);
-
     Task<bool> TryMarkSupersededIfCurrentAsync(
         int userId,
         string runId,

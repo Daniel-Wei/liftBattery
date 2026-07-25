@@ -527,40 +527,16 @@ public sealed class TrendReportJobRepository : ITrendReportJobRepository
         return TryUpdateEntityAsync(
             userId,
             jobId,
-            null,
+            runId,
             expectedDataVersion,
             entity =>
                 entity.DataVersion == expectedDataVersion
-                    && entity.RunId == runId.ToString()
+                    && entity.RunId == runId
                     && IsActiveStatus(entity.Status),
             (entity, now) =>
             {
                 entity.Status = TrendReportJobStatuses.Superseded;
                 entity.CurrentStage = "已跳过：队列消息的数据版本已过期";
-                entity.CompletedAtUtc = now;
-            },
-            operationName: TrendReportRepositoryActions.MarkSuperseded,
-            cancellationToken);
-    }
-
-    public Task<bool> TryMarkSupersededIfCancelRequestedAsync(
-        int userId,
-        Guid jobId,
-        string expectedDataVersion,
-        CancellationToken cancellationToken = default)
-    {
-        return TryUpdateEntityAsync(
-            userId,
-            jobId,
-            null,
-            expectedDataVersion,
-            entity =>
-                entity.DataVersion == expectedDataVersion
-                && entity.Status == TrendReportJobStatuses.CancelRequested,
-            (entity, now) =>
-            {
-                entity.Status = TrendReportJobStatuses.Superseded;
-                entity.CurrentStage = "已停止：训练数据已更新，请重新生成报告";
                 entity.CompletedAtUtc = now;
             },
             operationName: TrendReportRepositoryActions.MarkSuperseded,
@@ -833,8 +809,7 @@ public sealed class TrendReportJobRepository : ITrendReportJobRepository
         return status is TrendReportJobStatuses.Completed
             or TrendReportJobStatuses.Failed
             or TrendReportJobStatuses.Cancelled
-            or TrendReportJobStatuses.Superseded
-            or TrendReportJobStatuses.CancelRequested;
+            or TrendReportJobStatuses.Superseded;
     }
 
     private static void MarkEnqueueRecoveryFailed(
@@ -853,8 +828,7 @@ public sealed class TrendReportJobRepository : ITrendReportJobRepository
     private static bool BlocksStaleWorkerOverwrite(string status)
     {
         return status is TrendReportJobStatuses.Cancelled
-            or TrendReportJobStatuses.Superseded
-            or TrendReportJobStatuses.CancelRequested;
+            or TrendReportJobStatuses.Superseded;
     }
 
     private static InvalidOperationException CreateMissingJobException(

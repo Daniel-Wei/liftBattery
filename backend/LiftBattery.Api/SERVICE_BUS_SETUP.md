@@ -33,8 +33,6 @@ Report source data CRUD invalidation:
 
 1. After pre-check or training save/delete succeeds, `TrendReportInvalidationService` initializes or bumps the user's Table `DataVersion`.
 2. It scans active jobs for that user.
-3. If the changed training date is inside a job's target period or comparison period:
-   - `EnqueuePending` and `Queued` jobs are marked `Superseded`.
-   - `Processing` jobs are marked `CancelRequested`.
-4. The consumer cooperatively stops a `CancelRequested` job before writing more progress or a completed result, then finalizes it as `Superseded`.
+3. If the changed training date is inside an active job's target period or comparison period, the job is marked `Superseded`.
+4. The consumer stops a `Superseded` job before writing more progress or a completed result.
 5. The frontend marks the currently displayed report as `Outdated` after training save/delete and asks the user to generate a new report.

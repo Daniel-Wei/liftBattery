@@ -19,8 +19,10 @@ public sealed class TrendReportInvalidationService : ITrendReportInvalidationSer
     {
         cancellationToken.ThrowIfCancellationRequested();
 
-        var now = DateTimeOffset.UtcNow;
-        var newDataVersion = await _jobRepository.BumpDataVersionAsync(userId, now, cancellationToken);
+        var newDataVersion = await _jobRepository.BumpDataVersionAsync(
+            userId,
+            DateTimeOffset.UtcNow,
+            cancellationToken);
         var activeJobs = await _jobRepository.GetActiveByUserIdAsync(userId, cancellationToken);
 
         foreach (var job in activeJobs)
@@ -33,33 +35,12 @@ public sealed class TrendReportInvalidationService : ITrendReportInvalidationSer
                 continue;
             }
 
-            var outdatedStage = $"训练数据已在 {changedDate:yyyy-MM-dd} 更新，请重新生成报告。";
-
-            if (job.Status is TrendReportJobStatuses.EnqueuePending
-                or TrendReportJobStatuses.Queued)
-            {
-                await _jobRepository.UpdateAsync(job with
-                {
-                    Status = TrendReportJobStatuses.Superseded,
-                    ProgressPercent = 100,
-                    CurrentStage = outdatedStage,
-                    ErrorMessage = null,
-                    CompletedAtUtc = now,
-                    UpdatedAtUtc = now,
-                }, cancellationToken);
-                continue;
-            }
-
-            if (job.Status == TrendReportJobStatuses.Processing)
-            {
-                await _jobRepository.UpdateAsync(job with
-                {
-                    Status = TrendReportJobStatuses.CancelRequested,
-                    CurrentStage = $"训练数据已在 {changedDate:yyyy-MM-dd} 更新，正在停止旧报告，请重新生成报告。",
-                    ErrorMessage = null,
-                    UpdatedAtUtc = now,
-                }, cancellationToken);
-            }
+            await _jobRepository.TryMarkSupersededIfCurrentAsync(
+                userId,
+                job.RunId,
+                job.Id,
+                job.DataVersion,
+                cancellationToken);
         }
     }
 

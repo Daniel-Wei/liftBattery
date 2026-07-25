@@ -130,8 +130,7 @@ export function TrendsPage() {
   const completedResult = job?.status === "Completed" ? job.result : undefined;
   const summaryCards = completedResult?.summaryCards ?? [];
   const currentReportNeedsRegeneration = job?.status === "Outdated"
-    || job?.status === "Superseded"
-    || job?.status === "CancelRequested";
+    || job?.status === "Superseded";
   const canGenerate = currentReportRequest !== null && status !== "submitting";
   const generateButtonText = status === "submitting"
     ? "正在提交"

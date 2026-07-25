@@ -151,6 +151,27 @@ public sealed class TrendReportRunIdTests
     }
 
     [Fact]
+    public async Task InvalidationMarksProcessingJobSupersededDirectly()
+    {
+        var jobRepository = new FakeTrendReportJobRepository
+        {
+            Job = CreateJob(
+                runId: "trend-report:processing",
+                dataVersion: "v1") with
+            {
+                Status = TrendReportJobStatuses.Processing,
+            },
+        };
+        var service = new TrendReportInvalidationService(jobRepository);
+
+        await service.InvalidateForReportDataChangeAsync(
+            userId: 1,
+            changedDate: new DateOnly(2026, 7, 6));
+
+        Assert.Equal(TrendReportJobStatuses.Superseded, jobRepository.Job?.Status);
+    }
+
+    [Fact]
     public async Task ProcessAsyncStopsBeforeClaimingJobWhenRunIdDoesNotMatch()
     {
         var jobRepository = new FakeTrendReportJobRepository
@@ -694,15 +715,6 @@ public sealed class TrendReportRunIdTests
             return Task.FromResult(false);
         }
 
-        public Task<bool> TryMarkSupersededIfCancelRequestedAsync(
-            int userId,
-            Guid jobId,
-            string expectedDataVersion,
-            CancellationToken cancellationToken = default)
-        {
-            return Task.FromResult(false);
-        }
-
         public Task<bool> TryMarkSupersededIfCurrentAsync(
             int userId,
             string runId,
@@ -710,7 +722,25 @@ public sealed class TrendReportRunIdTests
             string expectedDataVersion,
             CancellationToken cancellationToken = default)
         {
-            return Task.FromResult(false);
+            if (Job is null
+                || Job.UserId != userId
+                || Job.Id != jobId
+                || Job.RunId != runId
+                || Job.DataVersion != expectedDataVersion
+                || Job.Status is not (TrendReportJobStatuses.EnqueuePending
+                    or TrendReportJobStatuses.Queued
+                    or TrendReportJobStatuses.Processing))
+            {
+                return Task.FromResult(false);
+            }
+
+            Job = Job with
+            {
+                Status = TrendReportJobStatuses.Superseded,
+                CompletedAtUtc = DateTimeOffset.UtcNow,
+                UpdatedAtUtc = DateTimeOffset.UtcNow,
+            };
+            return Task.FromResult(true);
         }
     }
 

@@ -11,7 +11,6 @@ public static class TrendReportJobStatuses
     public const string Failed = "Failed";
     public const string Cancelled = "Cancelled";
     public const string Superseded = "Superseded";
-    public const string CancelRequested = "CancelRequested";
 }
 
 public sealed record TrendReportRequest(

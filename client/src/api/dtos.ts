@@ -120,7 +120,6 @@ export type TrendReportJobStatus =
   | "Failed"
   | "Cancelled"
   | "Superseded"
-  | "CancelRequested"
   | "Outdated";
 
 export type TrendReportJobDto = {

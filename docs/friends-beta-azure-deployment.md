@@ -185,7 +185,7 @@ DataVersion 逻辑：
 
 - `TrendReportJobRepository` 在 Table 中维护每个用户当前 `DataVersion`。
 - 保存或删除训练记录后，`TrendReportInvalidationService` 会 bump DataVersion。
-- 如果已有 queued/processing job 覆盖被修改日期，旧 job 会进入 `Superseded` 或 `CancelRequested`。
+- 如果已有 queued/processing job 覆盖被修改日期，旧 job 会直接进入 `Superseded`。
 - Consumer 在处理过程中会反复检查 queue message 和 latest job 的 DataVersion，避免旧数据写回新结果。
 
 DLQ 逻辑：

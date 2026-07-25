@@ -455,17 +455,6 @@ public sealed class TrendReportService : ITrendReportService
             return true;
         }
 
-        if (latestJob.Status == TrendReportJobStatuses.CancelRequested)
-        {
-            await _trendReportJobRepo.TryMarkSupersededIfCancelRequestedAsync(
-                latestJob.UserId,
-                latestJob.Id,
-                latestJob.DataVersion,
-                cancellationToken);
-
-            return true;
-        }
-
         if (latestJob.Status is TrendReportJobStatuses.Cancelled
             or TrendReportJobStatuses.Superseded)
         {
