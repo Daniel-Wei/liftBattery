@@ -40,7 +40,7 @@ public sealed record TrendReportResultDto(
     MuscleStimulationReportDto? MuscleStimulation);
 
 public sealed record TrendReportJobDto(
-    int Id,
+    Guid Id,
     string RunId,
     string DataVersion,
     string Status,
@@ -54,7 +54,7 @@ public sealed record TrendReportJobDto(
     TrendReportResultDto? Result);
 
 public sealed record TrendReportQueueMessageDto(
-    int JobId,
+    Guid JobId,
     string RunId,
     int UserId,
     string PeriodStart,

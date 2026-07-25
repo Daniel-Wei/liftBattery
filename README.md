@@ -121,7 +121,7 @@ Migration:
 | POST | `/trainingdays/sessions` | 保存一次训练 session |
 | DELETE | `/trainingsessions/{id}` | 删除训练记录 |
 | POST | `/trendreports` | 创建/复用异步趋势报告 Job，返回 202 |
-| GET | `/trendreports/{id}` | 查询报告状态和结果 |
+| GET | `/trendreports/{id:guid}` | 查询报告状态和结果 |
 
 除注册/登录外，业务 API 通过 auth session cookie 找到当前用户；未登录时返回 401。`PreCheck__DefaultUserId` 和 `Training__DefaultUserId` 只保留为开发期配置，不应当当作正式认证边界。
 

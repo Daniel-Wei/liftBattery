@@ -27,24 +27,24 @@ public interface ITrendReportJobRepository
         DateTimeOffset olderThanUtc,
         int maxCount,
         CancellationToken cancellationToken = default);
-    Task<TrendReportJob?> GetByIdAsync(int userId, int id, CancellationToken cancellationToken = default);
+    Task<TrendReportJob?> GetByIdAsync(int userId, Guid id, CancellationToken cancellationToken = default);
     Task<TrendReportJob> UpdateAsync(TrendReportJob job, CancellationToken cancellationToken = default);
     Task<bool> TryStartProcessingAsync(
         int userId,
-        int jobId,
+        Guid jobId,
         string expectedRunId,
         string expectedDataVersion,
         CancellationToken cancellationToken = default);
     Task<bool> TryMarkQueuedIfEnqueuePendingAsync(
         int userId,
-        int jobId,
+        Guid jobId,
         string expectedRunId,
         string expectedDataVersion,
         CancellationToken cancellationToken = default);
 
     Task<TrendReportJob?> TryBeginEnqueueRecoveryAttemptAsync(
         int userId,
-        int jobId,
+        Guid jobId,
         string expectedRunId,
         string expectedDataVersion,
         int maxAttempts,
@@ -52,7 +52,7 @@ public interface ITrendReportJobRepository
 
     Task<bool> TryRecordEnqueueRecoveryFailureAsync(
         int userId,
-        int jobId,
+        Guid jobId,
         string expectedRunId,
         string expectedDataVersion,
         string errorMessage,
@@ -61,7 +61,7 @@ public interface ITrendReportJobRepository
 
     Task<bool> TryUpdateProgressIfCurrentProcessingAsync(
         int userId,
-        int jobId,
+        Guid jobId,
         string expectedRunId,
         string expectedDataVersion,
         int progressPercent,
@@ -70,7 +70,7 @@ public interface ITrendReportJobRepository
 
     Task<bool> TryCompleteIfCurrentProcessingAsync(
         int userId,
-        int jobId,
+        Guid jobId,
         string expectedRunId,
         string expectedDataVersion,
         TrendReportResultDto result,
@@ -78,21 +78,21 @@ public interface ITrendReportJobRepository
 
     Task<bool> TryMarkFailedIfCurrentProcessingAsync(
         int userId,
-        int jobId,
+        Guid jobId,
         string expectedRunId,
         string expectedDataVersion,
         CancellationToken cancellationToken = default);
 
     Task<bool> TryMarkSupersededIfCancelRequestedAsync(
         int userId,
-        int jobId,
+        Guid jobId,
         string expectedDataVersion,
         CancellationToken cancellationToken = default);
 
     Task<bool> TryMarkSupersededIfCurrentAsync(
         int userId,
         string runId,
-        int jobId,
+        Guid jobId,
         string expectedDataVersion,
         CancellationToken cancellationToken = default);
 

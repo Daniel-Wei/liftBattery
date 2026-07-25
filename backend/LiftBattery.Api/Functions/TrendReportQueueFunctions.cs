@@ -105,7 +105,7 @@ public sealed class TrendReportQueueFunctions
 
     private static bool IsValidQueueMessage(TrendReportQueueMessageDto queueMessage)
     {
-        return queueMessage.JobId > 0
+        return queueMessage.JobId != Guid.Empty
             && queueMessage.UserId > 0
             && !string.IsNullOrWhiteSpace(queueMessage.RunId)
             && !string.IsNullOrWhiteSpace(queueMessage.PeriodStart)

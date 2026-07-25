@@ -124,7 +124,7 @@ export type TrendReportJobStatus =
   | "Outdated";
 
 export type TrendReportJobDto = {
-  id: number;
+  id: string;
   runId: string;
   dataVersion: string;
   status: TrendReportJobStatus;

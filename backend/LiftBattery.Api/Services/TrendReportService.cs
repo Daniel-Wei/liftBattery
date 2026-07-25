@@ -257,7 +257,7 @@ public sealed class TrendReportService : ITrendReportService
         }
     }
     
-    public async Task<TrendReportJobDto?> GetByIdAsync(int userId, int id)
+    public async Task<TrendReportJobDto?> GetByIdAsync(int userId, Guid id)
     {
         ValidateUserId(userId);
         var job = await _trendReportJobRepo.GetByIdAsync(userId, id);

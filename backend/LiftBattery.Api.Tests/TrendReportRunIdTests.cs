@@ -9,6 +9,9 @@ namespace LiftBattery.Api.Tests;
 
 public sealed class TrendReportRunIdTests
 {
+    private static readonly Guid DefaultJobId =
+        Guid.Parse("00000000-0000-0000-0000-000000000123");
+
     [Fact]
     public async Task SubmitAsyncReturnsNoDataWithoutCreatingJobWhenSnapshotIsEmpty()
     {
@@ -64,7 +67,7 @@ public sealed class TrendReportRunIdTests
         var dto = await service.SubmitAsync(1, CreateRequest());
 
         Assert.NotNull(jobRepository.CreatedJob);
-        Assert.True(jobRepository.CreatedJob.Id > 0);
+        Assert.NotEqual(Guid.Empty, jobRepository.CreatedJob.Id);
         Assert.NotNull(queue.EnqueuedMessage);
         Assert.Equal(TrendReportJobStatuses.EnqueuePending, jobRepository.CreatedJob.Status);
         Assert.Equal(TrendReportJobStatuses.Queued, dto.Status);
@@ -78,7 +81,7 @@ public sealed class TrendReportRunIdTests
     {
         var jobRepository = new FakeTrendReportJobRepository();
         jobRepository.AdditionalActiveJobs.Add(CreateJob(
-            id: 900,
+            id: Guid.Parse("00000000-0000-0000-0000-000000000900"),
             runId: "trend-report:old",
             dataVersion: "v1") with
         {
@@ -122,7 +125,7 @@ public sealed class TrendReportRunIdTests
     }
 
     [Fact]
-    public async Task SubmitAsyncConcurrentTerminalReplacementCreatesOneReplacement()
+    public async Task SubmitAsyncConcurrentRequestsReuseFailedJobWithoutSecondEnqueue()
     {
         var jobRepository = new FakeTrendReportJobRepository();
         var queue = new FakeTrendReportJobQueue();
@@ -140,11 +143,11 @@ public sealed class TrendReportRunIdTests
             .Range(0, 8)
             .Select(_ => service.SubmitAsync(1, CreateRequest())));
 
-        Assert.DoesNotContain(results, result => result.Id == failed.Id);
+        Assert.All(results, result => Assert.Equal(failed.Id, result.Id));
         Assert.Single(results.Select(result => result.Id).Distinct());
         Assert.Single(results.Select(result => result.RunId).Distinct());
-        Assert.Equal(2, jobRepository.CreateOrGetCreatedCount);
-        Assert.Equal(2, queue.EnqueueCount);
+        Assert.Equal(1, jobRepository.CreateOrGetCreatedCount);
+        Assert.Equal(1, queue.EnqueueCount);
     }
 
     [Fact]
@@ -216,7 +219,7 @@ public sealed class TrendReportRunIdTests
             },
         };
         jobRepository.AdditionalActiveJobs.Add(CreateJob(
-            id: 900,
+            id: Guid.Parse("00000000-0000-0000-0000-000000000900"),
             runId: "trend-report:old",
             dataVersion: "v1") with
         {
@@ -250,7 +253,7 @@ public sealed class TrendReportRunIdTests
             ThrowOnCancelUpdate = true,
         };
         jobRepository.AdditionalActiveJobs.Add(CreateJob(
-            id: 900,
+            id: Guid.Parse("00000000-0000-0000-0000-000000000900"),
             runId: "trend-report:old",
             dataVersion: "v1") with
         {
@@ -365,7 +368,7 @@ public sealed class TrendReportRunIdTests
         string dataVersion)
     {
         return new TrendReportQueueMessageDto(
-            JobId: 123,
+            JobId: DefaultJobId,
             RunId: runId,
             UserId: 1,
             PeriodStart: "2026-07-06",
@@ -377,12 +380,12 @@ public sealed class TrendReportRunIdTests
     private static TrendReportJob CreateJob(
         string runId,
         string dataVersion,
-        int id = 123)
+        Guid? id = null)
     {
         var now = DateTimeOffset.Parse("2026-07-06T00:00:00Z");
 
         return new TrendReportJob(
-            Id: id,
+            Id: id ?? DefaultJobId,
             UserId: 1,
             Status: TrendReportJobStatuses.Queued,
             ProgressPercent: 0,
@@ -408,7 +411,6 @@ public sealed class TrendReportRunIdTests
     private sealed class FakeTrendReportJobRepository : ITrendReportJobRepository
     {
         private readonly object _sync = new();
-        private int _nextJobId = 123;
         public TrendReportJob? CreatedJob { get; private set; }
         public TrendReportJob? Job { get; set; }
         public List<TrendReportJob> AdditionalActiveJobs { get; } = new();
@@ -434,17 +436,14 @@ public sealed class TrendReportRunIdTests
                 if (Job is not null
                     && Job.UserId == newJob.UserId
                     && Job.DataVersion == newJob.DataVersion
-                    && Job.Request == newJob.Request
-                    && Job.Status is not TrendReportJobStatuses.Failed
-                        and not TrendReportJobStatuses.Cancelled
-                        and not TrendReportJobStatuses.Superseded)
+                    && Job.Request == newJob.Request)
                 {
                     return Task.FromResult(new CreateOrGetTrendReportJobResult(Job, WasCreated: false));
                 }
 
                 var now = DateTimeOffset.UtcNow;
                 var created = new TrendReportJob(
-                    Id: _nextJobId++,
+                    Id: Guid.NewGuid(),
                     UserId: newJob.UserId,
                     Status: TrendReportJobStatuses.EnqueuePending,
                     ProgressPercent: 0,
@@ -517,7 +516,7 @@ public sealed class TrendReportRunIdTests
 
         public Task<TrendReportJob?> GetByIdAsync(
             int userId,
-            int id,
+            Guid id,
             CancellationToken cancellationToken = default)
         {
             return Task.FromResult<TrendReportJob?>(Job);
@@ -554,7 +553,7 @@ public sealed class TrendReportRunIdTests
 
         public Task<bool> TryStartProcessingAsync(
             int userId,
-            int jobId,
+            Guid jobId,
             string expectedRunId,
             string expectedDataVersion,
             CancellationToken cancellationToken = default)
@@ -566,7 +565,7 @@ public sealed class TrendReportRunIdTests
 
         public Task<bool> TryMarkQueuedIfEnqueuePendingAsync(
             int userId,
-            int jobId,
+            Guid jobId,
             string expectedRunId,
             string expectedDataVersion,
             CancellationToken cancellationToken = default)
@@ -592,7 +591,7 @@ public sealed class TrendReportRunIdTests
 
         public Task<TrendReportJob?> TryBeginEnqueueRecoveryAttemptAsync(
             int userId,
-            int jobId,
+            Guid jobId,
             string expectedRunId,
             string expectedDataVersion,
             int maxAttempts,
@@ -630,7 +629,7 @@ public sealed class TrendReportRunIdTests
 
         public Task<bool> TryRecordEnqueueRecoveryFailureAsync(
             int userId,
-            int jobId,
+            Guid jobId,
             string expectedRunId,
             string expectedDataVersion,
             string errorMessage,
@@ -664,7 +663,7 @@ public sealed class TrendReportRunIdTests
 
         public Task<bool> TryUpdateProgressIfCurrentProcessingAsync(
             int userId,
-            int jobId,
+            Guid jobId,
             string expectedRunId,
             string expectedDataVersion,
             int progressPercent,
@@ -676,7 +675,7 @@ public sealed class TrendReportRunIdTests
 
         public Task<bool> TryCompleteIfCurrentProcessingAsync(
             int userId,
-            int jobId,
+            Guid jobId,
             string expectedRunId,
             string expectedDataVersion,
             TrendReportResultDto result,
@@ -687,7 +686,7 @@ public sealed class TrendReportRunIdTests
 
         public Task<bool> TryMarkFailedIfCurrentProcessingAsync(
             int userId,
-            int jobId,
+            Guid jobId,
             string expectedRunId,
             string expectedDataVersion,
             CancellationToken cancellationToken = default)
@@ -697,7 +696,7 @@ public sealed class TrendReportRunIdTests
 
         public Task<bool> TryMarkSupersededIfCancelRequestedAsync(
             int userId,
-            int jobId,
+            Guid jobId,
             string expectedDataVersion,
             CancellationToken cancellationToken = default)
         {
@@ -707,7 +706,7 @@ public sealed class TrendReportRunIdTests
         public Task<bool> TryMarkSupersededIfCurrentAsync(
             int userId,
             string runId,
-            int jobId,
+            Guid jobId,
             string expectedDataVersion,
             CancellationToken cancellationToken = default)
         {

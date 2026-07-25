@@ -55,7 +55,7 @@ export const createTrendReport = createAsyncThunk<
 
 export const fetchTrendReportJob = createAsyncThunk<
   TrendReportJobDto,
-  number, // First argument to the payload creators
+  string, // First argument to the payload creators
   { rejectValue: string }
 >(
   "trendReport/fetchJob",

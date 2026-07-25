@@ -68,8 +68,8 @@ public sealed class TrendReportFunctions
 
     [Function("GetTrendReport")]
     public async Task<HttpResponseData> GetTrendReport(
-        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "trendreports/{id}")] HttpRequestData requestData,
-        int id,
+        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "trendreports/{id:guid}")] HttpRequestData requestData,
+        Guid id,
         CancellationToken cancellationToken)
     {
         var userId = await GetRequiredUserIdAsync(requestData, cancellationToken);

@@ -33,7 +33,7 @@ public sealed record NewTrendReportJob(
     TrendReportReqSnapshot Snapshot);
 
 public sealed record TrendReportJob(
-    int Id,
+    Guid Id,
     int UserId,
     string Status,
     int ProgressPercent,
