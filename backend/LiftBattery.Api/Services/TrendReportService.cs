@@ -7,6 +7,8 @@ namespace LiftBattery.Api.Services;
 
 public sealed class TrendReportService : ITrendReportService
 {
+    private const int CancelMaxAttempts = 5;
+
     private static readonly HashSet<string> SupportedMuscleGroups = new(StringComparer.Ordinal)
     {
         "Chest",
@@ -111,14 +113,12 @@ public sealed class TrendReportService : ITrendReportService
             return ToDto(job);
         }
 
-        // Cancel any other active jobs for the same user, since the incoming new submission will supersede them.
-        await CancelOtherActiveJobsAsync(job, cancellationToken);
-
         try
         {
             // Publish a compact JSON command. The consumer still loads the durable job from Azure Table Storage,
             // but the message carries enough metadata for duplicate detection, correlation, retry, and DLQ debugging.
-            return ToDto(await PublishPendingJobAsync(job, cancellationToken));
+            var publishResult = await PublishPendingJobAsync(job, cancellationToken);
+            return ToDto(publishResult.Job);
         }
         catch (Exception)
         {
@@ -249,6 +249,54 @@ public sealed class TrendReportService : ITrendReportService
         return job is null || job.UserId != userId ? null : ToDto(job);
     }
 
+    public async Task<TrendReportJobDto?> CancelAsync(
+        int userId,
+        Guid id,
+        CancellationToken cancellationToken = default)
+    {
+        ValidateUserId(userId);
+
+        for (var attempt = 1; attempt <= CancelMaxAttempts; attempt++)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            var job = await _trendReportJobRepo.GetByIdAsync(
+                userId,
+                id,
+                cancellationToken);
+
+            if (job is null || job.UserId != userId)
+            {
+                return null;
+            }
+
+            if (!IsActiveJobStatus(job.Status))
+            {
+                return ToDto(job);
+            }
+
+            if (await _trendReportJobRepo.TryMarkCancelledIfActiveAsync(
+                    userId,
+                    job.Id,
+                    job.RunId,
+                    job.DataVersion,
+                    cancellationToken))
+            {
+                var cancelledJob = await _trendReportJobRepo.GetByIdAsync(
+                    userId,
+                    id,
+                    cancellationToken);
+                return cancelledJob is null ? null : ToDto(cancelledJob);
+            }
+
+            // A worker may have changed the ETag between the read and the conditional
+            // cancellation. Reload before deciding whether another attempt is needed.
+        }
+
+        throw new InvalidOperationException(
+            $"Trend report job {id} could not be cancelled because it kept changing.");
+    }
+
     public async Task<TrendReportResultDto> GenerateResultAsync(int userId, CreateTrendReportRequestDto request)
     {
         ValidateUserId(userId);
@@ -273,8 +321,15 @@ public sealed class TrendReportService : ITrendReportService
         foreach (var job in pendingJobs)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            await PublishPendingJobAsync(job, cancellationToken, isRecoveryAttempt: true);
-            recoveredCount++;
+            var publishResult = await PublishPendingJobAsync(
+                job,
+                cancellationToken,
+                isRecoveryAttempt: true);
+
+            if (publishResult.WasEnqueued)
+            {
+                recoveredCount++;
+            }
         }
 
         return recoveredCount;
@@ -294,7 +349,7 @@ public sealed class TrendReportService : ITrendReportService
             job.CreatedAtUtc);
     }
 
-    private async Task<TrendReportJob> PublishPendingJobAsync(
+    private async Task<PublishPendingJobResult> PublishPendingJobAsync(
         TrendReportJob candidate,
         CancellationToken cancellationToken,
         bool isRecoveryAttempt = false)
@@ -307,7 +362,17 @@ public sealed class TrendReportService : ITrendReportService
         if (current.RunId != candidate.RunId)
         {
             // candidate old runId, cannot be published
-            return current;
+            return new PublishPendingJobResult(current, WasEnqueued: false);
+        }
+
+        if (!await _trendReportJobRepo.OwnsActiveJobLeaseAsync(
+                current.UserId,
+                current.Id,
+                current.RunId,
+                cancellationToken))
+        {
+            // Only the job holding the per-user active lease may be published or recovered.
+            return new PublishPendingJobResult(current, WasEnqueued: false);
         }
 
         var currentUserDataVersion = await _trendReportJobRepo
@@ -319,7 +384,7 @@ public sealed class TrendReportService : ITrendReportService
         if (currentUserDataVersion != candidate.DataVersion)
         {
             // candidate old data version, cannot be published
-            return current;
+            return new PublishPendingJobResult(current, WasEnqueued: false);
         }
 
         switch (current.Status)
@@ -331,13 +396,13 @@ public sealed class TrendReportService : ITrendReportService
             case TrendReportJobStatuses.Processing:
             case TrendReportJobStatuses.Completed:
                 // already published, no need to enqueue again
-                return current;
+                return new PublishPendingJobResult(current, WasEnqueued: false);
 
             case TrendReportJobStatuses.Cancelled:
             case TrendReportJobStatuses.Superseded:
             case TrendReportJobStatuses.Failed:
                 // cannot be published again
-                return current;
+                return new PublishPendingJobResult(current, WasEnqueued: false);
 
             default:
                 throw new InvalidOperationException(
@@ -356,17 +421,12 @@ public sealed class TrendReportService : ITrendReportService
 
             if (current.Status != TrendReportJobStatuses.EnqueuePending)
             {
-                return current;
+                return new PublishPendingJobResult(current, WasEnqueued: false);
             }
         }
 
         try
         {
-            if (isRecoveryAttempt)
-            {
-                await CancelOtherActiveJobsAsync(current, cancellationToken);
-            }
-
             await _trendReportJobQueue.EnqueueAsync(
                 CreateQueueMessageDTO(current),
                 cancellationToken);
@@ -392,34 +452,22 @@ public sealed class TrendReportService : ITrendReportService
             current.DataVersion,
             cancellationToken);
 
-        return await _trendReportJobRepo.GetByIdAsync(
-                current.UserId,
-                current.Id,
-                cancellationToken)
-            ?? current;
-    }
-
-    private async Task CancelOtherActiveJobsAsync(
-        TrendReportJob job,
-        CancellationToken cancellationToken)
-    {
-        var activeJobs = await _trendReportJobRepo.GetActiveByUserIdAsync(job.UserId, cancellationToken);
-
-        foreach (var activeJob in activeJobs.Where(activeJob => activeJob.Id != job.Id))
-        {
-            await _trendReportJobRepo.TryMarkCancelledIfActiveAsync(
-                activeJob.UserId,
-                activeJob.Id,
-                activeJob.RunId,
-                activeJob.DataVersion,
-                cancellationToken);
-        }
+        var publishedJob = await _trendReportJobRepo.GetByIdAsync(
+                               current.UserId,
+                               current.Id,
+                               cancellationToken)
+                           ?? current;
+        return new PublishPendingJobResult(publishedJob, WasEnqueued: true);
     }
 
     private static string CreateRunId()
     {
         return $"trend-report:{Guid.NewGuid():N}";
     }
+
+    private sealed record PublishPendingJobResult(
+        TrendReportJob Job,
+        bool WasEnqueued);
 
     private async Task<bool> StopIfQueueMessageIsStaleAsync(TrendReportQueueMessageDto message, CancellationToken cancellationToken = default)
     {
@@ -1023,6 +1071,13 @@ public sealed class TrendReportService : ITrendReportService
         {
             throw new ArgumentException("User id must be positive.");
         }
+    }
+
+    private static bool IsActiveJobStatus(string status)
+    {
+        return status is TrendReportJobStatuses.EnqueuePending
+            or TrendReportJobStatuses.Queued
+            or TrendReportJobStatuses.Processing;
     }
 
     private static TrendReportJobDto ToDto(TrendReportJob job)

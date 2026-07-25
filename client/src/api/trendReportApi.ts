@@ -14,3 +14,10 @@ export function createTrendReport(request: CreateTrendReportRequestDto) {
 export function getTrendReportJob(jobId: string) {
   return requestJson<TrendReportJobDto>(`/trendreports/${encodeURIComponent(jobId)}`);
 }
+
+export function cancelTrendReport(jobId: string) {
+  return requestJson<TrendReportJobDto>(
+    `/trendreports/${encodeURIComponent(jobId)}/cancel`,
+    { method: "POST" },
+  );
+}

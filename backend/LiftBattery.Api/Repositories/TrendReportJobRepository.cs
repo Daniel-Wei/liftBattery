@@ -18,6 +18,7 @@ public sealed class TrendReportJobRepository : ITrendReportJobRepository
     private const int HttpConflictStatusCode = 409;
     private const int HttpPreconditionFailedStatusCode = 412;
     private const string DataVersionPartitionKeyValue = "trend-report-data-version";
+    private const string ActiveJobRowKeyValue = "active-job";
     private const string DedupRowKeyPrefix = "job-dedup:";
     private const string JobPartitionKeyPrefix = "trend-report-user-";
     private readonly TableClient _tableClient;
@@ -58,66 +59,26 @@ public sealed class TrendReportJobRepository : ITrendReportJobRepository
         CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
-
         await EnsureTableAsync();
 
-        var partitionKey = GetJobPartitionKey(newJobCandidate.UserId);
-        var dedupRowKey = GetDedupRowKey(newJobCandidate);
-        var dedup = await GetDedupEntityIfExistsAsync(partitionKey, dedupRowKey, cancellationToken);
+        var createState = await LoadCreateStateAsync(
+            newJobCandidate,
+            cancellationToken);
+        var existingResult = EvaluateCreateState(
+            newJobCandidate,
+            createState);
 
-        if (dedup is not null)
+        if (existingResult is not null)
         {
-            var existingJob = await GetMatchingJobFromDedupAsync(
-                newJobCandidate,
-                dedup,
-                cancellationToken);
-            return new CreateOrGetTrendReportJobResult(existingJob, WasCreated: false);
+            return existingResult;
         }
 
         var createdJob = CreateNewJob(newJobCandidate);
-        var dedupPointer = ToDedupEntity(
-            partitionKey,
-            dedupRowKey,
-            createdJob.Id,
-            createdJob.UpdatedAtUtc,
-            createdJob.CreatedAtUtc);
-
-        try
-        {
-            await _tableClient.SubmitTransactionAsync(
-                new[]
-                {
-                    new TableTransactionAction(TableTransactionActionType.Add, dedupPointer),
-                    new TableTransactionAction(TableTransactionActionType.Add, ToEntity(createdJob)),
-                },
-                cancellationToken);
-
-            return new CreateOrGetTrendReportJobResult(createdJob, WasCreated: true);
-        }
-        catch (RequestFailedException exception) when (IsConcurrencyConflict(exception))
-        {
-            var winningDedup = await GetDedupEntityIfExistsAsync(partitionKey, dedupRowKey, cancellationToken);
-
-            if (winningDedup is null)
-            {
-                throw new InvalidOperationException(
-                    $"Trend report create transaction conflicted without a winning dedup pointer for user {newJobCandidate.UserId}.",
-                    exception);
-            }
-
-            // Another request won the initial create race. The dedup pointer is authoritative,
-            // so return its job without interpreting or changing the job status.
-            var winningJob = await GetMatchingJobFromDedupAsync(
-                newJobCandidate,
-                winningDedup,
-                cancellationToken);
-            return new CreateOrGetTrendReportJobResult(winningJob, WasCreated: false);
-        }
-        catch (RequestFailedException exception)
-        {
-            LogCreateOrGetFailure(exception, newJobCandidate, "AddDedupAndJobTransaction");
-            throw;
-        }
+        return await PersistNewJobAsync(
+            newJobCandidate,
+            createdJob,
+            createState,
+            cancellationToken);
     }
 
     #endregion
@@ -174,6 +135,24 @@ public sealed class TrendReportJobRepository : ITrendReportJobRepository
     #endregion
 
     #region: Getters
+
+    public async Task<bool> OwnsActiveJobLeaseAsync(
+        int userId,
+        Guid jobId,
+        string expectedRunId,
+        CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+
+        await EnsureTableAsync();
+        var activeJob = await GetActiveJobLeaseIfExistsAsync(
+            GetJobPartitionKey(userId),
+            cancellationToken);
+
+        return activeJob is not null
+            && activeJob.JobId == jobId
+            && activeJob.RunId == expectedRunId;
+    }
 
     public async Task<TrendReportJob?> GetByIdAsync(
         int userId,
@@ -262,6 +241,7 @@ public sealed class TrendReportJobRepository : ITrendReportJobRepository
     #endregion
 
     #region: Processing State Update Methods 
+
     public Task<bool> TryMarkCancelledIfActiveAsync(
         int userId,
         Guid jobId,
@@ -281,7 +261,7 @@ public sealed class TrendReportJobRepository : ITrendReportJobRepository
             (entity, now) =>
             {
                 entity.Status = TrendReportJobStatuses.Cancelled;
-                entity.CurrentStage = "已取消：用户提交了新的报告请求";
+                entity.CurrentStage = "Report generation cancelled";
                 entity.ErrorMessage = null;
                 entity.CompletedAtUtc = now;
             },
@@ -422,10 +402,8 @@ public sealed class TrendReportJobRepository : ITrendReportJobRepository
                 entity.UpdatedAtUtc = now;
             }
 
-            await _tableClient.UpdateEntityAsync(
+            await UpdateJobAndReleaseActiveLeaseIfTerminalAsync(
                 entity,
-                entity.ETag,
-                TableUpdateMode.Merge,
                 cancellationToken);
 
             return ToModel(entity);
@@ -634,10 +612,8 @@ public sealed class TrendReportJobRepository : ITrendReportJobRepository
 
             entity.UpdatedAtUtc = now;
 
-            await _tableClient.UpdateEntityAsync(
+            await UpdateJobAndReleaseActiveLeaseIfTerminalAsync(
                 entity,
-                entity.ETag,
-                TableUpdateMode.Merge,
                 cancellationToken);
 
             return true;
@@ -661,6 +637,53 @@ public sealed class TrendReportJobRepository : ITrendReportJobRepository
         }
     }
 
+    private async Task UpdateJobAndReleaseActiveLeaseIfTerminalAsync(
+        TrendReportJobEntity entity,
+        CancellationToken cancellationToken)
+    {
+        if (!IsTerminalStatus(entity.Status))
+        {
+            await _tableClient.UpdateEntityAsync(
+                entity,
+                entity.ETag,
+                TableUpdateMode.Merge,
+                cancellationToken);
+            return;
+        }
+
+        var activeJob = await GetActiveJobLeaseIfExistsAsync(
+            entity.PartitionKey,
+            cancellationToken);
+        var jobId = Guid.ParseExact(entity.RowKey, "N");
+
+        if (activeJob is null
+            || activeJob.JobId != jobId
+            || activeJob.RunId != entity.RunId)
+        {
+            await _tableClient.UpdateEntityAsync(
+                entity,
+                entity.ETag,
+                TableUpdateMode.Merge,
+                cancellationToken);
+            return;
+        }
+
+        // The status transition and lease release share one Azure Table partition,
+        // so another Generate cannot observe a terminal job that still owns the lease.
+        await _tableClient.SubmitTransactionAsync(
+            [
+                new TableTransactionAction(
+                    TableTransactionActionType.UpdateMerge,
+                    entity,
+                    entity.ETag),
+                new TableTransactionAction(
+                    TableTransactionActionType.Delete,
+                    activeJob,
+                    activeJob.ETag),
+            ],
+            cancellationToken);
+    }
+
     #endregion
 
     #region: Private Helper Methods
@@ -668,6 +691,256 @@ public sealed class TrendReportJobRepository : ITrendReportJobRepository
     private Task EnsureTableAsync()
     {
         return _ensureTableOnce.Value;
+    }
+
+    private async Task<CreateJobState> LoadCreateStateAsync(
+        NewTrendReportJob newJobCandidate,
+        CancellationToken cancellationToken)
+    {
+        // All browser tabs for one user share the fixed active-job lease row. The
+        // request-specific dedup row distinguishes tabs that submit identical report
+        // parameters from tabs that submit different parameters.
+        var partitionKey = GetJobPartitionKey(newJobCandidate.UserId);
+        var dedupRowKey = GetDedupRowKey(newJobCandidate);
+        var dedup = await GetDedupEntityIfExistsAsync(
+            partitionKey,
+            dedupRowKey,
+            cancellationToken);
+        var existingJob = dedup is null
+            ? null
+            : await GetMatchingJobFromDedupAsync(
+                newJobCandidate,
+                dedup,
+                cancellationToken);
+        var activeJobLease = await GetActiveJobLeaseIfExistsAsync(
+            partitionKey,
+            cancellationToken);
+
+        if (dedup is null && activeJobLease is not null)
+        {
+            // Another tab with identical parameters may have atomically created the
+            // dedup, job, and lease after our first dedup read but before the lease
+            // read. Reload this request's dedup before deciding whether the active job
+            // belongs to the same request or to a different-parameter tab.
+            dedup = await GetDedupEntityIfExistsAsync(
+                partitionKey,
+                dedupRowKey,
+                cancellationToken);
+
+            if (dedup is not null)
+            {
+                existingJob = await GetMatchingJobFromDedupAsync(
+                    newJobCandidate,
+                    dedup,
+                    cancellationToken);
+            }
+            else
+            {
+                await ValidateActiveJobWithoutDedupAsync(
+                    newJobCandidate,
+                    dedupRowKey,
+                    activeJobLease,
+                    cancellationToken);
+            }
+        }
+
+        return new CreateJobState(
+            partitionKey,
+            dedupRowKey,
+            dedup,
+            existingJob,
+            activeJobLease);
+    }
+
+    private static CreateOrGetTrendReportJobResult? EvaluateCreateState(
+        NewTrendReportJob newJobCandidate,
+        CreateJobState createState)
+    {
+        var activeJobLease = createState.ActiveJobLease;
+
+        if (activeJobLease is not null)
+        {
+            // Identical parameters in two tabs produce the same dedup row. If that
+            // dedup points to the job that owns the user-wide lease, the other tab won
+            // the race and both tabs must receive the same job.
+            var existingJob = createState.ExistingJob;
+
+            if (existingJob is not null
+                && ActiveJobLeaseMatchesExistingJob(activeJobLease, existingJob))
+            {
+                return new CreateOrGetTrendReportJobResult(
+                    existingJob,
+                    WasCreated: false);
+            }
+
+            // The lease belongs to another request, normally submitted from a different
+            // tab with different parameters. Returning that job would falsely answer the
+            // current request, so surface the expected product-level 409 conflict instead.
+            throw new TrendReportActiveJobExistsException(
+                activeJobLease.JobId);
+        }
+
+        // A completed result is immutable and reusable even though its active lease has
+        // already been released.
+        if (createState.ExistingJob?.Status == TrendReportJobStatuses.Completed)
+        {
+            return new CreateOrGetTrendReportJobResult(
+                createState.ExistingJob,
+                WasCreated: false);
+        }
+
+        if (createState.ExistingJob is not null
+            && IsActiveStatus(createState.ExistingJob.Status))
+        {
+            // Active job creation and lease creation are one atomic transaction, and a
+            // terminal transition releases the lease atomically. An active job without
+            // its lease therefore violates the persisted-state invariant.
+            throw new InvalidOperationException(
+                $"Active trend report job {createState.ExistingJob.Id} has no active-job lease for user {newJobCandidate.UserId}.");
+        }
+
+        if (createState.ExistingJob is not null
+            && !IsTerminalStatus(createState.ExistingJob.Status))
+        {
+            // Refuse to guess how an unknown persisted status should participate in
+            // deduplication. The internal details are logged and never shown to the user.
+            throw new InvalidOperationException(
+                $"Trend report job {createState.ExistingJob.Id} has unsupported status '{createState.ExistingJob.Status}'.");
+        }
+
+        return null;
+    }
+
+    private async Task ValidateActiveJobWithoutDedupAsync(
+        NewTrendReportJob newJobCandidate,
+        string expectedDedupRowKey,
+        TrendReportActiveJobEntity activeJobLease,
+        CancellationToken cancellationToken)
+    {
+        var leasedJob = await GetByIdAsync(
+            newJobCandidate.UserId,
+            activeJobLease.JobId,
+            cancellationToken);
+
+        if (leasedJob is null)
+        {
+            // The fixed lease must never outlive or point past its job row. Treat a
+            // dangling lease as storage corruption instead of blocking on an unknown job.
+            throw new InvalidOperationException(
+                $"Trend report active-job lease references missing job {activeJobLease.JobId} for user {newJobCandidate.UserId}.");
+        }
+
+        if (leasedJob.RunId != activeJobLease.RunId)
+        {
+            // JobId and RunId together identify the exact execution. A mismatch means
+            // the lease is stale or was associated with a different execution.
+            throw new InvalidOperationException(
+                $"Trend report active-job lease has RunId {activeJobLease.RunId}, but job {leasedJob.Id} has RunId {leasedJob.RunId}.");
+        }
+
+        if (leasedJob.DataVersion == newJobCandidate.DataVersion
+            && leasedJob.Request == newJobCandidate.Request)
+        {
+            // The dedup row, job row, and active lease are created atomically. Finding
+            // the same active request without its dedup row is therefore corruption,
+            // not a normal first submission or a different-parameter tab. Fail instead
+            // of silently returning a job whose idempotency record has disappeared.
+            throw new InvalidOperationException(
+                $"Active trend report job {leasedJob.Id} matches dedup key {expectedDedupRowKey}, but that dedup row is missing for user {newJobCandidate.UserId}.");
+        }
+    }
+
+    private static bool ActiveJobLeaseMatchesExistingJob(
+        TrendReportActiveJobEntity activeJobLease,
+        TrendReportJob existingJob)
+    {
+        return activeJobLease.JobId == existingJob.Id
+            && activeJobLease.RunId == existingJob.RunId;
+    }
+
+    private async Task<CreateOrGetTrendReportJobResult> PersistNewJobAsync(
+        NewTrendReportJob newJobCandidate,
+        TrendReportJob createdJob,
+        CreateJobState createState,
+        CancellationToken cancellationToken)
+    {
+        var transactionActions = BuildCreateTransactionActions(
+            createdJob,
+            createState);
+
+        try
+        {
+            await _tableClient.SubmitTransactionAsync(
+                transactionActions,
+                cancellationToken);
+
+            return new CreateOrGetTrendReportJobResult(
+                createdJob,
+                WasCreated: true);
+        }
+        catch (RequestFailedException exception) when (IsConcurrencyConflict(exception))
+        {
+            // A 409/412 can mean either that an identical-parameter tab won this
+            // request's dedup row or that a different-parameter tab won the user-wide
+            // active lease. Reloading the committed state distinguishes those outcomes.
+            return await HandleCreateConflictAsync(
+                newJobCandidate,
+                exception,
+                cancellationToken);
+        }
+        catch (RequestFailedException exception)
+        {
+            // Non-concurrency Azure Table failures are infrastructure errors. Record
+            // request identifiers in logs and let the API return its generic safe error.
+            LogCreateOrGetFailure(
+                exception,
+                newJobCandidate,
+                "CreateOrGetTransaction");
+            throw;
+        }
+    }
+
+    private IReadOnlyList<TableTransactionAction> BuildCreateTransactionActions(
+        TrendReportJob createdJob,
+        CreateJobState createState)
+    {
+        var now = DateTimeOffset.UtcNow;
+        var actions = new List<TableTransactionAction>();
+
+        if (createState.Dedup is null)
+        {
+            actions.Add(new TableTransactionAction(
+                TableTransactionActionType.Add,
+                ToDedupEntity(
+                    createState.PartitionKey,
+                    createState.DedupRowKey,
+                    createdJob.Id,
+                    createdJob.UpdatedAtUtc,
+                    createdJob.CreatedAtUtc)));
+        }
+        else
+        {
+            // An explicit Generate after Failed, Cancelled, or Superseded starts a new job.
+            // Completed remains immutable and is returned before this transaction is built.
+            createState.Dedup.JobId = createdJob.Id;
+            createState.Dedup.UpdatedAtUtc = now;
+            actions.Add(new TableTransactionAction(
+                TableTransactionActionType.UpdateMerge,
+                createState.Dedup,
+                createState.Dedup.ETag));
+        }
+
+        actions.Add(new TableTransactionAction(
+            TableTransactionActionType.Add,
+            ToEntity(createdJob)));
+        actions.Add(new TableTransactionAction(
+            TableTransactionActionType.Add,
+            ToActiveJobLease(
+                createState.PartitionKey,
+                createdJob,
+                now)));
+
+        return actions;
     }
 
     private async Task<TrendReportJob> GetMatchingJobFromDedupAsync(
@@ -682,6 +955,8 @@ public sealed class TrendReportJobRepository : ITrendReportJobRepository
 
         if (job is null)
         {
+            // A dedup pointer and its job are written atomically. A pointer to a missing
+            // job is a broken idempotency record, not a normal no-result condition.
             throw new InvalidOperationException(
                 $"Trend report dedup pointer {dedup.RowKey} references missing job {dedup.JobId} for user {newJobCandidate.UserId}.");
         }
@@ -689,11 +964,71 @@ public sealed class TrendReportJobRepository : ITrendReportJobRepository
         if (job.DataVersion != newJobCandidate.DataVersion
             || job.Request != newJobCandidate.Request)
         {
+            // The hashed row key must still resolve to the exact request. This catches
+            // either a hash collision or a corrupted pointer before another tab's job
+            // can be returned for the current parameters.
             throw new InvalidOperationException(
                 $"Trend report dedup pointer {dedup.RowKey} references a non-matching job {job.Id}.");
         }
 
         return job;
+    }
+
+    private async Task<CreateOrGetTrendReportJobResult> HandleCreateConflictAsync(
+        NewTrendReportJob newJobCandidate,
+        RequestFailedException createException,
+        CancellationToken cancellationToken)
+    {
+        // Azure Table transactions are atomic, so this failed transaction changed no
+        // rows. Reload the winner: an identical-parameter tab returns its job, while a
+        // different-parameter tab is converted to TrendReportActiveJobExistsException
+        // by the shared evaluation rules. The winner may also have completed and
+        // released its active lease before this read, in which case its dedup still
+        // identifies the completed job.
+        var latestState = await LoadCreateStateAsync(
+            newJobCandidate,
+            cancellationToken);
+        var winningResult = EvaluateCreateState(
+            newJobCandidate,
+            latestState);
+
+        if (winningResult is not null)
+        {
+            return winningResult;
+        }
+
+        // A concurrency response was observed, but the committed state now contains
+        // neither a reusable result for this request nor an active request to report.
+        // Do not start an implicit replacement/retry; preserve single-submit semantics
+        // and expose only a generic service error while retaining details in the logs.
+        throw new InvalidOperationException(
+            $"A concurrent trend report create transaction could not be resolved for user {newJobCandidate.UserId}.",
+            createException);
+    }
+
+    private async Task<TrendReportActiveJobEntity?> GetActiveJobLeaseIfExistsAsync(
+        string partitionKey,
+        CancellationToken cancellationToken)
+    {
+        var response = await _tableClient.GetEntityIfExistsAsync<TrendReportActiveJobEntity>(
+            partitionKey,
+            ActiveJobRowKeyValue,
+            cancellationToken: cancellationToken);
+
+        return response.HasValue ? response.Value : null;
+    }
+
+    private async Task<TrendReportJobEntity?> GetJobEntityIfExistsAsync(
+        string partitionKey,
+        Guid jobId,
+        CancellationToken cancellationToken)
+    {
+        var response = await _tableClient.GetEntityIfExistsAsync<TrendReportJobEntity>(
+            partitionKey,
+            GetJobRowKey(jobId),
+            cancellationToken: cancellationToken);
+
+        return response.HasValue ? response.Value : null;
     }
 
     private async Task<TrendReportJobDedupEntity?> GetDedupEntityIfExistsAsync(
@@ -855,6 +1190,21 @@ public sealed class TrendReportJobRepository : ITrendReportJobRepository
         };
     }
 
+    private static TrendReportActiveJobEntity ToActiveJobLease(
+        string partitionKey,
+        TrendReportJob job,
+        DateTimeOffset updatedAtUtc)
+    {
+        return new TrendReportActiveJobEntity
+        {
+            PartitionKey = partitionKey,
+            RowKey = ActiveJobRowKeyValue,
+            JobId = job.Id,
+            RunId = job.RunId,
+            UpdatedAtUtc = updatedAtUtc,
+        };
+    }
+
     private void LogCreateOrGetFailure(
         RequestFailedException exception,
         NewTrendReportJob newJob,
@@ -928,6 +1278,13 @@ public sealed class TrendReportJobRepository : ITrendReportJobRepository
     {
         return $"{updatedAtUtc:yyyyMMddHHmmssfffffff}-{Guid.NewGuid():N}";
     }
+
+    private sealed record CreateJobState(
+        string PartitionKey,
+        string DedupRowKey,
+        TrendReportJobDedupEntity? Dedup,
+        TrendReportJob? ExistingJob,
+        TrendReportActiveJobEntity? ActiveJobLease);
 
     private sealed class TrendReportDataVersionEntity : ITableEntity
     {

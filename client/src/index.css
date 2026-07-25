@@ -2818,3 +2818,31 @@ input.range-input--modern:focus {
     color: var(--accent-cyan);
   }
 }
+
+.trend-report-error-overlay {
+  z-index: 90;
+  padding: 20px;
+}
+
+.trend-report-error-dialog {
+  width: min(100%, 460px);
+  padding: 24px;
+  border-color: rgba(255, 141, 149, 0.38);
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.42);
+}
+
+.trend-report-error-dialog .section-title {
+  margin-top: 4px;
+}
+
+.trend-report-error-message {
+  margin: 14px 0 20px;
+  color: var(--text-secondary);
+  font-size: 14px;
+  line-height: 1.7;
+}
+
+.trend-report-error-confirm {
+  width: 100%;
+  min-height: 44px;
+}

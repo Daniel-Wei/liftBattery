@@ -95,13 +95,6 @@ public sealed class TrendReportRunIdTests
     public async Task SubmitAsyncConcurrentIdenticalRequestsShareOneCreatedJobAndOneEnqueue()
     {
         var jobRepository = new FakeTrendReportJobRepository();
-        jobRepository.AdditionalActiveJobs.Add(CreateJob(
-            id: Guid.Parse("00000000-0000-0000-0000-000000000900"),
-            runId: "trend-report:old",
-            dataVersion: "v1") with
-        {
-            Status = TrendReportJobStatuses.Queued,
-        });
         var queue = new FakeTrendReportJobQueue();
         var service = CreateService(jobRepository, queue);
 
@@ -113,8 +106,58 @@ public sealed class TrendReportRunIdTests
         Assert.Single(results.Select(result => result.RunId).Distinct());
         Assert.Equal(1, jobRepository.CreateOrGetCreatedCount);
         Assert.Equal(1, queue.EnqueueCount);
-        Assert.Equal(1, jobRepository.GetActiveCallCount);
-        Assert.Equal(1, jobRepository.CancelledUpdateCount);
+    }
+
+    [Fact]
+    public async Task SubmitAsyncRejectsDifferentParametersWhileAnotherJobIsActive()
+    {
+        var previousJob = CreateJob(
+            id: Guid.Parse("00000000-0000-0000-0000-000000000900"),
+            runId: "trend-report:previous",
+            dataVersion: "v1") with
+        {
+            Status = TrendReportJobStatuses.Processing,
+            Request = new TrendReportRequest(
+                new DateOnly(2026, 6, 1),
+                new DateOnly(2026, 6, 1),
+                null,
+                null),
+        };
+        var jobRepository = new FakeTrendReportJobRepository
+        {
+            Job = previousJob,
+        };
+        var queue = new FakeTrendReportJobQueue();
+        var service = CreateService(jobRepository, queue);
+
+        var exception = await Assert.ThrowsAsync<TrendReportActiveJobExistsException>(
+            () => service.SubmitAsync(1, CreateRequest()));
+
+        Assert.Equal(previousJob.Id, exception.ActiveJobId);
+        Assert.Equal(previousJob.Id, jobRepository.Job?.Id);
+        Assert.Equal(TrendReportJobStatuses.Processing, jobRepository.Job?.Status);
+        Assert.Equal(0, queue.EnqueueCount);
+    }
+
+    [Fact]
+    public async Task CancelAsyncReleasesActiveJobAndAllowsExplicitResubmission()
+    {
+        var jobRepository = new FakeTrendReportJobRepository();
+        var queue = new FakeTrendReportJobQueue();
+        var service = CreateService(jobRepository, queue);
+
+        var first = await service.SubmitAsync(1, CreateRequest());
+        var cancelled = await service.CancelAsync(1, first.Id);
+        var second = await service.SubmitAsync(1, CreateRequest());
+
+        Assert.Equal(TrendReportJobStatuses.Cancelled, cancelled?.Status);
+        Assert.NotEqual(first.Id, second.Id);
+        Assert.Equal(second.Id, jobRepository.Job?.Id);
+        Assert.Equal(TrendReportJobStatuses.Queued, jobRepository.Job?.Status);
+        Assert.Equal(
+            TrendReportJobStatuses.Cancelled,
+            jobRepository.AdditionalActiveJobs.Single(job => job.Id == first.Id).Status);
+        Assert.Equal(2, queue.EnqueueCount);
     }
 
     [Fact]
@@ -140,7 +183,7 @@ public sealed class TrendReportRunIdTests
     }
 
     [Fact]
-    public async Task SubmitAsyncConcurrentRequestsReuseFailedJobWithoutSecondEnqueue()
+    public async Task SubmitAsyncConcurrentRequestsReplaceFailedJobOnlyOnce()
     {
         var jobRepository = new FakeTrendReportJobRepository();
         var queue = new FakeTrendReportJobQueue();
@@ -158,11 +201,11 @@ public sealed class TrendReportRunIdTests
             .Range(0, 8)
             .Select(_ => service.SubmitAsync(1, CreateRequest())));
 
-        Assert.All(results, result => Assert.Equal(failed.Id, result.Id));
+        Assert.All(results, result => Assert.NotEqual(failed.Id, result.Id));
         Assert.Single(results.Select(result => result.Id).Distinct());
         Assert.Single(results.Select(result => result.RunId).Distinct());
-        Assert.Equal(1, jobRepository.CreateOrGetCreatedCount);
-        Assert.Equal(1, queue.EnqueueCount);
+        Assert.Equal(2, jobRepository.CreateOrGetCreatedCount);
+        Assert.Equal(2, queue.EnqueueCount);
     }
 
     [Fact]
@@ -243,24 +286,25 @@ public sealed class TrendReportRunIdTests
     }
 
     [Fact]
-    public async Task RecoverUnstartedEnqueuesAsyncCancelsOtherActiveJobsBeforeEnqueue()
+    public async Task RecoverUnstartedEnqueuesAsyncSkipsJobThatIsNoLongerCurrent()
     {
+        var oldPendingJob = CreateJob(
+            id: Guid.Parse("00000000-0000-0000-0000-000000000900"),
+            runId: "trend-report:old-pending",
+            dataVersion: "v1") with
+        {
+            Status = TrendReportJobStatuses.EnqueuePending,
+        };
         var jobRepository = new FakeTrendReportJobRepository
         {
             Job = CreateJob(
-                runId: "trend-report:pending",
+                runId: "trend-report:current",
                 dataVersion: "v1") with
             {
-                Status = TrendReportJobStatuses.EnqueuePending,
+                Status = TrendReportJobStatuses.Queued,
             },
         };
-        jobRepository.AdditionalActiveJobs.Add(CreateJob(
-            id: Guid.Parse("00000000-0000-0000-0000-000000000900"),
-            runId: "trend-report:old",
-            dataVersion: "v1") with
-        {
-            Status = TrendReportJobStatuses.Queued,
-        });
+        jobRepository.AdditionalActiveJobs.Add(oldPendingJob);
         var queue = new FakeTrendReportJobQueue();
         var service = CreateService(jobRepository, queue);
 
@@ -268,44 +312,10 @@ public sealed class TrendReportRunIdTests
             DateTimeOffset.Parse("2026-07-06T00:05:00Z"),
             maxCount: 10);
 
-        Assert.Equal(1, recovered);
-        Assert.Equal(1, jobRepository.CancelledUpdateCount);
-        Assert.Equal(TrendReportJobStatuses.Cancelled, jobRepository.AdditionalActiveJobs.Single().Status);
-        Assert.Equal(1, queue.EnqueueCount);
-        Assert.Equal(TrendReportJobStatuses.Queued, jobRepository.Job?.Status);
-    }
-
-    [Fact]
-    public async Task RecoverUnstartedEnqueuesAsyncDoesNotEnqueueWhenOldActiveCancellationFails()
-    {
-        var jobRepository = new FakeTrendReportJobRepository
-        {
-            Job = CreateJob(
-                runId: "trend-report:pending",
-                dataVersion: "v1") with
-            {
-                Status = TrendReportJobStatuses.EnqueuePending,
-            },
-            ThrowOnCancelUpdate = true,
-        };
-        jobRepository.AdditionalActiveJobs.Add(CreateJob(
-            id: Guid.Parse("00000000-0000-0000-0000-000000000900"),
-            runId: "trend-report:old",
-            dataVersion: "v1") with
-        {
-            Status = TrendReportJobStatuses.Queued,
-        });
-        var queue = new FakeTrendReportJobQueue();
-        var service = CreateService(jobRepository, queue);
-
-        await Assert.ThrowsAsync<InvalidOperationException>(() =>
-            service.RecoverUnstartedEnqueuesAsync(
-                DateTimeOffset.Parse("2026-07-06T00:05:00Z"),
-                maxCount: 10));
-
+        Assert.Equal(0, recovered);
         Assert.Equal(0, queue.EnqueueCount);
-        Assert.Equal(TrendReportJobStatuses.EnqueuePending, jobRepository.Job?.Status);
-        Assert.Equal(1, jobRepository.EnqueueRecoveryAttemptCount);
+        Assert.Equal(TrendReportJobStatuses.Queued, jobRepository.Job?.Status);
+        Assert.Equal(TrendReportJobStatuses.EnqueuePending, oldPendingJob.Status);
     }
 
     [Fact]
@@ -451,9 +461,6 @@ public sealed class TrendReportRunIdTests
         public TrendReportJob? Job { get; set; }
         public List<TrendReportJob> AdditionalActiveJobs { get; } = new();
         public int CreateOrGetCreatedCount { get; private set; }
-        public int GetActiveCallCount { get; private set; }
-        public int CancelledUpdateCount { get; private set; }
-        public bool ThrowOnCancelUpdate { get; set; }
         public bool TryStartProcessingResult { get; set; }
         public int TryStartProcessingCallCount { get; private set; }
         public int EnqueueRecoveryAttemptCount { get; private set; }
@@ -469,12 +476,36 @@ public sealed class TrendReportRunIdTests
 
             lock (_sync)
             {
-                if (Job is not null
-                    && Job.UserId == newJob.UserId
-                    && Job.DataVersion == newJob.DataVersion
-                    && Job.Request == newJob.Request)
+                var allJobs = AdditionalActiveJobs
+                    .Concat(Job is not null ? new[] { Job } : Array.Empty<TrendReportJob>())
+                    .ToArray();
+                var existingJob = allJobs
+                    .Where(candidate =>
+                        candidate.UserId == newJob.UserId
+                        && candidate.DataVersion == newJob.DataVersion
+                        && candidate.Request == newJob.Request)
+                    .OrderByDescending(candidate => candidate.CreatedAtUtc)
+                    .FirstOrDefault();
+                var activeJob = Job is not null && IsActiveStatus(Job.Status)
+                    ? Job
+                    : null;
+
+                if (activeJob is not null)
                 {
-                    return Task.FromResult(new CreateOrGetTrendReportJobResult(Job, WasCreated: false));
+                    if (existingJob?.Id == activeJob.Id
+                        && existingJob.RunId == activeJob.RunId)
+                    {
+                        return Task.FromResult(
+                            new CreateOrGetTrendReportJobResult(existingJob, WasCreated: false));
+                    }
+
+                    throw new TrendReportActiveJobExistsException(activeJob.Id);
+                }
+
+                if (existingJob?.Status == TrendReportJobStatuses.Completed)
+                {
+                    return Task.FromResult(
+                        new CreateOrGetTrendReportJobResult(existingJob, WasCreated: false));
                 }
 
                 var now = DateTimeOffset.UtcNow;
@@ -495,11 +526,31 @@ public sealed class TrendReportRunIdTests
                     CompletedAtUtc: null,
                     UpdatedAtUtc: now);
 
-                CreatedJob = created;
+                if (Job is not null)
+                {
+                    AdditionalActiveJobs.RemoveAll(candidate => candidate.Id == Job.Id);
+                    AdditionalActiveJobs.Add(Job);
+                }
+
                 Job = created;
+                CreatedJob = created;
                 CreateOrGetCreatedCount++;
                 return Task.FromResult(new CreateOrGetTrendReportJobResult(created, WasCreated: true));
             }
+        }
+
+        public Task<bool> OwnsActiveJobLeaseAsync(
+            int userId,
+            Guid jobId,
+            string expectedRunId,
+            CancellationToken cancellationToken = default)
+        {
+            return Task.FromResult(
+                Job is not null
+                && IsActiveStatus(Job.Status)
+                && Job.UserId == userId
+                && Job.Id == jobId
+                && Job.RunId == expectedRunId);
         }
 
         public string? CurrentDataVersion { get; set; } = "v1";
@@ -525,8 +576,6 @@ public sealed class TrendReportRunIdTests
             int userId,
             CancellationToken cancellationToken = default)
         {
-            GetActiveCallCount++;
-
             var activeJobs = AdditionalActiveJobs
                 .Concat(Job is not null ? new[] { Job } : Array.Empty<TrendReportJob>())
                 .Where(job => job.UserId == userId
@@ -543,9 +592,13 @@ public sealed class TrendReportRunIdTests
             int maxCount,
             CancellationToken cancellationToken = default)
         {
-            var jobs = Job is { Status: TrendReportJobStatuses.EnqueuePending or TrendReportJobStatuses.Queued, StartedAtUtc: null }
-                ? new[] { Job }
-                : Array.Empty<TrendReportJob>();
+            var jobs = AdditionalActiveJobs
+                .Concat(Job is not null ? new[] { Job } : Array.Empty<TrendReportJob>())
+                .Where(candidate =>
+                    candidate.Status == TrendReportJobStatuses.EnqueuePending
+                    && candidate.StartedAtUtc is null)
+                .Take(maxCount)
+                .ToArray();
 
             return Task.FromResult<IReadOnlyList<TrendReportJob>>(jobs);
         }
@@ -555,7 +608,10 @@ public sealed class TrendReportRunIdTests
             Guid id,
             CancellationToken cancellationToken = default)
         {
-            return Task.FromResult<TrendReportJob?>(Job);
+            var job = AdditionalActiveJobs
+                .Concat(Job is not null ? new[] { Job } : Array.Empty<TrendReportJob>())
+                .SingleOrDefault(candidate => candidate.UserId == userId && candidate.Id == id);
+            return Task.FromResult<TrendReportJob?>(job);
         }
 
         public Task<bool> TryMarkCancelledIfActiveAsync(
@@ -565,50 +621,29 @@ public sealed class TrendReportRunIdTests
             string expectedDataVersion,
             CancellationToken cancellationToken = default)
         {
-            if (ThrowOnCancelUpdate)
+            lock (_sync)
             {
-                throw new InvalidOperationException("Cancel old active job failed.");
+                if (Job is null
+                    || Job.UserId != userId
+                    || Job.Id != jobId
+                    || Job.RunId != expectedRunId
+                    || Job.DataVersion != expectedDataVersion
+                    || !IsActiveStatus(Job.Status))
+                {
+                    return Task.FromResult(false);
+                }
+
+                var now = DateTimeOffset.UtcNow;
+                Job = Job with
+                {
+                    Status = TrendReportJobStatuses.Cancelled,
+                    CurrentStage = "Report generation cancelled",
+                    ErrorMessage = null,
+                    CompletedAtUtc = now,
+                    UpdatedAtUtc = now,
+                };
+                return Task.FromResult(true);
             }
-
-            var activeIndex = AdditionalActiveJobs.FindIndex(activeJob => activeJob.Id == jobId);
-            var current = Job?.Id == jobId
-                ? Job
-                : activeIndex >= 0
-                    ? AdditionalActiveJobs[activeIndex]
-                    : null;
-
-            if (current is null
-                || current.UserId != userId
-                || current.RunId != expectedRunId
-                || current.DataVersion != expectedDataVersion
-                || current.Status is not (TrendReportJobStatuses.EnqueuePending
-                    or TrendReportJobStatuses.Queued
-                    or TrendReportJobStatuses.Processing))
-            {
-                return Task.FromResult(false);
-            }
-
-            var cancelled = current with
-            {
-                Status = TrendReportJobStatuses.Cancelled,
-                CurrentStage = "已取消：用户提交了新的报告请求",
-                ErrorMessage = null,
-                CompletedAtUtc = DateTimeOffset.UtcNow,
-                UpdatedAtUtc = DateTimeOffset.UtcNow,
-            };
-
-            if (Job?.Id == jobId)
-            {
-                Job = cancelled;
-            }
-
-            if (activeIndex >= 0)
-            {
-                AdditionalActiveJobs[activeIndex] = cancelled;
-            }
-
-            CancelledUpdateCount++;
-            return Task.FromResult(true);
         }
 
         public Task<bool> TryRecordInitialEnqueueFailureAsync(
@@ -806,6 +841,13 @@ public sealed class TrendReportRunIdTests
                 UpdatedAtUtc = DateTimeOffset.UtcNow,
             };
             return Task.FromResult(true);
+        }
+
+        private static bool IsActiveStatus(string status)
+        {
+            return status is TrendReportJobStatuses.EnqueuePending
+                or TrendReportJobStatuses.Queued
+                or TrendReportJobStatuses.Processing;
         }
     }
 

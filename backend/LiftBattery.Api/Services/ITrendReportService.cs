@@ -9,6 +9,10 @@ public interface ITrendReportService
         CreateTrendReportRequestDto request,
         CancellationToken cancellationToken = default);
     Task<TrendReportJobDto?> GetByIdAsync(int userId, Guid id);
+    Task<TrendReportJobDto?> CancelAsync(
+        int userId,
+        Guid id,
+        CancellationToken cancellationToken = default);
     Task<TrendReportResultDto> GenerateResultAsync(int userId, CreateTrendReportRequestDto request);
     Task<int> RecoverUnstartedEnqueuesAsync(
         DateTimeOffset olderThanUtc,

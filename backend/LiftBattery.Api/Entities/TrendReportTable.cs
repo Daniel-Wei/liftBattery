@@ -40,3 +40,14 @@ public sealed class TrendReportJobDedupEntity : ITableEntity
     public DateTimeOffset CreatedAtUtc { get; set; }
     public DateTimeOffset UpdatedAtUtc { get; set; }
 }
+
+public sealed class TrendReportActiveJobEntity : ITableEntity
+{
+    public string PartitionKey { get; set; } = string.Empty;
+    public string RowKey { get; set; } = string.Empty;
+    public DateTimeOffset? Timestamp { get; set; }
+    public ETag ETag { get; set; }
+    public Guid JobId { get; set; }
+    public string RunId { get; set; } = string.Empty;
+    public DateTimeOffset UpdatedAtUtc { get; set; }
+}

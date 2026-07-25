@@ -5,7 +5,9 @@ import { TREND_REPORT_JOB_ID_STORAGE_KEY } from "../data/localStorageKeys";
 import { getTrainingCycles } from "../domain/trainingTrendCharts";
 import { useAppDispatch, useAppSelector } from "../store/hooks";
 import {
+  cancelTrendReport,
   createTrendReport,
+  dismissTrendReportError,
   fetchTrendReportJob,
 } from "../store/slices/trendReportSlice";
 import { getJobStatusLabel } from "../helpers/TrendsPageHelpers";
@@ -94,7 +96,7 @@ function TrendSummaryCardView({ card }: { card: TrendReportSummaryCardDto }) {
 
 export function TrendsPage() {
   const dispatch = useAppDispatch();
-  const { job, status, error } = useAppSelector((state) => state.trendReport);
+  const { job, status, error, isErrorDialogOpen } = useAppSelector((state) => state.trendReport);
   const programSettings = useAppSelector(selectProgramSettings);
 
   const trainingCycles = useMemo(() => getTrainingCycles(programSettings), [programSettings]);
@@ -131,12 +133,18 @@ export function TrendsPage() {
   const summaryCards = completedResult?.summaryCards ?? [];
   const currentReportNeedsRegeneration = job?.status === "Outdated"
     || job?.status === "Superseded";
-  const canGenerate = currentReportRequest !== null && status !== "submitting";
-  const generateButtonText = status === "submitting"
-    ? "正在提交"
-    : activeJobIsGenerating || currentReportNeedsRegeneration
-      ? "重新生成报告"
-      : "生成报告";
+  const canUseReportAction = activeJobIsGenerating
+    ? status !== "cancelling"
+    : currentReportRequest !== null && status !== "submitting";
+  const reportActionButtonText = activeJobIsGenerating
+    ? status === "cancelling"
+      ? "正在取消"
+      : "取消当前报告"
+    : status === "submitting"
+      ? "正在提交"
+      : currentReportNeedsRegeneration
+        ? "重新生成报告"
+        : "生成报告";
 
   // execute any remaining jobs
   useEffect(() => {
@@ -162,15 +170,28 @@ export function TrendsPage() {
       return;
     }
 
+    if (status === "polling" || status === "cancelling") {
+      return;
+    }
+
     const timeoutId = window.setTimeout(() => {
       void dispatch(fetchTrendReportJob(job.id));
     }, 1200);
 
     return () => window.clearTimeout(timeoutId);
-  }, [dispatch, job]);
+  }, [dispatch, job, status]);
 
-  function handleGenerateReport() {
-    if (!canGenerate || currentReportRequest === null) {
+  function handleReportAction() {
+    if (!canUseReportAction) {
+      return;
+    }
+
+    if (activeJobIsGenerating && job) {
+      void dispatch(cancelTrendReport(job.id));
+      return;
+    }
+
+    if (currentReportRequest === null) {
       return;
     }
 
@@ -179,6 +200,34 @@ export function TrendsPage() {
 
   return (
     <div className="page page-stack">
+      {isErrorDialogOpen && error ? (
+        <div
+          className="operation-loading-overlay trend-report-error-overlay"
+          role="alertdialog"
+          aria-modal="true"
+          aria-labelledby="trend-report-error-title"
+          aria-describedby="trend-report-error-message"
+          onKeyDown={(event) => {
+            if (event.key === "Escape") {
+              dispatch(dismissTrendReportError());
+            }
+          }}
+        >
+          <section className="operation-loading-panel trend-report-error-dialog">
+            <p className="section-eyebrow">报告操作</p>
+            <h2 id="trend-report-error-title" className="section-title">操作未完成</h2>
+            <p id="trend-report-error-message" className="trend-report-error-message">{error}</p>
+            <button
+              type="button"
+              className="button-primary trend-report-error-confirm"
+              autoFocus
+              onClick={() => dispatch(dismissTrendReportError())}
+            >
+              我知道了
+            </button>
+          </section>
+        </div>
+      ) : null}
       <section className="trend-report-builder">
         <div className="trend-report-week-row trend-report-week-row--compact">
           <label className="trend-report-field">
@@ -229,10 +278,10 @@ export function TrendsPage() {
           <button
             type="button"
             className="button-primary trend-report-generate-button"
-            disabled={!canGenerate}
-            onClick={handleGenerateReport}
+            disabled={!canUseReportAction}
+            onClick={handleReportAction}
           >
-            {generateButtonText}
+            {reportActionButtonText}
           </button>
         </div>
       </section>
