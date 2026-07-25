@@ -36,10 +36,7 @@ public sealed class TrendReportJobDedupEntity : ITableEntity
     public string RowKey { get; set; } = string.Empty;
     public DateTimeOffset? Timestamp { get; set; }
     public ETag ETag { get; set; }
-    public int UserId { get; set; }
     public int JobId { get; set; }
-    public string RunId { get; set; } = string.Empty;
-    public string DataVersion { get; set; } = string.Empty;
     public DateTimeOffset CreatedAtUtc { get; set; }
     public DateTimeOffset UpdatedAtUtc { get; set; }
 }

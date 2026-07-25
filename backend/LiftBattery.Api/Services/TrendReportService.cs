@@ -83,7 +83,6 @@ public sealed class TrendReportService : ITrendReportService
             rangeEnd,
             cancellationToken);
         var trendReportReqSnapshot = new TrendReportReqSnapshot(trainingDays, preCheckLogs);
-
         EnsureSnapshotHasData(trendReportReqSnapshot);
 
         var storedDataVersion = await _trendReportJobRepo
@@ -91,7 +90,7 @@ public sealed class TrendReportService : ITrendReportService
         var trendReportReqDataVersion = RequireStoredDataVersion(userId, storedDataVersion);
         
         var runId = CreateRunId();
-        var newJob = new NewTrendReportJob(
+        var newJobCandidate = new NewTrendReportJob(
             userId,
             "正在提交后台队列",
             validatedTrendReportReq,
@@ -101,7 +100,7 @@ public sealed class TrendReportService : ITrendReportService
             trendReportReqSnapshot);
 
         var createResult = await _trendReportJobRepo.CreateOrGetAsync(
-            newJob,
+            newJobCandidate,
             cancellationToken);
         var job = createResult.Job;
 

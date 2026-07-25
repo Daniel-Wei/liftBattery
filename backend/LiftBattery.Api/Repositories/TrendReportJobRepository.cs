@@ -55,15 +55,15 @@ public sealed class TrendReportJobRepository : ITrendReportJobRepository
     #region: Create Async
 
     public async Task<CreateOrGetTrendReportJobResult> CreateOrGetAsync(
-        NewTrendReportJob newJob,
+        NewTrendReportJob newJobCandidate,
         CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
 
         await EnsureTableAsync();
 
-        var partitionKey = GetJobPartitionKey(newJob.UserId);
-        var dedupRowKey = GetDedupRowKey(newJob);
+        var partitionKey = GetJobPartitionKey(newJobCandidate.UserId);
+        var dedupRowKey = GetDedupRowKey(newJobCandidate);
 
         for (var attempt = 0; attempt < CreateOrGetMaxAttempts; attempt++)
         {
@@ -73,7 +73,7 @@ public sealed class TrendReportJobRepository : ITrendReportJobRepository
 
             if (dedup is not null)
             {
-                var result = await TryCreateOrGetFromDedupAsync(newJob, dedup, cancellationToken);
+                var result = await TryCreateOrGetFromDedupAsync(newJobCandidate, dedup, cancellationToken);
 
                 if (result is not null)
                 {
@@ -84,11 +84,11 @@ public sealed class TrendReportJobRepository : ITrendReportJobRepository
             }
 
 
-            var createdJob = CreateNewJob(newJob, preserveNewJobRunId: true);
+            var createdJob = CreateNewJob(newJobCandidate, preserveNewJobRunId: true);
             var dedupPointer = ToDedupEntity(
                 partitionKey,
                 dedupRowKey,
-                createdJob,
+                createdJob.Id,
                 createdJob.UpdatedAtUtc,
                 createdJob.CreatedAtUtc);
 
@@ -115,7 +115,7 @@ public sealed class TrendReportJobRepository : ITrendReportJobRepository
                 }
 
                 // Another process won the race to create the dedup pointer. Try to create or get the job from the winning dedup pointer.
-                var result = await TryCreateOrGetFromDedupAsync(newJob, winningDedup, cancellationToken);
+                var result = await TryCreateOrGetFromDedupAsync(newJobCandidate, winningDedup, cancellationToken);
 
                 if (result is not null)
                 {
@@ -124,13 +124,13 @@ public sealed class TrendReportJobRepository : ITrendReportJobRepository
             }
             catch (RequestFailedException exception)
             {
-                LogCreateOrGetFailure(exception, newJob, "AddDedupAndJobTransaction");
+                LogCreateOrGetFailure(exception, newJobCandidate, "AddDedupAndJobTransaction");
                 throw;
             }
         }
 
         throw new InvalidOperationException(
-            $"Unable to create or get trend report job for user {newJob.UserId} after {CreateOrGetMaxAttempts} attempts.");
+            $"Unable to create or get trend report job for user {newJobCandidate.UserId} after {CreateOrGetMaxAttempts} attempts.");
     }
 
     #endregion
@@ -725,29 +725,25 @@ public sealed class TrendReportJobRepository : ITrendReportJobRepository
     }
 
     private async Task<CreateOrGetTrendReportJobResult?> TryCreateOrGetFromDedupAsync(
-        NewTrendReportJob newJob,
+        NewTrendReportJob newJobCandidate,
         TrendReportJobDedupEntity dedup,
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
 
-        if (dedup.UserId != newJob.UserId
-            || dedup.DataVersion != newJob.DataVersion)
-        {
-            throw new InvalidOperationException(
-                $"Trend report dedup pointer {dedup.RowKey} is corrupt for user {newJob.UserId}.");
-        }
-
-        var existingJob = await GetByIdAsync(dedup.UserId, dedup.JobId, cancellationToken);
+        var existingJob = await GetByIdAsync(
+            newJobCandidate.UserId,
+            dedup.JobId,
+            cancellationToken);
 
         if (existingJob is null)
         {
             throw new InvalidOperationException(
-                $"Trend report dedup pointer {dedup.RowKey} references missing job {dedup.JobId} for user {dedup.UserId}.");
+                $"Trend report dedup pointer {dedup.RowKey} references missing job {dedup.JobId} for user {newJobCandidate.UserId}.");
         }
 
-        if (existingJob.DataVersion != newJob.DataVersion
-            || existingJob.Request != newJob.Request)
+        if (existingJob.DataVersion != newJobCandidate.DataVersion
+            || existingJob.Request != newJobCandidate.Request)
         {
             throw new InvalidOperationException(
                 $"Trend report dedup pointer {dedup.RowKey} references a non-matching job {existingJob.Id}.");
@@ -758,11 +754,11 @@ public sealed class TrendReportJobRepository : ITrendReportJobRepository
             return new CreateOrGetTrendReportJobResult(existingJob, WasCreated: false);
         }
 
-        var replacementJob = CreateNewJob(newJob, preserveNewJobRunId: false);
+        var replacementJob = CreateNewJob(newJobCandidate, preserveNewJobRunId: false);
         var updatedDedup = ToDedupEntity(
             dedup.PartitionKey,
             dedup.RowKey,
-            replacementJob,
+            replacementJob.Id,
             replacementJob.UpdatedAtUtc,
             dedup.CreatedAtUtc);
 
@@ -784,7 +780,7 @@ public sealed class TrendReportJobRepository : ITrendReportJobRepository
         }
         catch (RequestFailedException exception)
         {
-            LogCreateOrGetFailure(exception, newJob, "ReplaceTerminalDedupPointerTransaction");
+            LogCreateOrGetFailure(exception, newJobCandidate, "ReplaceTerminalDedupPointerTransaction");
             throw;
         }
     }
@@ -956,7 +952,7 @@ public sealed class TrendReportJobRepository : ITrendReportJobRepository
     private static TrendReportJobDedupEntity ToDedupEntity(
         string partitionKey,
         string rowKey,
-        TrendReportJob job,
+        int jobId,
         DateTimeOffset updatedAtUtc,
         DateTimeOffset createdAtUtc)
     {
@@ -964,10 +960,7 @@ public sealed class TrendReportJobRepository : ITrendReportJobRepository
         {
             PartitionKey = partitionKey,
             RowKey = rowKey,
-            UserId = job.UserId,
-            JobId = job.Id,
-            RunId = job.RunId,
-            DataVersion = job.DataVersion,
+            JobId = jobId,
             CreatedAtUtc = createdAtUtc,
             UpdatedAtUtc = updatedAtUtc,
         };
