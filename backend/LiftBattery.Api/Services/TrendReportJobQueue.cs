@@ -79,6 +79,6 @@ public sealed class TrendReportJobQueue : ITrendReportJobQueue, IAsyncDisposable
 
     private static string CreateMessageId(TrendReportQueueMessageDto queueMessage)
     {
-        return $"trend-report:{queueMessage.UserId}:{queueMessage.PeriodStart}:v{queueMessage.DataVersion}";
+        return queueMessage.RunId;
     }
 }

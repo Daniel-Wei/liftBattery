@@ -14,10 +14,10 @@ The trend report flow requires:
 The producer sends a JSON `TrendReportQueueMessageDto` body, not a plain job id. Its Service Bus `MessageId` is a stable business key:
 
 ```text
-trend-report:{UserId}:{PeriodStart}:v{DataVersion}
+{RunId}
 ```
 
-`RunId` is persisted on the Table Storage job row before enqueueing. The queue message carries the same `RunId`, and Service Bus `CorrelationId` is set to that value, so the same run can be followed through the producer logs, Service Bus message metadata, consumer logs, and Table Storage job row.
+`RunId` is persisted on the Table Storage job row before enqueueing and is unique to one job run. Re-sending that same run during enqueue recovery keeps the same `MessageId`, so Service Bus duplicate detection can suppress an uncertain duplicate send. A new run after cancellation or failure receives a new `RunId` and therefore cannot be mistaken for the previous job. The queue message carries the same `RunId`, and Service Bus `CorrelationId` is set to that value, so the run can be followed through the producer logs, Service Bus message metadata, consumer logs, and Table Storage job row.
 
 Runtime flow:
 

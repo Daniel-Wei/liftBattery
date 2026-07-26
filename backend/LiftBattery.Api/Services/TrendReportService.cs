@@ -141,8 +141,8 @@ public sealed class TrendReportService : ITrendReportService
 
         var jobId = queueMessageDTO.JobId;
 
-        // Service Bus delivery is at-least-once. Duplicate deliveries may compute the
-        // same immutable snapshot, but only one ETag-protected terminal update can win.
+        // Service Bus delivery is at-least-once. 
+        // Duplicate deliveries may compute the same immutable snapshot, but only one ETag-protected terminal update can win.
         try
         {
             var job = await GetProcessableJobAsync(
@@ -154,9 +154,9 @@ public sealed class TrendReportService : ITrendReportService
                 return;
             }
 
-            // Processing is a display state, not an exclusive worker lease. Losing this
-            // best-effort transition is harmless: another delivery may have started it,
-            // and final persistence still checks JobId, RunId, DataVersion, status, and ETag.
+            // Processing is a display state, not an exclusive worker lease. 
+            // Losing this best-effort transition is harmless: 
+            // another delivery may have started it, and final persistence still checks JobId, RunId, DataVersion, status, and ETag.
             await _trendReportJobRepo.TryStartProcessingAsync(
                 queueMessageDTO.UserId,
                 jobId,
