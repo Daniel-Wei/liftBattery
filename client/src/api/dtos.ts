@@ -119,8 +119,7 @@ export type TrendReportJobStatus =
   | "Completed"
   | "Failed"
   | "Cancelled"
-  | "Superseded"
-  | "Outdated";
+  | "Superseded";
 
 export type TrendReportJobDto = {
   id: string;

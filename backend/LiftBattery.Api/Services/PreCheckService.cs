@@ -75,7 +75,6 @@ public sealed class PreCheckService : IPreCheckService
         var savedLog = await _repository.UpsertAsync(log, cancellationToken);
         await _trendReportInvalidationService.InvalidateForReportDataChangeAsync(
             userId,
-            date,
             cancellationToken);
         return PreCheckMapping.ToDto(savedLog);
     }
@@ -104,7 +103,6 @@ public sealed class PreCheckService : IPreCheckService
 
         await _trendReportInvalidationService.InvalidateForReportDataChangeAsync(
             userId,
-            deletedLog.Date,
             cancellationToken);
         return PreCheckMapping.ToDto(deletedLog);
     }

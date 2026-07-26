@@ -1,4 +1,3 @@
-using LiftBattery.Api.Models;
 using LiftBattery.Api.Repositories;
 
 namespace LiftBattery.Api.Services;
@@ -18,14 +17,16 @@ public sealed class TrendReportInvalidationService : ITrendReportInvalidationSer
 
     public async Task InvalidateForReportDataChangeAsync(
         int userId,
-        DateOnly changedDate,
         CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
 
         // The source repository already committed the new SQL DataVersion in the
         // same SaveChanges transaction as the source CRUD. Invalidation only reads
-        // that committed version and eagerly supersedes affected active jobs.
+        // that committed version. DataVersion is global per user, so every active job
+        // captured from an older version is superseded, regardless of whether the
+        // changed row's date falls inside that job's requested range. The worker uses
+        // the same global rule before processing and completion.
         var currentDataVersion = await _sourceDataRepository.GetCurrentDataVersionAsync(
             userId,
             cancellationToken);
@@ -40,8 +41,7 @@ public sealed class TrendReportInvalidationService : ITrendReportInvalidationSer
         {
             cancellationToken.ThrowIfCancellationRequested();
 
-            if (string.Equals(job.DataVersion, currentDataVersion, StringComparison.Ordinal)
-                || !RequestContainsDate(job.Request, changedDate))
+            if (string.Equals(job.DataVersion, currentDataVersion, StringComparison.Ordinal))
             {
                 continue;
             }
@@ -53,25 +53,5 @@ public sealed class TrendReportInvalidationService : ITrendReportInvalidationSer
                 job.DataVersion,
                 cancellationToken);
         }
-    }
-
-    private static bool RequestContainsDate(TrendReportRequest request, DateOnly changedDate)
-    {
-        if (DateIsInRange(changedDate, request.StartWeek, request.EndWeek.AddDays(6)))
-        {
-            return true;
-        }
-
-        return request.ComparisonStartWeek.HasValue
-            && request.ComparisonEndWeek.HasValue
-            && DateIsInRange(
-                changedDate,
-                request.ComparisonStartWeek.Value,
-                request.ComparisonEndWeek.Value.AddDays(6));
-    }
-
-    private static bool DateIsInRange(DateOnly date, DateOnly from, DateOnly to)
-    {
-        return date >= from && date <= to;
     }
 }

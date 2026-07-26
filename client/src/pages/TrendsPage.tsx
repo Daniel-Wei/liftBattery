@@ -131,8 +131,7 @@ export function TrendsPage() {
   const progressPercent = Math.max(0, Math.min(100, job?.progressPercent ?? 0));
   const completedResult = job?.status === "Completed" ? job.result : undefined;
   const summaryCards = completedResult?.summaryCards ?? [];
-  const currentReportNeedsRegeneration = job?.status === "Outdated"
-    || job?.status === "Superseded";
+  const currentReportNeedsRegeneration = job?.status === "Superseded";
   const canUseReportAction = activeJobIsGenerating
     ? status !== "cancelling"
     : currentReportRequest !== null && status !== "submitting";

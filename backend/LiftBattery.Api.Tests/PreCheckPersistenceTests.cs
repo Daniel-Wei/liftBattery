@@ -35,7 +35,6 @@ public sealed class PreCheckPersistenceTests
         Assert.NotNull(saved.Id);
         Assert.Equal(1, await database.Context.PreChecks.CountAsync());
         Assert.Equal(1, database.InvalidationService.CallCount);
-        Assert.Equal(TestDate, database.InvalidationService.LastChangedDate);
     }
 
     [Fact]
@@ -93,7 +92,6 @@ public sealed class PreCheckPersistenceTests
 
         Assert.NotNull(deleted);
         Assert.Equal(2, database.InvalidationService.CallCount);
-        Assert.Equal(TestDate, database.InvalidationService.LastChangedDate);
     }
 
     [Fact]
@@ -319,15 +317,12 @@ public sealed class PreCheckPersistenceTests
     private sealed class FakeTrendReportInvalidationService : ITrendReportInvalidationService
     {
         public int CallCount { get; private set; }
-        public DateOnly? LastChangedDate { get; private set; }
 
         public Task InvalidateForReportDataChangeAsync(
             int userId,
-            DateOnly changedDate,
             CancellationToken cancellationToken = default)
         {
             CallCount++;
-            LastChangedDate = changedDate;
             return Task.CompletedTask;
         }
     }

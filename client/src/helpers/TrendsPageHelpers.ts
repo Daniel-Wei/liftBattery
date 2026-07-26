@@ -31,10 +31,6 @@ export function getJobStatusLabel(status: string) {
     return "生成失败";
   }
 
-  if (status === "Outdated") {
-    return "报告已过期";
-  }
-
   if (status === "Superseded") {
     return "已被新版本取代";
   }

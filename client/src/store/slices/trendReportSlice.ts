@@ -8,10 +8,6 @@ import {
   createTrendReport as createTrendReportFromApi,
   getTrendReportJob,
 } from "../../api/trendReportApi";
-import {
-  deleteTrainingSession,
-  saveTrainingSession,
-} from "./trainingSlice";
 
 type TrendReportRequestStatus = "idle" | "submitting" | "cancelling" | "polling" | "success" | "error";
 
@@ -31,19 +27,6 @@ const initialState: TrendReportState = {
 
 function getErrorMessage(error: unknown, fallback: string) {
   return error instanceof Error && error.message ? error.message : fallback;
-}
-
-function markCurrentReportOutdated(state: TrendReportState) {
-  if (!state.job) {
-    return;
-  }
-
-  state.job.status = "Outdated";
-  state.job.currentStage = "训练数据已更新，这份报告已过期，请重新生成。";
-  state.job.errorMessage = undefined;
-  state.status = "success";
-  state.error = null;
-  state.isErrorDialogOpen = false;
 }
 
 export const createTrendReport = createAsyncThunk<
@@ -155,12 +138,6 @@ const trendReportSlice = createSlice({
           state.status = "error";
           state.error = action.payload ?? "无法读取报告任务状态。";
         }
-      })
-      .addCase(saveTrainingSession.fulfilled, (state) => {
-        markCurrentReportOutdated(state);
-      })
-      .addCase(deleteTrainingSession.fulfilled, (state) => {
-        markCurrentReportOutdated(state);
       });
   },
 });

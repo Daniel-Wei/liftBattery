@@ -638,7 +638,7 @@ public sealed class TrendReportService : ITrendReportService
                 currentWeeks,
                 comparisonWeeks,
                 snapshot.PreCheckLogs,
-                log => GetSleepHours(log.SleepQuality)),
+                log => log.SleepHours),
             CreateTrainingSummaryCard(
                 "sessionLoad",
                 "Training Load",
@@ -732,8 +732,6 @@ public sealed class TrendReportService : ITrendReportService
         IReadOnlyList<ReportTrainingSession> sessions)
     {
         return sessions
-            .GroupBy(session => session.Date)
-            .Select(group => group.OrderByDescending(session => session.UpdatedAt).First())
             .Where(session => session.Date >= week.StartDate && session.Date <= week.EndDate)
             .Sum(session => session.DurationMinutes * session.SessionRpe);
     }
@@ -824,8 +822,7 @@ public sealed class TrendReportService : ITrendReportService
                         set.WeightKg,
                         set.Rpe,
                         set.Rir,
-                        set.IsWarmup))).ToList(),
-                session.UpdatedAtUtc)))
+                        set.IsWarmup))).ToList())))
             .ToList();
     }
 
@@ -1010,18 +1007,6 @@ public sealed class TrendReportService : ITrendReportService
         return Math.Round((total / 25m) * 100m, 0);
     }
 
-    private static decimal GetSleepHours(int sleepQuality)
-    {
-        return sleepQuality switch
-        {
-            1 => 4.5m,
-            2 => 5.5m,
-            3 => 6.5m,
-            4 => 7.25m,
-            _ => 8m,
-        };
-    }
-
     private static (DateOnly Start, DateOnly End) GetSnapshotRange(TrendReportRequest request)
     {
         var snapshotStart = request.ComparisonStartWeek.HasValue
@@ -1109,8 +1094,7 @@ public sealed class TrendReportService : ITrendReportService
         DateOnly Date,
         int DurationMinutes,
         decimal SessionRpe,
-        IReadOnlyList<ReportTrainingSet> Sets,
-        DateTimeOffset UpdatedAt);
+        IReadOnlyList<ReportTrainingSet> Sets);
 
     private sealed record ReportTrainingSet(
         string MuscleGroup,

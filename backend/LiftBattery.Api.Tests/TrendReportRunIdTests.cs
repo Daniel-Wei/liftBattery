@@ -59,6 +59,90 @@ public sealed class TrendReportRunIdTests
     }
 
     [Fact]
+    public async Task GenerateResultAsyncSumsEveryTrainingSessionOnTheSameDay()
+    {
+        var now = DateTimeOffset.Parse("2026-07-06T00:00:00Z");
+        var reportDate = new DateOnly(2026, 7, 6);
+        var sourceDataRepository = new FakeTrendReportSourceDataRepository
+        {
+            CurrentDataVersion = "v1",
+        };
+        sourceDataRepository.TrainingDays.Add(new TrainingDayModel(
+            Id: 1,
+            UserId: 1,
+            Date: reportDate,
+            Sessions: new[]
+            {
+                new TrainingSessionModel(
+                    Id: 1,
+                    TrainingDayId: 1,
+                    Date: reportDate,
+                    StartTime: new TimeOnly(9, 0),
+                    DurationMinutes: 30,
+                    SessionRpe: 5,
+                    Exercises: Array.Empty<TrainingExerciseModel>(),
+                    CreatedAtUtc: now,
+                    UpdatedAtUtc: now),
+                new TrainingSessionModel(
+                    Id: 2,
+                    TrainingDayId: 1,
+                    Date: reportDate,
+                    StartTime: new TimeOnly(17, 0),
+                    DurationMinutes: 45,
+                    SessionRpe: 6,
+                    Exercises: Array.Empty<TrainingExerciseModel>(),
+                    CreatedAtUtc: now,
+                    UpdatedAtUtc: now.AddHours(8)),
+            },
+            CreatedAtUtc: now,
+            UpdatedAtUtc: now.AddHours(8)));
+        var service = CreateService(
+            new FakeTrendReportJobRepository(),
+            new FakeTrendReportJobQueue(),
+            sourceDataRepository: sourceDataRepository);
+
+        var result = await service.GenerateResultAsync(1, CreateRequest());
+
+        var trainingLoad = Assert.Single(
+            result.SummaryCards,
+            card => card.Type == "sessionLoad");
+        Assert.Equal(420m, trainingLoad.Value);
+    }
+
+    [Fact]
+    public async Task GenerateResultAsyncUsesRecordedSleepHours()
+    {
+        var now = DateTimeOffset.Parse("2026-07-06T00:00:00Z");
+        var sourceDataRepository = new FakeTrendReportSourceDataRepository
+        {
+            CurrentDataVersion = "v1",
+        };
+        sourceDataRepository.PreCheckLogs.Add(new PreCheckModel(
+            Id: 1,
+            UserId: 1,
+            Date: new DateOnly(2026, 7, 6),
+            SleepHours: 7.9m,
+            SorenessRating: 4,
+            MotivationRating: 8,
+            RestingHeartRateBpm: 60,
+            PreviousSessionRpe: 6,
+            PreviousSessionDurationMinutes: 45,
+            CreatedAtUtc: now,
+            UpdatedAtUtc: now));
+        var service = CreateService(
+            new FakeTrendReportJobRepository(),
+            new FakeTrendReportJobQueue(),
+            sourceDataRepository: sourceDataRepository);
+
+        var result = await service.GenerateResultAsync(1, CreateRequest());
+
+        var sleep = Assert.Single(
+            result.SummaryCards,
+            card => card.Type == "sleep");
+        Assert.Equal(7.9m, sleep.Value);
+    }
+
+    [Fact]
     public async Task SubmitAsyncPersistsRunIdAndEnqueuesMessageWithSameRunId()
     {
         var jobRepository = new FakeTrendReportJobRepository();
@@ -212,7 +296,7 @@ public sealed class TrendReportRunIdTests
     }
 
     [Fact]
-    public async Task InvalidationMarksProcessingJobSupersededDirectly()
+    public async Task InvalidationSupersedesActiveJobCapturedFromOlderGlobalDataVersion()
     {
         var jobRepository = new FakeTrendReportJobRepository
         {
@@ -229,9 +313,7 @@ public sealed class TrendReportRunIdTests
         };
         var service = new TrendReportInvalidationService(jobRepository, sourceDataRepository);
 
-        await service.InvalidateForReportDataChangeAsync(
-            userId: 1,
-            changedDate: new DateOnly(2026, 7, 6));
+        await service.InvalidateForReportDataChangeAsync(userId: 1);
 
         Assert.Equal(TrendReportJobStatuses.Superseded, jobRepository.Job?.Status);
     }

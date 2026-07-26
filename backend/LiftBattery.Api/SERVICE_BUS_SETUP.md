@@ -39,6 +39,6 @@ Report source data CRUD invalidation:
 
 1. Pre-check and training save/delete stage a new `Users.TrendReportDataVersion` and commit it in the same SQL `SaveChangesAsync` transaction as the source mutation. `TrendReportInvalidationService` only reads that committed version.
 2. It scans active jobs for that user.
-3. If the changed training date is inside an active job's target period or comparison period, the job is marked `Superseded`.
-4. The consumer stops a `Superseded` job before writing more progress or a completed result.
-5. The frontend marks the currently displayed report as `Outdated` after training save/delete and asks the user to generate a new report.
+3. Because DataVersion is global per user, every active job captured from an older version is conditionally marked `Superseded`, regardless of the changed row's date.
+4. The consumer applies the same global version rule before processing and completion.
+5. After any Training or Pre-check save/delete, the frontend reloads the displayed job from the backend instead of inventing a client-only status.
