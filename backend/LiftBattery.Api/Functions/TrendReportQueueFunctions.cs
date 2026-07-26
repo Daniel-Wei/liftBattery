@@ -1,25 +1,35 @@
 using System.Text.Json;
 using Azure.Messaging.ServiceBus;
 using LiftBattery.Api.DTOs;
+using LiftBattery.Api.Models;
 using LiftBattery.Api.Services;
 using Microsoft.Azure.Functions.Worker;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 
 namespace LiftBattery.Api.Functions;
 
 public sealed class TrendReportQueueFunctions
 {
+    private const int DefaultMaxDeliveryCount = 10;
     private static readonly JsonSerializerOptions QueueMessageJsonOptions = new(JsonSerializerDefaults.Web);
 
     private readonly ITrendReportService _service;
     private readonly ILogger<TrendReportQueueFunctions> _logger;
+    private readonly int _maxDeliveryCount;
 
     public TrendReportQueueFunctions(
         ITrendReportService service,
-        ILogger<TrendReportQueueFunctions> logger)
+        ILogger<TrendReportQueueFunctions> logger,
+        IConfiguration configuration)
     {
         _service = service;
         _logger = logger;
+        _maxDeliveryCount = int.TryParse(
+            configuration["TrendReportMaxDeliveryCount"],
+            out var configuredMaxDeliveryCount)
+                ? Math.Max(1, configuredMaxDeliveryCount)
+                : DefaultMaxDeliveryCount;
     }
 
     [Function("RecoverPendingTrendReportEnqueues")]
@@ -45,7 +55,8 @@ public sealed class TrendReportQueueFunctions
     }
 
     // Azure Functions invokes this when a queue message is available, including redeliveries.
-    // Invalid permanent messages go straight to DLQ; transient failures are thrown so Service Bus can retry.
+    // Invalid messages go straight to DLQ. Transient failures are thrown for redelivery;
+    // the configured final delivery marks the job Failed and is explicitly dead-lettered.
     [Function("ProcessTrendReportJob")]
     public async Task ProcessTrendReportJob(
         [ServiceBusTrigger("%TrendReportQueueName%", Connection = "ServiceBusConnection", AutoCompleteMessages = false)] ServiceBusReceivedMessage message,
@@ -85,8 +96,43 @@ public sealed class TrendReportQueueFunctions
             queueMessage.DataVersion,
             message.DeliveryCount);
 
-        await _service.ProcessAsync(queueMessage, cancellationToken);
-        await messageActions.CompleteMessageAsync(message, cancellationToken);
+        var processingContext = new TrendReportProcessingContext(
+            DeliveryCount: Math.Max(1, message.DeliveryCount),
+            MaxDeliveryCount: _maxDeliveryCount);
+
+        try
+        {
+            await _service.ProcessAsync(
+                queueMessage,
+                processingContext,
+                cancellationToken);
+            await messageActions.CompleteMessageAsync(message, cancellationToken);
+        }
+        catch (OperationCanceledException)
+        {
+            // Host shutdown and lost invocation cancellation are retryable regardless
+            // of DeliveryCount, so never convert cancellation into a terminal failure.
+            throw;
+        }
+        catch (Exception exception) when (processingContext.IsFinalDelivery)
+        {
+            _logger.LogError(
+                exception,
+                "Dead-lettering trend report after retry budget was exhausted. MessageId={MessageId}, CorrelationId={CorrelationId}, RunId={RunId}, JobId={JobId}, DeliveryCount={DeliveryCount}, MaxDeliveryCount={MaxDeliveryCount}.",
+                message.MessageId,
+                message.CorrelationId,
+                queueMessage.RunId,
+                queueMessage.JobId,
+                message.DeliveryCount,
+                _maxDeliveryCount);
+
+            await messageActions.DeadLetterMessageAsync(
+                message,
+                new Dictionary<string, object>(),
+                "TrendReportRetryLimitExceeded",
+                $"Trend report processing failed after {message.DeliveryCount} deliveries.",
+                cancellationToken);
+        }
     }
 
     private static TrendReportQueueMessageDto? TryReadQueueMessage(ServiceBusReceivedMessage message)

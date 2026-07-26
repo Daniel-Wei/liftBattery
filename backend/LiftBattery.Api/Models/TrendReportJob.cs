@@ -31,6 +31,13 @@ public sealed record NewTrendReportJob(
     string DataVersion,
     TrendReportReqSnapshot Snapshot);
 
+public sealed record TrendReportProcessingContext(
+    int DeliveryCount,
+    int MaxDeliveryCount)
+{
+    public bool IsFinalDelivery => DeliveryCount >= MaxDeliveryCount;
+}
+
 public sealed record TrendReportJob(
     Guid Id,
     int UserId,

@@ -40,7 +40,7 @@ Browser
 - Application Insights：Function App 日志、异常、依赖调用追踪。
 - SMTP provider：用于每周报告邮件发送。
 
-Service Bus 队列建议开启 duplicate detection，窗口可从 10 分钟开始。DLQ 使用默认机制即可，代码会把永久无效消息主动 dead-letter，临时错误则抛出异常交给 Service Bus retry。
+Service Bus 队列建议开启 duplicate detection，窗口可从 10 分钟开始。永久无效消息会立即 dead-letter；临时错误会保留 Active Job 并重投。相同 RunId 的 redelivery 可以基于不可变 Snapshot 重新计算，重复 Worker 通过 ETag 条件终态写入实现幂等。达到最终 DeliveryCount 时，代码才会将仍处于 Active 状态的 Job 标记为 Failed、释放 active-job lease，并主动送入 DLQ。
 
 ## 本地 Docker 与 Beta Azure SQL 的边界
 
@@ -104,6 +104,7 @@ Function App 至少需要以下设置：
 - `ConnectionStrings__LiftBatteryDatabase`：Azure SQL Database connection string。
 - `ServiceBusConnection`：Service Bus connection string，需要 send/listen 权限。
 - `TrendReportQueueName`：`trend-report-jobs`。
+- `TrendReportMaxDeliveryCount`：必须与 `trend-report-jobs` Queue 的 `MaxDeliveryCount` 完全一致，例如 `10`。
 - `TrendReportTableName`：`TrendReportJobs`。
 - `WeeklyReportQueueName`：`weekly-report-jobs`。
 - `WeeklyReportTableName`：`WeeklyReportJobs`。
@@ -192,7 +193,9 @@ DLQ 逻辑：
 
 - `TrendReportQueueFunctions` 无法反序列化或字段无效时，调用 `DeadLetterMessageAsync`。
 - reason 是 `InvalidTrendReportQueueMessage`。
-- 临时异常不会主动 dead-letter，而是抛出，让 Service Bus 进行 retry，超过队列设置后进入 DLQ。
+- 非最终 delivery 的临时异常不会把 Job 改成 Failed，而是抛出，让 Service Bus 重新投递。
+- 重投可以重新处理同一 RunId 的 Processing Job；重复计算是允许的，但 `Completed`、`Failed`、`Cancelled` 和 `Superseded` 都是不可覆盖的终态，只有第一个 ETag 条件终态写入成功。
+- 最终 delivery 失败时，Job 才会变为 Failed 并释放 active-job lease，消息以 reason `TrendReportRetryLimitExceeded` 主动进入 DLQ。
 
 ## 每周报告 Service Bus + Blob pipeline
 

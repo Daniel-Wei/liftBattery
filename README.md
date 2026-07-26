@@ -251,6 +251,7 @@ Important settings:
 | `AzureWebJobsStorage` | Functions host and Azure Table connection |
 | `ServiceBusConnection` | Azure Service Bus connection |
 | `TrendReportQueueName` | Defaults to `trend-report-jobs` |
+| `TrendReportMaxDeliveryCount` | Must match the queue MaxDeliveryCount; the final delivery marks the job Failed and sends the message to DLQ |
 | `TrendReportTableName` | Defaults to `TrendReportJobs` |
 | `TrendReportDemoDelayMilliseconds` | Optional artificial delay so local progress UI is visible |
 | `TrendReportEnqueueRecoveryTimer` | Timer schedule for re-enqueueing unstarted trend report jobs; example `0 */5 * * * *` |

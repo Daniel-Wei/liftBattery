@@ -90,7 +90,7 @@ public sealed class TrendReportService : ITrendReportService
         var storedDataVersion = await _trendReportJobRepo
             .GetCurrentTrendReportReqDataVersionAsync(userId, cancellationToken);
         var trendReportReqDataVersion = RequireStoredDataVersion(userId, storedDataVersion);
-        
+
         var runId = CreateRunId();
         var newJobCandidate = new NewTrendReportJob(
             userId,
@@ -117,8 +117,8 @@ public sealed class TrendReportService : ITrendReportService
         {
             // Publish a compact JSON command. The consumer still loads the durable job from Azure Table Storage,
             // but the message carries enough metadata for duplicate detection, correlation, retry, and DLQ debugging.
-            var publishResult = await PublishPendingJobAsync(job, cancellationToken);
-            return ToDto(publishResult.Job);
+            var publishedJob = await PublishNewJobAsync(job, cancellationToken);
+            return ToDto(publishedJob);
         }
         catch (Exception)
         {
@@ -132,92 +132,55 @@ public sealed class TrendReportService : ITrendReportService
         }
     }
 
-    public async Task ProcessAsync(TrendReportQueueMessageDto queueMessageDTO, CancellationToken cancellationToken = default)
+    public async Task ProcessAsync(
+        TrendReportQueueMessageDto queueMessageDTO,
+        TrendReportProcessingContext processingContext,
+        CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
 
-        if (await StopIfQueueMessageIsStaleAsync(queueMessageDTO, cancellationToken))
-        {
-            return;
-        }
-
         var jobId = queueMessageDTO.JobId;
-        var job = await _trendReportJobRepo.GetByIdAsync(queueMessageDTO.UserId, jobId, cancellationToken);
 
-        if(job is null)
-        {
-            return;
-        }
-
-        if(!await _trendReportJobRepo.TryStartProcessingAsync(
-            queueMessageDTO.UserId,
-            jobId,
-            queueMessageDTO.RunId,
-            queueMessageDTO.DataVersion,
-            cancellationToken))
-        {
-            return;
-        }
-
-        if (await StopIfQueueMessageIsStaleAsync(queueMessageDTO, cancellationToken))
-        {
-            return;
-        }
-
+        // Service Bus delivery is at-least-once. Duplicate deliveries may compute the
+        // same immutable snapshot, but only one ETag-protected terminal update can win.
         try
         {
-            await DelayForDemoAsync(cancellationToken);
+            var job = await GetProcessableJobAsync(
+                queueMessageDTO,
+                cancellationToken);
 
-            if (await StopIfQueueMessageIsStaleAsync(queueMessageDTO, cancellationToken))
+            if (job is null)
             {
                 return;
             }
 
-            var updated = await _trendReportJobRepo.TryUpdateProgressIfCurrentProcessingAsync(
+            // Processing is a display state, not an exclusive worker lease. Losing this
+            // best-effort transition is harmless: another delivery may have started it,
+            // and final persistence still checks JobId, RunId, DataVersion, status, and ETag.
+            await _trendReportJobRepo.TryStartProcessingAsync(
                 queueMessageDTO.UserId,
                 jobId,
                 queueMessageDTO.RunId,
                 queueMessageDTO.DataVersion,
-                progressPercent: 45,
-                currentStage: "正在计算训练周期报告",
                 cancellationToken);
-
-            if (!updated)
-            {
-                return;
-            }
 
             await DelayForDemoAsync(cancellationToken);
 
-            if (await StopIfQueueMessageIsStaleAsync(queueMessageDTO, cancellationToken))
+            if (await GetProcessableJobAsync(queueMessageDTO, cancellationToken) is null)
             {
                 return;
             }
 
             var result = GenerateResult(job.Request, job.Snapshot);
 
-            updated = await _trendReportJobRepo.TryUpdateProgressIfCurrentProcessingAsync(
-                queueMessageDTO.UserId,
-                jobId,
-                queueMessageDTO.RunId,
-                queueMessageDTO.DataVersion,
-                progressPercent: 80,
-                currentStage: "正在整理图表数据",
-                cancellationToken);
-
-            if (!updated)
-            {
-                return;
-            }
-
             await DelayForDemoAsync(cancellationToken);
 
-            if (await StopIfQueueMessageIsStaleAsync(queueMessageDTO, cancellationToken))
+            if (await GetProcessableJobAsync(queueMessageDTO, cancellationToken) is null)
             {
                 return;
             }
 
-            await _trendReportJobRepo.TryCompleteIfCurrentProcessingAsync(
+            await _trendReportJobRepo.TryCompleteIfCurrentActiveAsync(
                 queueMessageDTO.UserId,
                 job.Id,
                 queueMessageDTO.RunId,
@@ -231,17 +194,23 @@ public sealed class TrendReportService : ITrendReportService
         }
         catch (Exception)
         {
-            await _trendReportJobRepo.TryMarkFailedIfCurrentProcessingAsync(
-                queueMessageDTO.UserId,
-                job.Id,
-                queueMessageDTO.RunId,
-                queueMessageDTO.DataVersion,
-                cancellationToken);
+            // Intermediate failures leave the Job active and are rethrown for redelivery.
+            // The final delivery may atomically fail the Job only if no terminal writer
+            // has already completed, cancelled, or superseded it.
+            if (processingContext.IsFinalDelivery)
+            {
+                await _trendReportJobRepo.TryMarkFailedOnFinalDeliveryAsync(
+                    queueMessageDTO.UserId,
+                    jobId,
+                    queueMessageDTO.RunId,
+                    queueMessageDTO.DataVersion,
+                    cancellationToken);
+            }
 
             throw;
         }
     }
-    
+
     public async Task<TrendReportJobDto?> GetByIdAsync(int userId, Guid id)
     {
         ValidateUserId(userId);
@@ -321,12 +290,8 @@ public sealed class TrendReportService : ITrendReportService
         foreach (var job in pendingJobs)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            var publishResult = await PublishPendingJobAsync(
-                job,
-                cancellationToken,
-                isRecoveryAttempt: true);
 
-            if (publishResult.WasEnqueued)
+            if (await TryRecoverPendingEnqueueAsync(job, cancellationToken))
             {
                 recoveredCount++;
             }
@@ -349,164 +314,144 @@ public sealed class TrendReportService : ITrendReportService
             job.CreatedAtUtc);
     }
 
-    private async Task<PublishPendingJobResult> PublishPendingJobAsync(
-        TrendReportJob candidate,
-        CancellationToken cancellationToken,
-        bool isRecoveryAttempt = false)
+    private async Task<TrendReportJob> PublishNewJobAsync(
+        TrendReportJob job,
+        CancellationToken cancellationToken)
     {
-        var current = await _trendReportJobRepo.GetByIdAsync(candidate.UserId, candidate.Id, cancellationToken)
-                        ?? throw new InvalidOperationException(
-                            $"Trend report job {candidate.Id} was not found.");
+        // The create transaction already persisted this new job as EnqueuePending
+        // together with its dedup row and active lease. Rechecking those rows here
+        // would not make the Table-to-Service-Bus handoff atomic: cancellation or
+        // invalidation could still happen immediately after any check. Send the
+        // at-least-once command and let the worker authoritatively reject stale jobs.
+        await EnqueueAndMarkQueuedAsync(job, cancellationToken);
 
-        // other process may have already published this job, or the job may have been superseded by a newer submission.
-        if (current.RunId != candidate.RunId)
+        return await _trendReportJobRepo.GetByIdAsync(
+                   job.UserId,
+                   job.Id,
+                   cancellationToken)
+               ?? throw new InvalidOperationException(
+                   $"Trend report job {job.Id} was not found after enqueue.");
+    }
+
+    private async Task<bool> TryRecoverPendingEnqueueAsync(
+        TrendReportJob candidate,
+        CancellationToken cancellationToken)
+    {
+        // The recovery scan is only a snapshot. Atomically increment the retry
+        // attempt while the exact RunId/DataVersion is still EnqueuePending. A null
+        // result means another request or recovery already changed the job.
+        var claimedJob = await _trendReportJobRepo.TryBeginEnqueueRecoveryAttemptAsync(
+            candidate.UserId,
+            candidate.Id,
+            candidate.RunId,
+            candidate.DataVersion,
+            _enqueueRecoveryMaxAttempts,
+            cancellationToken);
+
+        if (claimedJob is null)
         {
-            // candidate old runId, cannot be published
-            return new PublishPendingJobResult(current, WasEnqueued: false);
-        }
-
-        if (!await _trendReportJobRepo.OwnsActiveJobLeaseAsync(
-                current.UserId,
-                current.Id,
-                current.RunId,
-                cancellationToken))
-        {
-            // Only the job holding the per-user active lease may be published or recovered.
-            return new PublishPendingJobResult(current, WasEnqueued: false);
-        }
-
-        var currentUserDataVersion = await _trendReportJobRepo
-                                    .GetCurrentTrendReportReqDataVersionAsync(
-                                        current.UserId,
-                                        cancellationToken);
-
-        // training and/or precheck data has changed since the job was submitted, so this job is no longer valid and cannot be published.
-        if (currentUserDataVersion != candidate.DataVersion)
-        {
-            // candidate old data version, cannot be published
-            return new PublishPendingJobResult(current, WasEnqueued: false);
-        }
-
-        switch (current.Status)
-        {
-            case TrendReportJobStatuses.EnqueuePending:
-                break;
-
-            case TrendReportJobStatuses.Queued:
-            case TrendReportJobStatuses.Processing:
-            case TrendReportJobStatuses.Completed:
-                // already published, no need to enqueue again
-                return new PublishPendingJobResult(current, WasEnqueued: false);
-
-            case TrendReportJobStatuses.Cancelled:
-            case TrendReportJobStatuses.Superseded:
-            case TrendReportJobStatuses.Failed:
-                // cannot be published again
-                return new PublishPendingJobResult(current, WasEnqueued: false);
-
-            default:
-                throw new InvalidOperationException(
-                    $"Job {current.Id} cannot be published from status {current.Status}.");
-        }
-
-        if (isRecoveryAttempt)
-        {
-            current = await _trendReportJobRepo.TryBeginEnqueueRecoveryAttemptAsync(
-                current.UserId,
-                current.Id,
-                current.RunId,
-                current.DataVersion,
-                _enqueueRecoveryMaxAttempts,
-                cancellationToken) ?? current;
-
-            if (current.Status != TrendReportJobStatuses.EnqueuePending)
-            {
-                return new PublishPendingJobResult(current, WasEnqueued: false);
-            }
+            return false;
         }
 
         try
         {
-            await _trendReportJobQueue.EnqueueAsync(
-                CreateQueueMessageDTO(current),
-                cancellationToken);
+            await EnqueueAndMarkQueuedAsync(claimedJob, cancellationToken);
+            return true;
         }
-        catch (Exception exception) when (isRecoveryAttempt && exception is not OperationCanceledException)
+        catch (Exception exception) when (exception is not OperationCanceledException)
         {
             await _trendReportJobRepo.TryRecordEnqueueRecoveryFailureAsync(
-                current.UserId,
-                current.Id,
-                current.RunId,
-                current.DataVersion,
+                claimedJob.UserId,
+                claimedJob.Id,
+                claimedJob.RunId,
+                claimedJob.DataVersion,
                 exception.Message,
                 _enqueueRecoveryMaxAttempts,
                 cancellationToken);
 
             throw;
         }
+    }
 
-        await _trendReportJobRepo.TryMarkQueuedIfEnqueuePendingAsync(
-            current.UserId,
-            current.Id,
-            current.RunId,
-            current.DataVersion,
+    private async Task EnqueueAndMarkQueuedAsync(
+        TrendReportJob job,
+        CancellationToken cancellationToken)
+    {
+        await _trendReportJobQueue.EnqueueAsync(
+            CreateQueueMessageDTO(job),
             cancellationToken);
 
-        var publishedJob = await _trendReportJobRepo.GetByIdAsync(
-                               current.UserId,
-                               current.Id,
-                               cancellationToken)
-                           ?? current;
-        return new PublishPendingJobResult(publishedJob, WasEnqueued: true);
+        // Sending and Table Storage cannot share one transaction. If the process
+        // stops after the send but before this conditional update, recovery may send
+        // the same RunId again; the worker is intentionally idempotent for that case.
+        await _trendReportJobRepo.TryMarkQueuedIfEnqueuePendingAsync(
+            job.UserId,
+            job.Id,
+            job.RunId,
+            job.DataVersion,
+            cancellationToken);
     }
 
     private static string CreateRunId()
     {
         return $"trend-report:{Guid.NewGuid():N}";
     }
-
-    private sealed record PublishPendingJobResult(
-        TrendReportJob Job,
-        bool WasEnqueued);
-
-    private async Task<bool> StopIfQueueMessageIsStaleAsync(TrendReportQueueMessageDto message, CancellationToken cancellationToken = default)
+    private async Task<TrendReportJob?> GetProcessableJobAsync(
+        TrendReportQueueMessageDto message,
+        CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        
-        var latestJob = await _trendReportJobRepo.GetByIdAsync(message.UserId, message.JobId, cancellationToken);
 
-        if (latestJob is null)
+        var latestJob = await _trendReportJobRepo.GetByIdAsync(
+            message.UserId,
+            message.JobId,
+            cancellationToken);
+
+        if (latestJob is null
+            || latestJob.RunId != message.RunId
+            || latestJob.DataVersion != message.DataVersion)
         {
-            return true;
+            // The Job was removed or this message belongs to another persisted run.
+            // Completing this stale delivery is safe because it cannot produce a result
+            // for the current Job identity.
+            return null;
         }
 
-        if (latestJob.RunId != message.RunId)
-        {
-            return true;
-        }
-
-        if (latestJob.Status is TrendReportJobStatuses.Cancelled
+        if (latestJob.Status is TrendReportJobStatuses.Completed
+            or TrendReportJobStatuses.Failed
+            or TrendReportJobStatuses.Cancelled
             or TrendReportJobStatuses.Superseded)
         {
-            return true;
+            // Terminal transitions are immutable. Duplicate deliveries become no-ops.
+            return null;
+        }
+
+        if (latestJob.Status is not (TrendReportJobStatuses.EnqueuePending
+            or TrendReportJobStatuses.Queued
+            or TrendReportJobStatuses.Processing))
+        {
+            throw new InvalidOperationException(
+                $"Trend report job {latestJob.Id} has unsupported processing status '{latestJob.Status}'.");
         }
 
         var currentUserDataVersion = await _trendReportJobRepo
-                                        .GetCurrentTrendReportReqDataVersionAsync(latestJob.UserId, cancellationToken);
-
-        if (latestJob.DataVersion != currentUserDataVersion)
-        {
-            await _trendReportJobRepo.TryMarkSupersededIfCurrentAsync(
+            .GetCurrentTrendReportReqDataVersionAsync(
                 latestJob.UserId,
-                latestJob.RunId,
-                latestJob.Id,
-                latestJob.DataVersion,
                 cancellationToken);
 
-            return true;
+        if (latestJob.DataVersion == currentUserDataVersion)
+        {
+            return latestJob;
         }
 
-        return false;
+        await _trendReportJobRepo.TryMarkSupersededIfCurrentAsync(
+            latestJob.UserId,
+            latestJob.RunId,
+            latestJob.Id,
+            latestJob.DataVersion,
+            cancellationToken);
+
+        return null;
     }
 
     private Task DelayForDemoAsync(CancellationToken cancellationToken)

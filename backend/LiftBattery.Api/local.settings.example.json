@@ -12,6 +12,7 @@
     "Auth__SessionDays": "14",
     "ServiceBusConnection": "",
     "TrendReportQueueName": "trend-report-jobs",
+    "TrendReportMaxDeliveryCount": "10",
     "TrendReportTableName": "TrendReportJobs",
     "TrendReportDemoDelayMilliseconds": "2000",
     "TrendReportEnqueueRecoveryTimer": "0 */5 * * * *",

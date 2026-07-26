@@ -1,4 +1,5 @@
 using LiftBattery.Api.DTOs;
+using LiftBattery.Api.Models;
 
 namespace LiftBattery.Api.Services;
 
@@ -18,5 +19,8 @@ public interface ITrendReportService
         DateTimeOffset olderThanUtc,
         int maxCount,
         CancellationToken cancellationToken = default);
-    Task ProcessAsync(TrendReportQueueMessageDto queueMessage, CancellationToken cancellationToken = default);
+    Task ProcessAsync(
+        TrendReportQueueMessageDto queueMessage,
+        TrendReportProcessingContext processingContext,
+        CancellationToken cancellationToken = default);
 }

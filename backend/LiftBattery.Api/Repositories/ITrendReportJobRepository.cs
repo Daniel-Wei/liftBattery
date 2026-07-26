@@ -13,11 +13,6 @@ public interface ITrendReportJobRepository
     Task<CreateOrGetTrendReportJobResult> CreateOrGetAsync(
         NewTrendReportJob newJob,
         CancellationToken cancellationToken = default);
-    Task<bool> OwnsActiveJobLeaseAsync(
-        int userId,
-        Guid jobId,
-        string expectedRunId,
-        CancellationToken cancellationToken = default);
     Task<string?> GetCurrentTrendReportReqDataVersionAsync(
         int userId,
         CancellationToken cancellationToken = default);
@@ -75,16 +70,7 @@ public interface ITrendReportJobRepository
         int maxAttempts,
         CancellationToken cancellationToken = default);
 
-    Task<bool> TryUpdateProgressIfCurrentProcessingAsync(
-        int userId,
-        Guid jobId,
-        string expectedRunId,
-        string expectedDataVersion,
-        int progressPercent,
-        string currentStage,
-        CancellationToken cancellationToken = default);
-
-    Task<bool> TryCompleteIfCurrentProcessingAsync(
+    Task<bool> TryCompleteIfCurrentActiveAsync(
         int userId,
         Guid jobId,
         string expectedRunId,
@@ -92,7 +78,7 @@ public interface ITrendReportJobRepository
         TrendReportResultDto result,
         CancellationToken cancellationToken = default);
 
-    Task<bool> TryMarkFailedIfCurrentProcessingAsync(
+    Task<bool> TryMarkFailedOnFinalDeliveryAsync(
         int userId,
         Guid jobId,
         string expectedRunId,
@@ -111,8 +97,6 @@ public interface ITrendReportJobRepository
 public enum TrendReportRepositoryActions
 {
     StartProcessing,
-    UpdateProgress,
-    Complete,
     MarkFailed,
     MarkSuperseded,
     MarkCancelled,
