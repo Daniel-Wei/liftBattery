@@ -53,6 +53,7 @@ var host = new HostBuilder()
         services.AddScoped<ITrainingRepository, TrainingRepository>();
         services.AddScoped<IPreCheckService, PreCheckService>();
         services.AddScoped<ITrainingSessionService, TrainingSessionService>();
+        services.AddSingleton<ITrendReportPayloadStore, TrendReportPayloadBlobStore>();
         services.AddScoped<ITrendReportJobRepository, TrendReportJobRepository>();
         services.AddScoped<ITrendReportInvalidationService, TrendReportInvalidationService>();
         services.AddScoped<ITrendReportJobQueue, TrendReportJobQueue>();

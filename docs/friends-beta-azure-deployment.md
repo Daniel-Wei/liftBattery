@@ -106,6 +106,7 @@ Function App 至少需要以下设置：
 - `TrendReportQueueName`：`trend-report-jobs`。
 - `TrendReportMaxDeliveryCount`：必须与 `trend-report-jobs` Queue 的 `MaxDeliveryCount` 完全一致，例如 `10`。
 - `TrendReportTableName`：`TrendReportJobs`。
+- `TrendReportPayloadBlobContainerName`：`trend-report-payloads`。
 - `WeeklyReportQueueName`：`weekly-report-jobs`。
 - `WeeklyReportTableName`：`WeeklyReportJobs`。
 - `WeeklyReportBlobContainerName`：`weekly-reports`。
@@ -172,6 +173,7 @@ dotnet ef database update --project backend\LiftBattery.Api\LiftBattery.Api.cspr
 - Queue consumer：`ProcessTrendReportJob`。
 - Queue name：`trend-report-jobs`。
 - Table name：`TrendReportJobs`。
+- Payload Blob container：`trend-report-payloads`。
 
 消息体是 `TrendReportQueueMessageDto`：
 
@@ -223,6 +225,8 @@ DLQ 逻辑：
 
 Blob 逻辑：
 
+- `TrendReportPayloadBlobStore` 使用 `AzureWebJobsStorage`，container 默认 `trend-report-payloads`。
+- 趋势报告 Snapshot/Result 使用 `users/{userId}/jobs/{jobId}/{payloadType}-{sha256}.json`；Table Job row 只保存 Blob pointer 和 Snapshot SHA-256。
 - `WeeklyReportBlobStorage` 使用 `AzureWebJobsStorage` 连接 Storage。
 - container 默认 `weekly-reports`。
 - blob path 格式：`weekly-reports/{userId}/{weekStartDate}/weekly-trends-report-v{dataVersion}.pdf`。
@@ -244,7 +248,7 @@ DLQ 逻辑：
 4. 保存 pre-check，确认 Azure SQL 有数据。
 5. 保存训练记录，确认 Azure SQL 有数据。
 6. 打开趋势报告页，生成报告，确认 `trend-report-jobs` 有消息被消费。
-7. 轮询 `GetTrendReport`，确认状态从 queued/processing 到 completed。
+7. 轮询 `GetTrendReport`，确认状态从 queued/processing 到 completed，并确认 `trend-report-payloads` 中同时存在 snapshot/result JSON。
 8. 修改训练记录，确认旧趋势报告提示过期或重新生成。
 9. 启用每周报告 schedule，把 timer 临时设成短周期，确认 `weekly-report-jobs` 入队。
 10. 确认每周报告 PDF 上传到 Blob，并且 metadata 有 correlationId。
@@ -275,6 +279,7 @@ DLQ 逻辑：
 - API 黑屏或请求失败：检查 `VITE_API_BASE_URL` 是否指向 `/api` 根路径，浏览器 Network 是否被 CORS 拦截。
 - SQL 失败：检查 `ConnectionStrings__LiftBatteryDatabase`、SQL firewall、EF migration 是否执行。
 - 趋势报告卡在 queued：检查 `ServiceBusConnection`、`TrendReportQueueName`、Function trigger 是否启动、Application Insights 是否有 consumer 异常。
+- 趋势报告 payload 读取失败：检查 `AzureWebJobsStorage`、`TrendReportPayloadBlobContainerName`、Blob 权限以及 Table row 中的 Blob pointer/hash。
 - 每周报告没有入队：检查 `WeeklyReportScheduleTimer`、用户 schedule enabled、timezone 和 Function App 当前配置。
 - PDF 没有上传：检查 `AzureWebJobsStorage`、`WeeklyReportBlobContainerName`、Blob 权限和 consumer 日志。
 - 邮件未发出：检查 SMTP host、port、SSL、username、password、sender address。

@@ -244,6 +244,7 @@ public sealed class TrendReportRunIdTests
             CreateProcessingContext());
 
         Assert.Equal(0, jobRepository.TryStartProcessingCallCount);
+        Assert.Equal(0, jobRepository.GetForProcessingCallCount);
     }
 
     [Fact]
@@ -265,6 +266,7 @@ public sealed class TrendReportRunIdTests
 
         Assert.Equal(TrendReportJobStatuses.Superseded, jobRepository.Job?.Status);
         Assert.Equal(0, jobRepository.TryStartProcessingCallCount);
+        Assert.Equal(0, jobRepository.GetForProcessingCallCount);
     }
 
     [Fact]
@@ -282,6 +284,7 @@ public sealed class TrendReportRunIdTests
             CreateProcessingContext());
 
         Assert.Equal(1, jobRepository.TryStartProcessingCallCount);
+        Assert.Equal(1, jobRepository.GetForProcessingCallCount);
         Assert.Equal("trend-report:current", jobRepository.LastExpectedRunId);
     }
 
@@ -588,6 +591,7 @@ public sealed class TrendReportRunIdTests
         public int MarkFailedCallCount { get; private set; }
         public int EnqueueRecoveryAttemptCount { get; private set; }
         public int DataVersionReadCallCount { get; private set; }
+        public int GetForProcessingCallCount { get; private set; }
         public int BumpDataVersionCallCount { get; private set; }
         public string? LastExpectedRunId { get; private set; }
 
@@ -723,6 +727,14 @@ public sealed class TrendReportRunIdTests
                 .Concat(Job is not null ? new[] { Job } : Array.Empty<TrendReportJob>())
                 .SingleOrDefault(candidate => candidate.UserId == userId && candidate.Id == id);
             return Task.FromResult<TrendReportJob?>(job);
+        }
+        public Task<TrendReportJob?> GetForProcessingAsync(
+            int userId,
+            Guid id,
+            CancellationToken cancellationToken = default)
+        {
+            GetForProcessingCallCount++;
+            return GetByIdAsync(userId, id, cancellationToken);
         }
 
         public Task<bool> TryMarkCancelledIfActiveAsync(

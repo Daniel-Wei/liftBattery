@@ -47,7 +47,7 @@ public sealed record TrendReportJob(
     TrendReportRequest Request,
     string RunId,
     string DataVersion,
-    TrendReportReqSnapshot Snapshot,
+    TrendReportReqSnapshot? Snapshot,
     TrendReportResultDto? Result,
     string? ErrorMessage,
     DateTimeOffset CreatedAtUtc,

@@ -147,6 +147,7 @@ public sealed class TrendReportService : ITrendReportService
         {
             var job = await GetProcessableJobAsync(
                 queueMessageDTO,
+                includeSnapshot: true,
                 cancellationToken);
 
             if (job is null)
@@ -166,16 +167,19 @@ public sealed class TrendReportService : ITrendReportService
 
             await DelayForDemoAsync(cancellationToken);
 
-            if (await GetProcessableJobAsync(queueMessageDTO, cancellationToken) is null)
+            if (await GetProcessableJobAsync(queueMessageDTO, cancellationToken: cancellationToken) is null)
             {
                 return;
             }
 
-            var result = GenerateResult(job.Request, job.Snapshot);
+            var snapshot = job.Snapshot
+                ?? throw new InvalidOperationException(
+                    $"Trend report job {job.Id} was loaded for processing without its snapshot.");
+            var result = GenerateResult(job.Request, snapshot);
 
             await DelayForDemoAsync(cancellationToken);
 
-            if (await GetProcessableJobAsync(queueMessageDTO, cancellationToken) is null)
+            if (await GetProcessableJobAsync(queueMessageDTO, cancellationToken: cancellationToken) is null)
             {
                 return;
             }
@@ -398,10 +402,13 @@ public sealed class TrendReportService : ITrendReportService
     }
     private async Task<TrendReportJob?> GetProcessableJobAsync(
         TrendReportQueueMessageDto message,
+        bool includeSnapshot = false,
         CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
 
+        // Validate the lightweight Table state before downloading a potentially large
+        // snapshot. Stale or terminal deliveries must remain cheap idempotent no-ops.
         var latestJob = await _trendReportJobRepo.GetByIdAsync(
             message.UserId,
             message.JobId,
@@ -439,19 +446,53 @@ public sealed class TrendReportService : ITrendReportService
                 latestJob.UserId,
                 cancellationToken);
 
-        if (latestJob.DataVersion == currentUserDataVersion)
+        if (latestJob.DataVersion != currentUserDataVersion)
+        {
+            await _trendReportJobRepo.TryMarkSupersededIfCurrentAsync(
+                latestJob.UserId,
+                latestJob.RunId,
+                latestJob.Id,
+                latestJob.DataVersion,
+                cancellationToken);
+
+            return null;
+        }
+
+        if (!includeSnapshot)
         {
             return latestJob;
         }
 
-        await _trendReportJobRepo.TryMarkSupersededIfCurrentAsync(
-            latestJob.UserId,
-            latestJob.RunId,
-            latestJob.Id,
-            latestJob.DataVersion,
+        // Re-read the exact run with its verified Blob payload only after the cheap
+        // identity, terminal-state, and DataVersion checks above have passed.
+        var jobWithSnapshot = await _trendReportJobRepo.GetForProcessingAsync(
+            message.UserId,
+            message.JobId,
             cancellationToken);
 
-        return null;
+        if (jobWithSnapshot is null
+            || jobWithSnapshot.RunId != message.RunId
+            || jobWithSnapshot.DataVersion != message.DataVersion)
+        {
+            return null;
+        }
+
+        if (jobWithSnapshot.Status is TrendReportJobStatuses.Completed
+            or TrendReportJobStatuses.Failed
+            or TrendReportJobStatuses.Cancelled
+            or TrendReportJobStatuses.Superseded)
+        {
+            // A terminal writer won between the metadata read and payload read.
+            return null;
+        }
+
+        if (!IsActiveJobStatus(jobWithSnapshot.Status))
+        {
+            throw new InvalidOperationException(
+                $"Trend report job {jobWithSnapshot.Id} has unsupported processing status '{jobWithSnapshot.Status}'.");
+        }
+
+        return jobWithSnapshot;
     }
 
     private Task DelayForDemoAsync(CancellationToken cancellationToken)

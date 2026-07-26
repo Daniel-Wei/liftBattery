@@ -28,6 +28,10 @@ public interface ITrendReportJobRepository
         int maxCount,
         CancellationToken cancellationToken = default);
     Task<TrendReportJob?> GetByIdAsync(int userId, Guid id, CancellationToken cancellationToken = default);
+    Task<TrendReportJob?> GetForProcessingAsync(
+        int userId,
+        Guid id,
+        CancellationToken cancellationToken = default);
     Task<bool> TryMarkCancelledIfActiveAsync(
         int userId,
         Guid jobId,

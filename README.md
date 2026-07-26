@@ -248,11 +248,12 @@ Important settings:
 | `Auth__BetaInviteCode` | Closed beta registration invite code |
 | `Auth__RequireSecureCookie` | Use secure auth cookies; local HTTP development usually sets `false` |
 | `Auth__SessionDays` | Auth session lifetime in days |
-| `AzureWebJobsStorage` | Functions host and Azure Table connection |
+| `AzureWebJobsStorage` | Functions host plus Azure Table and Blob connections |
 | `ServiceBusConnection` | Azure Service Bus connection |
 | `TrendReportQueueName` | Defaults to `trend-report-jobs` |
 | `TrendReportMaxDeliveryCount` | Must match the queue MaxDeliveryCount; the final delivery marks the job Failed and sends the message to DLQ |
 | `TrendReportTableName` | Defaults to `TrendReportJobs` |
+| `TrendReportPayloadBlobContainerName` | Defaults to `trend-report-payloads`; stores immutable snapshot and result JSON |
 | `TrendReportDemoDelayMilliseconds` | Optional artificial delay so local progress UI is visible |
 | `TrendReportEnqueueRecoveryTimer` | Timer schedule for re-enqueueing unstarted trend report jobs; example `0 */5 * * * *` |
 

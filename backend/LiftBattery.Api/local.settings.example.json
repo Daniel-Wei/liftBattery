@@ -14,6 +14,7 @@
     "TrendReportQueueName": "trend-report-jobs",
     "TrendReportMaxDeliveryCount": "10",
     "TrendReportTableName": "TrendReportJobs",
+    "TrendReportPayloadBlobContainerName": "trend-report-payloads",
     "TrendReportDemoDelayMilliseconds": "2000",
     "TrendReportEnqueueRecoveryTimer": "0 */5 * * * *",
     "TrendReportEnqueueRecoveryMaxAttempts": "5",
