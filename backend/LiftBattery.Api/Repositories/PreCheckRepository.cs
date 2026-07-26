@@ -11,13 +11,16 @@ public sealed class PreCheckRepository : IPreCheckRepository
 {
     private readonly LiftBatteryDbContext _dbContext;
     private readonly int _defaultUserId;
+    private readonly ITrendReportSourceDataRepository _trendReportSourceDataRepository;
 
     public PreCheckRepository(
         LiftBatteryDbContext dbContext,
-        IOptions<PreCheckOptions> options)
+        IOptions<PreCheckOptions> options,
+        ITrendReportSourceDataRepository trendReportSourceDataRepository)
     {
         _dbContext = dbContext;
         _defaultUserId = options.Value.DefaultUserId;
+        _trendReportSourceDataRepository = trendReportSourceDataRepository;
     }
 
     public async Task<PreCheckModel?> GetByDateAsync(
@@ -74,6 +77,11 @@ public sealed class PreCheckRepository : IPreCheckRepository
             Apply(log, entity);
         }
 
+        await _trendReportSourceDataRepository.StageDataVersionChangeAsync(
+            log.UserId,
+            log.UpdatedAtUtc,
+            cancellationToken);
+
         try
         {
             await _dbContext.SaveChangesAsync(cancellationToken);
@@ -106,6 +114,10 @@ public sealed class PreCheckRepository : IPreCheckRepository
         }
 
         _dbContext.PreChecks.Remove(entity);
+        await _trendReportSourceDataRepository.StageDataVersionChangeAsync(
+            userId,
+            DateTimeOffset.UtcNow,
+            cancellationToken);
         await _dbContext.SaveChangesAsync(cancellationToken);
         return ToModel(entity);
     }
@@ -139,7 +151,7 @@ public sealed class PreCheckRepository : IPreCheckRepository
         entity.UpdatedAtUtc = log.UpdatedAtUtc;
     }
 
-    private static PreCheckModel ToModel(PreCheck entity)
+    internal static PreCheckModel ToModel(PreCheck entity)
     {
         return new PreCheckModel(
             entity.Id,

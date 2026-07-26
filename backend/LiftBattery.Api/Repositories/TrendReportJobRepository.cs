@@ -17,7 +17,6 @@ public sealed class TrendReportJobRepository : ITrendReportJobRepository
     private const int HttpNotFoundStatusCode = 404;
     private const int HttpConflictStatusCode = 409;
     private const int HttpPreconditionFailedStatusCode = 412;
-    private const string DataVersionPartitionKeyValue = "trend-report-data-version";
     private const string ActiveJobRowKeyValue = "active-job";
     private const string DedupRowKeyPrefix = "job-dedup:";
     private const string JobPartitionKeyPrefix = "trend-report-user-";
@@ -84,57 +83,6 @@ public sealed class TrendReportJobRepository : ITrendReportJobRepository
             createdJob,
             createState,
             cancellationToken);
-    }
-
-    #endregion
-
-    #region: Data Version Management
-    public async Task<string?> GetCurrentTrendReportReqDataVersionAsync(
-        int userId,
-        CancellationToken cancellationToken = default)
-    {
-        cancellationToken.ThrowIfCancellationRequested();
-
-        await EnsureTableAsync();
-        var rowKey = userId.ToString();
-
-        try
-        {
-            var response =
-                await _tableClient.GetEntityAsync<TrendReportDataVersionEntity>(
-                    DataVersionPartitionKeyValue,
-                    rowKey,
-                    cancellationToken: cancellationToken);
-
-            return string.IsNullOrWhiteSpace(response.Value.DataVersion)
-                ? null
-                : response.Value.DataVersion;
-        }
-        catch (RequestFailedException ex) when (ex.Status == HttpNotFoundStatusCode)
-        {
-            return null;
-        }
-    }
-
-    public async Task<string> BumpDataVersionAsync(
-        int userId,
-        DateTimeOffset updatedAtUtc,
-        CancellationToken cancellationToken = default)
-    {
-        cancellationToken.ThrowIfCancellationRequested();
-
-        await EnsureTableAsync();
-
-        var nextVersion = CreateDataVersion(updatedAtUtc);
-        await _tableClient.UpsertEntityAsync(new TrendReportDataVersionEntity
-        {
-            PartitionKey = DataVersionPartitionKeyValue,
-            RowKey = userId.ToString(),
-            UserId = userId,
-            DataVersion = nextVersion,
-            UpdatedAtUtc = updatedAtUtc,
-        }, TableUpdateMode.Replace, cancellationToken);
-        return nextVersion;
     }
 
     #endregion
@@ -1352,28 +1300,12 @@ public sealed class TrendReportJobRepository : ITrendReportJobRepository
             entity.UpdatedAtUtc);
     }
 
-    private static string CreateDataVersion(DateTimeOffset updatedAtUtc)
-    {
-        return $"{updatedAtUtc:yyyyMMddHHmmssfffffff}-{Guid.NewGuid():N}";
-    }
-
     private sealed record CreateJobState(
         string PartitionKey,
         string DedupRowKey,
         TrendReportJobDedupEntity? Dedup,
         TrendReportJob? ExistingCurrentReqJob,
         TrendReportActiveJobEntity? ActiveJobLease);
-
-    private sealed class TrendReportDataVersionEntity : ITableEntity
-    {
-        public string PartitionKey { get; set; } = DataVersionPartitionKeyValue;
-        public string RowKey { get; set; } = string.Empty;
-        public DateTimeOffset? Timestamp { get; set; }
-        public ETag ETag { get; set; }
-        public int UserId { get; set; }
-        public string DataVersion { get; set; } = string.Empty;
-        public DateTimeOffset UpdatedAtUtc { get; set; }
-    }
 
     #endregion
 }

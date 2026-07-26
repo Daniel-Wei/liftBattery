@@ -24,22 +24,19 @@ public sealed class TrendReportService : ITrendReportService
     };
 
     private readonly ITrendReportJobRepository _trendReportJobRepo;
-    private readonly ITrainingRepository _trainingRepo;
-    private readonly IPreCheckRepository _preCheckRepo;
+    private readonly ITrendReportSourceDataRepository _sourceDataRepository;
     private readonly ITrendReportJobQueue _trendReportJobQueue;
     private readonly int _demoDelayMilliseconds;
     private readonly int _enqueueRecoveryMaxAttempts;
 
     public TrendReportService(
         ITrendReportJobRepository trendReportJobRepo,
-        ITrainingRepository trainingRepo,
-        IPreCheckRepository preCheckRepo,
+        ITrendReportSourceDataRepository sourceDataRepository,
         ITrendReportJobQueue trendReportJobQueue,
         IConfiguration configuration)
     {
         _trendReportJobRepo = trendReportJobRepo;
-        _trainingRepo = trainingRepo;
-        _preCheckRepo = preCheckRepo;
+        _sourceDataRepository = sourceDataRepository;
         _trendReportJobQueue = trendReportJobQueue;
         _demoDelayMilliseconds = int.TryParse(
             configuration["TrendReportDemoDelayMilliseconds"],
@@ -67,29 +64,21 @@ public sealed class TrendReportService : ITrendReportService
         // Validate and normalize the request DTO.
         var validatedTrendReportReq = ValidateRequest(createTrendReportReqDTO);
 
-        // Load the database records used for the submission-time snapshot.
-        var snapshotStart = validatedTrendReportReq.ComparisonStartWeek.HasValue
-            ? Min(validatedTrendReportReq.StartWeek, validatedTrendReportReq.ComparisonStartWeek.Value)
-            : validatedTrendReportReq.StartWeek;
-        var rangeEnd = validatedTrendReportReq.ComparisonEndWeek.HasValue
-            ? Max(validatedTrendReportReq.EndWeek, validatedTrendReportReq.ComparisonEndWeek.Value).AddDays(6)
-            : validatedTrendReportReq.EndWeek.AddDays(6);
-        var trainingDays = await _trainingRepo.GetByDateRangeAsync(
+        // Capture the version and both source collections from one SQL snapshot.
+        // This prevents a concurrent CRUD from producing old data labelled with a
+        // newer DataVersion (or a mixed Training/PreCheck snapshot).
+        var (snapshotStart, rangeEnd) = GetSnapshotRange(validatedTrendReportReq);
+        var sourceDataCapture = await _sourceDataRepository.CaptureSnapshotAsync(
             userId,
             snapshotStart,
             rangeEnd,
             cancellationToken);
-        var preCheckLogs = await _preCheckRepo.GetByDateRangeAsync(
-            userId,
-            snapshotStart,
-            rangeEnd,
-            cancellationToken);
-        var trendReportReqSnapshot = new TrendReportReqSnapshot(trainingDays, preCheckLogs);
-        EnsureSnapshotHasData(trendReportReqSnapshot);
 
-        var storedDataVersion = await _trendReportJobRepo
-            .GetCurrentTrendReportReqDataVersionAsync(userId, cancellationToken);
-        var trendReportReqDataVersion = RequireStoredDataVersion(userId, storedDataVersion);
+        var trendReportReqSnapshot = sourceDataCapture.Snapshot;
+        EnsureSnapshotHasData(trendReportReqSnapshot);
+        var trendReportReqDataVersion = RequireCapturedDataVersion(
+            userId,
+            sourceDataCapture.DataVersion);
 
         var runId = CreateRunId();
         var newJobCandidate = new NewTrendReportJob(
@@ -441,8 +430,8 @@ public sealed class TrendReportService : ITrendReportService
                 $"Trend report job {latestJob.Id} has unsupported processing status '{latestJob.Status}'.");
         }
 
-        var currentUserDataVersion = await _trendReportJobRepo
-            .GetCurrentTrendReportReqDataVersionAsync(
+        var currentUserDataVersion = await _sourceDataRepository
+            .GetCurrentDataVersionAsync(
                 latestJob.UserId,
                 cancellationToken);
 
@@ -504,22 +493,12 @@ public sealed class TrendReportService : ITrendReportService
 
     private async Task<TrendReportReqSnapshot> LoadSnapshotAsync(int userId, TrendReportRequest request)
     {
-        var snapshotStart = request.ComparisonStartWeek.HasValue
-            ? Min(request.StartWeek, request.ComparisonStartWeek.Value)
-            : request.StartWeek;
-        var rangeEnd = request.ComparisonEndWeek.HasValue
-            ? Max(request.EndWeek, request.ComparisonEndWeek.Value).AddDays(6)
-            : request.EndWeek.AddDays(6);
-        var trainingDays = await _trainingRepo.GetByDateRangeAsync(
+        var (snapshotStart, rangeEnd) = GetSnapshotRange(request);
+        var sourceDataCapture = await _sourceDataRepository.CaptureSnapshotAsync(
             userId,
             snapshotStart,
             rangeEnd);
-        var preCheckLogs = await _preCheckRepo.GetByDateRangeAsync(
-            userId,
-            snapshotStart,
-            rangeEnd);
-
-        return new TrendReportReqSnapshot(trainingDays, preCheckLogs);
+        return sourceDataCapture.Snapshot;
     }
 
     private static TrendReportRequest ValidateRequest(CreateTrendReportRequestDto createTrendReportReqDTO)
@@ -1021,6 +1000,18 @@ public sealed class TrendReportService : ITrendReportService
         };
     }
 
+    private static (DateOnly Start, DateOnly End) GetSnapshotRange(TrendReportRequest request)
+    {
+        var snapshotStart = request.ComparisonStartWeek.HasValue
+            ? Min(request.StartWeek, request.ComparisonStartWeek.Value)
+            : request.StartWeek;
+        var rangeEnd = request.ComparisonEndWeek.HasValue
+            ? Max(request.EndWeek, request.ComparisonEndWeek.Value).AddDays(6)
+            : request.EndWeek.AddDays(6);
+
+        return (snapshotStart, rangeEnd);
+    }
+
     private static DateOnly Min(DateOnly first, DateOnly second)
     {
         return first <= second ? first : second;
@@ -1040,7 +1031,7 @@ public sealed class TrendReportService : ITrendReportService
         }
     }
 
-    private static string RequireStoredDataVersion(int userId, string? storedDataVersion)
+    private static string RequireCapturedDataVersion(int userId, string? storedDataVersion)
     {
         if (!string.IsNullOrWhiteSpace(storedDataVersion))
         {

@@ -13,13 +13,6 @@ public interface ITrendReportJobRepository
     Task<CreateOrGetTrendReportJobResult> CreateOrGetAsync(
         NewTrendReportJob newJob,
         CancellationToken cancellationToken = default);
-    Task<string?> GetCurrentTrendReportReqDataVersionAsync(
-        int userId,
-        CancellationToken cancellationToken = default);
-    Task<string> BumpDataVersionAsync(
-        int userId,
-        DateTimeOffset updatedAtUtc,
-        CancellationToken cancellationToken = default);
     Task<IReadOnlyList<TrendReportJob>> GetActiveByUserIdAsync(
         int userId,
         CancellationToken cancellationToken = default);

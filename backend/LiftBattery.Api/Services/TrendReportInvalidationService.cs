@@ -6,10 +6,14 @@ namespace LiftBattery.Api.Services;
 public sealed class TrendReportInvalidationService : ITrendReportInvalidationService
 {
     private readonly ITrendReportJobRepository _jobRepository;
+    private readonly ITrendReportSourceDataRepository _sourceDataRepository;
 
-    public TrendReportInvalidationService(ITrendReportJobRepository jobRepository)
+    public TrendReportInvalidationService(
+        ITrendReportJobRepository jobRepository,
+        ITrendReportSourceDataRepository sourceDataRepository)
     {
         _jobRepository = jobRepository;
+        _sourceDataRepository = sourceDataRepository;
     }
 
     public async Task InvalidateForReportDataChangeAsync(
@@ -19,17 +23,24 @@ public sealed class TrendReportInvalidationService : ITrendReportInvalidationSer
     {
         cancellationToken.ThrowIfCancellationRequested();
 
-        var newDataVersion = await _jobRepository.BumpDataVersionAsync(
+        // The source repository already committed the new SQL DataVersion in the
+        // same SaveChanges transaction as the source CRUD. Invalidation only reads
+        // that committed version and eagerly supersedes affected active jobs.
+        var currentDataVersion = await _sourceDataRepository.GetCurrentDataVersionAsync(
             userId,
-            DateTimeOffset.UtcNow,
             cancellationToken);
+        if (string.IsNullOrWhiteSpace(currentDataVersion))
+        {
+            throw new InvalidOperationException(
+                $"Trend report source data changed for user {userId}, but no SQL DataVersion was found.");
+        }
         var activeJobs = await _jobRepository.GetActiveByUserIdAsync(userId, cancellationToken);
 
         foreach (var job in activeJobs)
         {
             cancellationToken.ThrowIfCancellationRequested();
 
-            if (string.Equals(job.DataVersion, newDataVersion, StringComparison.Ordinal)
+            if (string.Equals(job.DataVersion, currentDataVersion, StringComparison.Ordinal)
                 || !RequestContainsDate(job.Request, changedDate))
             {
                 continue;

@@ -11,13 +11,16 @@ public sealed class TrainingRepository : ITrainingRepository
 {
     private readonly LiftBatteryDbContext _dbContext;
     private readonly int _defaultUserId;
+    private readonly ITrendReportSourceDataRepository _trendReportSourceDataRepository;
 
     public TrainingRepository(
         LiftBatteryDbContext dbContext,
-        IOptions<TrainingOptions> options)
+        IOptions<TrainingOptions> options,
+        ITrendReportSourceDataRepository trendReportSourceDataRepository)
     {
         _dbContext = dbContext;
         _defaultUserId = options.Value.DefaultUserId;
+        _trendReportSourceDataRepository = trendReportSourceDataRepository;
     }
 
     public async Task<IReadOnlyList<TrainingDayModel>> GetByDateRangeAsync(
@@ -84,6 +87,10 @@ public sealed class TrainingRepository : ITrainingRepository
             day.UpdatedAtUtc = now;
         }
 
+        await _trendReportSourceDataRepository.StageDataVersionChangeAsync(
+            userId,
+            now,
+            cancellationToken);
         await _dbContext.SaveChangesAsync(cancellationToken);
 
         return ToModel(day);
@@ -111,12 +118,16 @@ public sealed class TrainingRepository : ITrainingRepository
 
         var model = ToModel(session);
         _dbContext.TrainingSessions.Remove(session);
+        await _trendReportSourceDataRepository.StageDataVersionChangeAsync(
+            userId,
+            DateTimeOffset.UtcNow,
+            cancellationToken);
         await _dbContext.SaveChangesAsync(cancellationToken);
 
         return model;
     }
 
-    private static TrainingDayModel ToModel(TrainingDay entity)
+    internal static TrainingDayModel ToModel(TrainingDay entity)
     {
         return new TrainingDayModel(
             entity.Id,

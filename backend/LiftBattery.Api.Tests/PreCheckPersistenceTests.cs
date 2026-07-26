@@ -56,6 +56,33 @@ public sealed class PreCheckPersistenceTests
     }
 
     [Fact]
+    public async Task SourceCrudInitializesAndAdvancesSqlTrendReportDataVersion()
+    {
+        await using var database = await TestDatabase.CreateAsync();
+        var service = database.CreateService();
+
+        var initialVersion = await database.Context.Users
+            .AsNoTracking()
+            .Where(user => user.Id == 1)
+            .Select(user => user.TrendReportDataVersion)
+            .SingleAsync();
+        Assert.Null(initialVersion);
+
+        var saved = await service.SaveAsync(1, CreateDto());
+        var createdVersion = await ReadDataVersionAsync(database.Context, 1);
+
+        await service.SaveAsync(1, CreateDto() with { SleepHours = 8 });
+        var updatedVersion = await ReadDataVersionAsync(database.Context, 1);
+
+        await service.DeleteAsync(1, saved.Id!.Value);
+        var deletedVersion = await ReadDataVersionAsync(database.Context, 1);
+
+        Assert.False(string.IsNullOrWhiteSpace(createdVersion));
+        Assert.NotEqual(createdVersion, updatedVersion);
+        Assert.NotEqual(updatedVersion, deletedVersion);
+    }
+
+    [Fact]
     public async Task DeletingExistingRecordInvalidatesTrendReports()
     {
         await using var database = await TestDatabase.CreateAsync();
@@ -116,7 +143,8 @@ public sealed class PreCheckPersistenceTests
         await using var secondContext = new LiftBatteryDbContext(database.Options);
         var secondRepository = new PreCheckRepository(
             secondContext,
-            Microsoft.Extensions.Options.Options.Create(new PreCheckOptions()));
+            Microsoft.Extensions.Options.Options.Create(new PreCheckOptions()),
+            new TrendReportSourceDataRepository(secondContext));
         var secondService = new PreCheckService(
             secondRepository,
             TimeProvider.System,
@@ -156,6 +184,15 @@ public sealed class PreCheckPersistenceTests
         response.Body.Position = 0;
         var body = await new StreamReader(response.Body).ReadToEndAsync();
         Assert.Contains("invalid JSON", body);
+    }
+
+    private static Task<string?> ReadDataVersionAsync(LiftBatteryDbContext context, int userId)
+    {
+        return context.Users
+            .AsNoTracking()
+            .Where(user => user.Id == userId)
+            .Select(user => user.TrendReportDataVersion)
+            .SingleAsync();
     }
 
     private static PreCheckDto CreateDto()
@@ -264,7 +301,8 @@ public sealed class PreCheckPersistenceTests
         {
             var repository = new PreCheckRepository(
                 Context,
-                Microsoft.Extensions.Options.Options.Create(new PreCheckOptions()));
+                Microsoft.Extensions.Options.Options.Create(new PreCheckOptions()),
+                new TrendReportSourceDataRepository(Context));
             return new PreCheckService(
                 repository,
                 TimeProvider.System,

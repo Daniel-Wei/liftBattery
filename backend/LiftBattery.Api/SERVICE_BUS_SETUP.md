@@ -7,7 +7,7 @@ The trend report flow requires:
 - `TrendReportMaxDeliveryCount` set to the queue's `MaxDeliveryCount` value (default example: `10`).
 - `AzureWebJobsStorage` pointing to Azure Storage or Azurite with Table and Blob support enabled.
 
-`TrendReportJobs` is created automatically in Table Storage, and the `TrendReportPayloadBlobContainerName` container defaults to `trend-report-payloads`. Table rows store status, request identity, Blob pointers, and the snapshot SHA-256; immutable snapshot/result JSON is stored in Blob Storage. The same table also stores one `trend-report-data-version` row per user. The queue must be created before the Function App starts. Keep the queue's default dead-letter behavior enabled and configure duplicate detection when provisioning the queue.
+`TrendReportJobs` is created automatically in Table Storage, and the `TrendReportPayloadBlobContainerName` container defaults to `trend-report-payloads`. Table rows store status, request identity, Blob pointers, and the snapshot SHA-256; immutable snapshot/result JSON is stored in Blob Storage. The source `DataVersion` is stored on the SQL `Users.TrendReportDataVersion` column. The queue must be created before the Function App starts. Keep the queue's default dead-letter behavior enabled and configure duplicate detection when provisioning the queue.
 
 `TrendReportMaxDeliveryCount` and the queue's `MaxDeliveryCount` must remain equal. The worker uses that value to identify the final delivery, atomically mark the current run `Failed`, release its active-job lease, and explicitly dead-letter the message.
 
@@ -21,13 +21,13 @@ The producer sends a JSON `TrendReportQueueMessageDto` body, not a plain job id.
 
 Runtime flow:
 
-1. `CreateTrendReport` validates the request and captures the SQL snapshot.
-2. `TrendReportService.SubmitAsync` returns 422 without creating a job when the selected period contains no training or pre-check data. Otherwise it reads the current user `DataVersion`. A non-empty snapshot without a stored version is treated as a consistency error.
+1. `CreateTrendReport` validates the request and captures `DataVersion`, Training, and PreCheck in one SQL snapshot transaction. The migration enables SQL Server snapshot isolation for this boundary.
+2. `TrendReportService.SubmitAsync` returns 422 without creating a job when the selected period contains no training or pre-check data. A non-empty capture without its SQL `DataVersion` is treated as a consistency error.
 3. The repository hashes normalized request dates + `DataVersion` into an internal dedup RowKey. An existing `Completed` job is reused. An explicit Generate after `Failed`, `Cancelled`, or `Superseded` creates a fresh job and conditionally moves the dedup row with its ETag.
 4. Each user partition contains one fixed `active-job` lease. For a new job, the repository first uploads a JobId-scoped immutable snapshot Blob, then creates the dedup row, job row with `SnapshotBlobName`/`SnapshotHash`, and lease in one Table transaction. A definite 409/412 transaction loser deletes its unreferenced candidate Blob. The repository reads the lease first: an active job with identical parameters is returned, while an active job with different parameters produces 409. A missing leased job or mismatched RunId is treated as storage corruption. Explicit cancellation and every terminal worker transition update the job and delete its matching lease atomically.
 5. A newly created durable `EnqueuePending` job is sent to Service Bus. After send succeeds, the job is marked `Queued`.
 6. `ProcessTrendReportJob` validates the JSON message. Permanently invalid messages are sent to DLQ with a reason and description.
-7. Each valid delivery verifies `JobId`, `RunId`, `DataVersion`, and the current non-terminal status, then downloads the immutable snapshot Blob and verifies it against `SnapshotHash`. Moving `EnqueuePending` or `Queued` to `Processing` is best-effort display state; a redelivery may recompute an existing `Processing` job from the same verified snapshot.
+7. Each valid delivery verifies `JobId`, `RunId`, `DataVersion`, the current SQL source `DataVersion`, and the current non-terminal status, then downloads the immutable snapshot Blob and verifies it against `SnapshotHash`. Moving `EnqueuePending` or `Queued` to `Processing` is best-effort display state; a redelivery may recompute an existing `Processing` job from the same verified snapshot.
 8. Duplicate workers are allowed to compute, but they do not persist intermediate progress. A worker uploads its result to a content-addressed Blob before conditionally publishing `ResultBlobName` in the terminal Table transaction. Status checks and ETag ensure that only the first terminal writer wins and `Completed`, `Failed`, `Cancelled`, or `Superseded` cannot be overwritten.
 9. A non-final processing exception leaves the job active and is rethrown for Service Bus redelivery. On the configured final delivery, the job is atomically marked `Failed` only if it is still active, its active-job lease is released, and the message is explicitly sent to DLQ with reason `TrendReportRetryLimitExceeded`.
 10. Completion is idempotent: duplicate workers producing identical JSON reuse the same content-addressed result Blob. If the terminal Table update succeeded but message completion did not, redelivery sees the terminal job, performs no processing write, and safely completes the message.
@@ -36,7 +36,7 @@ Runtime flow:
 
 Report source data CRUD invalidation:
 
-1. After pre-check or training save/delete succeeds, `TrendReportInvalidationService` initializes or bumps the user's Table `DataVersion`.
+1. Pre-check and training save/delete stage a new `Users.TrendReportDataVersion` and commit it in the same SQL `SaveChangesAsync` transaction as the source mutation. `TrendReportInvalidationService` only reads that committed version.
 2. It scans active jobs for that user.
 3. If the changed training date is inside an active job's target period or comparison period, the job is marked `Superseded`.
 4. The consumer stops a `Superseded` job before writing more progress or a completed result.

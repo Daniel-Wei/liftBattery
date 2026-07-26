@@ -129,7 +129,7 @@ Migration:
 
 1. 前端提交训练周期、可选对比周期、动作选择和报告类型。
 2. `TrendReportFunctions` 调用 `TrendReportService.SubmitAsync`。
-3. Service 验证请求并读取 Training 与 PreCheck 快照。
+3. Service 在同一个 SQL snapshot transaction 中读取 `DataVersion`、Training 与 PreCheck 快照。
 4. Repository 用标准化后的 `request + DataVersion` 生成内部 dedup RowKey hash。
 5. 如果当前用户已有相同 dedup RowKey 的 `EnqueuePending` / `Queued` / `Processing` job，直接返回已有 job，不再 enqueue。
 6. 如果已有其他 active job，说明用户改了报告输入或底层数据；旧 job 标记为 `Cancelled`。
@@ -137,7 +137,7 @@ Migration:
 8. `TrendReportJobQueue` 将包含 `jobId` / `runId` / `dataVersion` 的 JSON message 放入 `trend-report-jobs` Queue，发送成功后把 job 标成 `Queued`。
 9. `ProcessTrendReportJob` Service Bus Trigger 调用 `ProcessAsync`。
 10. Consumer 先确认 message `RunId` 与 Table job `RunId` 一致，再以 ETag 保护的方式 claim Job。
-11. Consumer 在写入进度和结果前再次检查 `RunId` / `DataVersion` / 状态，避免旧 worker 覆盖新状态。
+11. Consumer 在写入结果前再次检查 `RunId` / job `DataVersion` / 当前 SQL `DataVersion` / 状态，避免旧 worker 覆盖新状态。
 12. `RecoverPendingTrendReportEnqueues` 定时重发长时间未开始的 `EnqueuePending` / `Queued` job，避免 create 成功但 queue message 丢失或发送结果未知。
 13. 结果写回 Azure Table；前端按 job id polling，直到 `Completed` / `Failed` / `Cancelled`。
 

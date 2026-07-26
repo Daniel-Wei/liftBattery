@@ -186,10 +186,11 @@ dotnet ef database update --project backend\LiftBattery.Api\LiftBattery.Api.cspr
 
 DataVersion 逻辑：
 
-- `TrendReportJobRepository` 在 Table 中维护每个用户当前 `DataVersion`。
-- 保存或删除训练记录后，`TrendReportInvalidationService` 会 bump DataVersion。
+- SQL `Users.TrendReportDataVersion` 是每个用户当前源数据版本的唯一权威来源。
+- 保存或删除 Training/PreCheck 时，源数据和新 `DataVersion` 由同一次 SQL `SaveChangesAsync` 原子提交。
+- 提交报告时，`DataVersion`、Training 和 PreCheck 在同一个 SQL snapshot transaction 中读取。
 - 如果已有 queued/processing job 覆盖被修改日期，旧 job 会直接进入 `Superseded`。
-- Consumer 在处理过程中会反复检查 queue message 和 latest job 的 DataVersion，避免旧数据写回新结果。
+- Consumer 会比较 job 与当前 SQL `DataVersion`，避免旧数据写回新结果。
 
 DLQ 逻辑：
 

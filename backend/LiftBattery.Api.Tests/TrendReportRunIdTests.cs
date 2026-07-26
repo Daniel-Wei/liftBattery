@@ -15,15 +15,16 @@ public sealed class TrendReportRunIdTests
     [Fact]
     public async Task SubmitAsyncReturnsNoDataWithoutCreatingJobWhenSnapshotIsEmpty()
     {
-        var jobRepository = new FakeTrendReportJobRepository
+        var jobRepository = new FakeTrendReportJobRepository();
+        var sourceDataRepository = new FakeTrendReportSourceDataRepository
         {
-            CurrentDataVersion = null,
+            CurrentDataVersion = "v1",
         };
         var queue = new FakeTrendReportJobQueue();
         var service = CreateService(
             jobRepository,
             queue,
-            trainingRepository: new FakeTrainingRepository());
+            sourceDataRepository: sourceDataRepository);
 
         var exception = await Assert.ThrowsAsync<TrendReportNoDataException>(
             () => service.SubmitAsync(1, CreateRequest()));
@@ -31,38 +32,39 @@ public sealed class TrendReportRunIdTests
         Assert.Contains("No training or pre-check data", exception.Message);
         Assert.Null(jobRepository.CreatedJob);
         Assert.Equal(0, queue.EnqueueCount);
-        Assert.Equal(0, jobRepository.DataVersionReadCallCount);
-        Assert.Equal(0, jobRepository.BumpDataVersionCallCount);
+        Assert.Equal(1, sourceDataRepository.CaptureCallCount);
+        Assert.Equal(0, sourceDataRepository.CurrentDataVersionReadCallCount);
     }
 
     [Fact]
     public async Task SubmitAsyncFailsWhenSourceDataExistsWithoutDataVersion()
     {
-        var jobRepository = new FakeTrendReportJobRepository
+        var jobRepository = new FakeTrendReportJobRepository();
+        var sourceDataRepository = new FakeTrendReportSourceDataRepository
         {
             CurrentDataVersion = null,
         };
-        var trainingRepository = new FakeTrainingRepository();
-        trainingRepository.TrainingDays.Add(CreateTrainingDay());
+        sourceDataRepository.TrainingDays.Add(CreateTrainingDay());
         var service = CreateService(
             jobRepository,
             new FakeTrendReportJobQueue(),
-            trainingRepository: trainingRepository);
+            sourceDataRepository: sourceDataRepository);
 
         var exception = await Assert.ThrowsAsync<InvalidOperationException>(
             () => service.SubmitAsync(1, CreateRequest()));
 
         Assert.Contains("no DataVersion was found", exception.Message);
         Assert.Null(jobRepository.CreatedJob);
-        Assert.Equal(0, jobRepository.BumpDataVersionCallCount);
+        Assert.Equal(1, sourceDataRepository.CaptureCallCount);
     }
 
     [Fact]
     public async Task SubmitAsyncPersistsRunIdAndEnqueuesMessageWithSameRunId()
     {
         var jobRepository = new FakeTrendReportJobRepository();
+        var sourceDataRepository = CreatePopulatedSourceDataRepository();
         var queue = new FakeTrendReportJobQueue();
-        var service = CreateService(jobRepository, queue);
+        var service = CreateService(jobRepository, queue, sourceDataRepository: sourceDataRepository);
 
         var dto = await service.SubmitAsync(1, CreateRequest());
 
@@ -74,7 +76,7 @@ public sealed class TrendReportRunIdTests
         Assert.StartsWith("trend-report:", jobRepository.CreatedJob.RunId);
         Assert.Equal(jobRepository.CreatedJob.RunId, queue.EnqueuedMessage.RunId);
         Assert.Equal(jobRepository.CreatedJob.RunId, dto.RunId);
-        Assert.Equal(1, jobRepository.DataVersionReadCallCount);
+        Assert.Equal(1, sourceDataRepository.CaptureCallCount);
     }
 
     [Fact]
@@ -221,7 +223,11 @@ public sealed class TrendReportRunIdTests
                 Status = TrendReportJobStatuses.Processing,
             },
         };
-        var service = new TrendReportInvalidationService(jobRepository);
+        var sourceDataRepository = new FakeTrendReportSourceDataRepository
+        {
+            CurrentDataVersion = "v2",
+        };
+        var service = new TrendReportInvalidationService(jobRepository, sourceDataRepository);
 
         await service.InvalidateForReportDataChangeAsync(
             userId: 1,
@@ -256,9 +262,12 @@ public sealed class TrendReportRunIdTests
             {
                 Status = TrendReportJobStatuses.Queued,
             },
+        };
+        var sourceDataRepository = new FakeTrendReportSourceDataRepository
+        {
             CurrentDataVersion = "v2",
         };
-        var service = CreateService(jobRepository, new FakeTrendReportJobQueue());
+        var service = CreateService(jobRepository, new FakeTrendReportJobQueue(), sourceDataRepository: sourceDataRepository);
 
         await service.ProcessAsync(
             CreateQueueMessage(runId: "trend-report:stale-data", dataVersion: "v1"),
@@ -479,7 +488,7 @@ public sealed class TrendReportRunIdTests
         FakeTrendReportJobRepository jobRepository,
         FakeTrendReportJobQueue queue,
         int enqueueRecoveryMaxAttempts = 5,
-        FakeTrainingRepository? trainingRepository = null)
+        FakeTrendReportSourceDataRepository? sourceDataRepository = null)
     {
         var configuration = new ConfigurationBuilder()
             .AddInMemoryCollection(new Dictionary<string, string?>
@@ -491,15 +500,17 @@ public sealed class TrendReportRunIdTests
 
         return new TrendReportService(
             jobRepository,
-            trainingRepository ?? CreatePopulatedTrainingRepository(),
-            new FakePreCheckRepository(),
+            sourceDataRepository ?? CreatePopulatedSourceDataRepository(),
             queue,
             configuration);
     }
 
-    private static FakeTrainingRepository CreatePopulatedTrainingRepository()
+    private static FakeTrendReportSourceDataRepository CreatePopulatedSourceDataRepository()
     {
-        var repository = new FakeTrainingRepository();
+        var repository = new FakeTrendReportSourceDataRepository
+        {
+            CurrentDataVersion = "v1",
+        };
         repository.TrainingDays.Add(CreateTrainingDay());
         return repository;
     }
@@ -590,9 +601,7 @@ public sealed class TrendReportRunIdTests
         public bool ThrowAfterStartingProcessing { get; set; }
         public int MarkFailedCallCount { get; private set; }
         public int EnqueueRecoveryAttemptCount { get; private set; }
-        public int DataVersionReadCallCount { get; private set; }
         public int GetForProcessingCallCount { get; private set; }
-        public int BumpDataVersionCallCount { get; private set; }
         public string? LastExpectedRunId { get; private set; }
 
 
@@ -668,24 +677,6 @@ public sealed class TrendReportRunIdTests
             }
         }
 
-        public string? CurrentDataVersion { get; set; } = "v1";
-
-        public Task<string?> GetCurrentTrendReportReqDataVersionAsync(
-            int userId,
-            CancellationToken cancellationToken = default)
-        {
-            DataVersionReadCallCount++;
-            return Task.FromResult(CurrentDataVersion);
-        }
-
-        public Task<string> BumpDataVersionAsync(
-            int userId,
-            DateTimeOffset updatedAtUtc,
-            CancellationToken cancellationToken = default)
-        {
-            BumpDataVersionCallCount++;
-            return Task.FromResult("v2");
-        }
 
         public Task<IReadOnlyList<TrendReportJob>> GetActiveByUserIdAsync(
             int userId,
@@ -1052,77 +1043,41 @@ public sealed class TrendReportRunIdTests
         }
     }
 
-    private sealed class FakeTrainingRepository : ITrainingRepository
+    private sealed class FakeTrendReportSourceDataRepository : ITrendReportSourceDataRepository
     {
         public List<TrainingDayModel> TrainingDays { get; } = new();
+        public List<PreCheckModel> PreCheckLogs { get; } = new();
+        public string? CurrentDataVersion { get; set; }
+        public int CaptureCallCount { get; private set; }
+        public int CurrentDataVersionReadCallCount { get; private set; }
 
-        public Task<IReadOnlyList<TrainingDayModel>> GetByDateRangeAsync(
+        public Task StageDataVersionChangeAsync(
+            int userId,
+            DateTimeOffset updatedAtUtc,
+            CancellationToken cancellationToken = default)
+        {
+            CurrentDataVersion = $"{updatedAtUtc:O}-test";
+            return Task.CompletedTask;
+        }
+
+        public Task<TrendReportSourceDataCapture> CaptureSnapshotAsync(
             int userId,
             DateOnly from,
             DateOnly to,
             CancellationToken cancellationToken = default)
         {
-            return Task.FromResult<IReadOnlyList<TrainingDayModel>>(TrainingDays);
+            CaptureCallCount++;
+            return Task.FromResult(new TrendReportSourceDataCapture(
+                CurrentDataVersion,
+                new TrendReportReqSnapshot(TrainingDays, PreCheckLogs)));
         }
 
-        public Task<TrainingDayModel> AddSessionAsync(
+        public Task<string?> GetCurrentDataVersionAsync(
             int userId,
-            DateOnly date,
-            TrainingSessionModel session,
             CancellationToken cancellationToken = default)
         {
-            throw new NotImplementedException();
-        }
-
-        public Task<TrainingSessionModel?> DeleteSessionAsync(
-            int userId,
-            int sessionId,
-            CancellationToken cancellationToken = default)
-        {
-            throw new NotImplementedException();
-        }
-    }
-
-    private sealed class FakePreCheckRepository : IPreCheckRepository
-    {
-        public Task<PreCheckModel?> GetByDateAsync(
-            int userId,
-            DateOnly date,
-            CancellationToken cancellationToken = default)
-        {
-            throw new NotImplementedException();
-        }
-
-        public Task<IReadOnlyList<PreCheckModel>> GetByDateRangeAsync(
-            int userId,
-            DateOnly from,
-            DateOnly to,
-            CancellationToken cancellationToken = default)
-        {
-            return Task.FromResult<IReadOnlyList<PreCheckModel>>(Array.Empty<PreCheckModel>());
-        }
-
-        public Task<IReadOnlyList<PreCheckModel>> GetByDateRangeAsync(
-            DateOnly from,
-            DateOnly to,
-            CancellationToken cancellationToken = default)
-        {
-            return Task.FromResult<IReadOnlyList<PreCheckModel>>(Array.Empty<PreCheckModel>());
-        }
-
-        public Task<PreCheckModel> UpsertAsync(
-            PreCheckModel log,
-            CancellationToken cancellationToken = default)
-        {
-            throw new NotImplementedException();
-        }
-
-        public Task<PreCheckModel?> DeleteByIdAsync(
-            int userId,
-            int id,
-            CancellationToken cancellationToken = default)
-        {
-            throw new NotImplementedException();
+            CurrentDataVersionReadCallCount++;
+            return Task.FromResult(CurrentDataVersion);
         }
     }
 }

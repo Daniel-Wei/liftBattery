@@ -10,6 +10,7 @@ public sealed class User
     public string? TrainingGoal { get; set; }
     public int WeeklyTargetTrainingDays { get; set; } = 4;
     public string PreferredUnit { get; set; } = "kg";
+    public string? TrendReportDataVersion { get; set; }
     public DateTimeOffset CreatedAtUtc { get; set; }
     public DateTimeOffset UpdatedAtUtc { get; set; }
     public ICollection<AuthSession> AuthSessions { get; set; } = new List<AuthSession>();

@@ -49,6 +49,9 @@ public sealed class UserEntityConfiguration : IEntityTypeConfiguration<User>
             .HasMaxLength(8)
             .IsRequired();
 
+        builder.Property(entity => entity.TrendReportDataVersion)
+            .HasMaxLength(64);
+
         builder.Property(entity => entity.CreatedAtUtc)
             .HasPrecision(7)
             .IsRequired();
