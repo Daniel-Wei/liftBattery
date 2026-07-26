@@ -82,6 +82,24 @@ export function formatTrainingCycleLabel(cycle: TrainingCycle) {
   return `${cycle.label}：${cycle.startDate} 至 ${cycle.endDate}`;
 }
 
+export function getCurrentTrainingCycle(
+  programSettings: ProgramSettings,
+  today = new Date().toISOString().slice(0, 10),
+) {
+  const cycles = getTrainingCycles(programSettings);
+  const currentCycle = cycles.find((cycle) => (
+    today >= cycle.startDate && today <= cycle.endDate
+  ));
+
+  if (currentCycle) {
+    return currentCycle;
+  }
+
+  const firstCycle = cycles[0];
+  const lastCycle = cycles[cycles.length - 1];
+  return today < firstCycle.startDate ? firstCycle : lastCycle;
+}
+
 export function getTrainingTrendWeeks(
   startWeek = presetTrainingTrendWeeks[0].startDate,
   endWeek = getDefaultEndWeek(),
