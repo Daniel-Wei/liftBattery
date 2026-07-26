@@ -246,8 +246,7 @@ public sealed class TrendReportRunIdTests
         var service = CreateService(jobRepository, new FakeTrendReportJobQueue());
 
         await service.ProcessAsync(
-            CreateQueueMessage(runId: "trend-report:stale", dataVersion: "v1"),
-            CreateProcessingContext());
+            CreateQueueMessage(runId: "trend-report:stale", dataVersion: "v1"));
 
         Assert.Equal(0, jobRepository.TryStartProcessingCallCount);
         Assert.Equal(0, jobRepository.GetForProcessingCallCount);
@@ -270,8 +269,7 @@ public sealed class TrendReportRunIdTests
         var service = CreateService(jobRepository, new FakeTrendReportJobQueue(), sourceDataRepository: sourceDataRepository);
 
         await service.ProcessAsync(
-            CreateQueueMessage(runId: "trend-report:stale-data", dataVersion: "v1"),
-            CreateProcessingContext());
+            CreateQueueMessage(runId: "trend-report:stale-data", dataVersion: "v1"));
 
         Assert.Equal(TrendReportJobStatuses.Superseded, jobRepository.Job?.Status);
         Assert.Equal(0, jobRepository.TryStartProcessingCallCount);
@@ -289,8 +287,7 @@ public sealed class TrendReportRunIdTests
         var service = CreateService(jobRepository, new FakeTrendReportJobQueue());
 
         await service.ProcessAsync(
-            CreateQueueMessage(runId: "trend-report:current", dataVersion: "v1"),
-            CreateProcessingContext());
+            CreateQueueMessage(runId: "trend-report:current", dataVersion: "v1"));
 
         Assert.Equal(1, jobRepository.TryStartProcessingCallCount);
         Assert.Equal(1, jobRepository.GetForProcessingCallCount);
@@ -298,7 +295,7 @@ public sealed class TrendReportRunIdTests
     }
 
     [Fact]
-    public async Task ProcessAsyncNonFinalFailureLeavesJobProcessingForRedelivery()
+    public async Task ProcessAsyncFailureLeavesJobProcessingForBrokerRedelivery()
     {
         var jobRepository = new FakeTrendReportJobRepository
         {
@@ -310,13 +307,10 @@ public sealed class TrendReportRunIdTests
 
         await Assert.ThrowsAsync<InvalidOperationException>(() =>
             service.ProcessAsync(
-                CreateQueueMessage(runId: "trend-report:retry", dataVersion: "v1"),
-                CreateProcessingContext(
-                    deliveryCount: 1,
-                    maxDeliveryCount: 3)));
+                CreateQueueMessage(runId: "trend-report:retry", dataVersion: "v1")));
 
         Assert.Equal(TrendReportJobStatuses.Processing, jobRepository.Job?.Status);
-        Assert.Equal(0, jobRepository.MarkFailedCallCount);
+        Assert.Equal(0, jobRepository.MarkTimedOutCallCount);
     }
 
     [Fact]
@@ -334,36 +328,11 @@ public sealed class TrendReportRunIdTests
         var service = CreateService(jobRepository, new FakeTrendReportJobQueue());
 
         await service.ProcessAsync(
-            CreateQueueMessage(runId: "trend-report:retry", dataVersion: "v1"),
-            CreateProcessingContext(
-                deliveryCount: 2,
-                maxDeliveryCount: 3));
+            CreateQueueMessage(runId: "trend-report:retry", dataVersion: "v1"));
 
         Assert.Equal(TrendReportJobStatuses.Completed, jobRepository.Job?.Status);
         Assert.Equal(1, jobRepository.TryStartProcessingCallCount);
-        Assert.Equal(0, jobRepository.MarkFailedCallCount);
-    }
-
-    [Fact]
-    public async Task ProcessAsyncFinalFailureMarksActiveJobFailed()
-    {
-        var jobRepository = new FakeTrendReportJobRepository
-        {
-            Job = CreateJob(runId: "trend-report:retry", dataVersion: "v1"),
-            TryStartProcessingResult = true,
-            ThrowAfterStartingProcessing = true,
-        };
-        var service = CreateService(jobRepository, new FakeTrendReportJobQueue());
-
-        await Assert.ThrowsAsync<InvalidOperationException>(() =>
-            service.ProcessAsync(
-                CreateQueueMessage(runId: "trend-report:retry", dataVersion: "v1"),
-                CreateProcessingContext(
-                    deliveryCount: 3,
-                    maxDeliveryCount: 3)));
-
-        Assert.Equal(TrendReportJobStatuses.Failed, jobRepository.Job?.Status);
-        Assert.Equal(1, jobRepository.MarkFailedCallCount);
+        Assert.Equal(0, jobRepository.MarkTimedOutCallCount);
     }
 
     [Fact]
@@ -378,8 +347,7 @@ public sealed class TrendReportRunIdTests
         var service = CreateService(jobRepository, new FakeTrendReportJobQueue());
 
         await service.ProcessAsync(
-            CreateQueueMessage(runId: "trend-report:race", dataVersion: "v1"),
-            CreateProcessingContext());
+            CreateQueueMessage(runId: "trend-report:race", dataVersion: "v1"));
 
         Assert.Equal(TrendReportJobStatuses.Completed, jobRepository.Job?.Status);
     }
@@ -483,6 +451,79 @@ public sealed class TrendReportRunIdTests
         Assert.Equal(2, queue.EnqueueCount);
     }
 
+    [Fact]
+    public async Task ConvergeTimedOutJobsAsyncMarksExpiredQueuedJobFailed()
+    {
+        var queuedBeforeUtc = DateTimeOffset.Parse("2026-07-06T00:15:00Z");
+        var jobRepository = new FakeTrendReportJobRepository
+        {
+            Job = CreateJob(runId: "trend-report:queued-timeout", dataVersion: "v1") with
+            {
+                Status = TrendReportJobStatuses.Queued,
+                UpdatedAtUtc = queuedBeforeUtc.AddMinutes(-1),
+            },
+        };
+        var service = CreateService(jobRepository, new FakeTrendReportJobQueue());
+
+        var converged = await service.ConvergeTimedOutJobsAsync(
+            queuedBeforeUtc,
+            processingBeforeUtc: queuedBeforeUtc.AddMinutes(-15),
+            maxCount: 10);
+
+        Assert.Equal(1, converged);
+        Assert.Equal(1, jobRepository.MarkTimedOutCallCount);
+        Assert.Equal(TrendReportJobStatuses.Failed, jobRepository.Job?.Status);
+    }
+
+    [Fact]
+    public async Task ConvergeTimedOutJobsAsyncDoesNotFailRecentProcessingJob()
+    {
+        var processingBeforeUtc = DateTimeOffset.Parse("2026-07-06T00:15:00Z");
+        var jobRepository = new FakeTrendReportJobRepository
+        {
+            Job = CreateJob(runId: "trend-report:processing", dataVersion: "v1") with
+            {
+                Status = TrendReportJobStatuses.Processing,
+                UpdatedAtUtc = processingBeforeUtc.AddMinutes(1),
+            },
+        };
+        var service = CreateService(jobRepository, new FakeTrendReportJobQueue());
+
+        var converged = await service.ConvergeTimedOutJobsAsync(
+            queuedBeforeUtc: processingBeforeUtc,
+            processingBeforeUtc,
+            maxCount: 10);
+
+        Assert.Equal(0, converged);
+        Assert.Equal(0, jobRepository.MarkTimedOutCallCount);
+        Assert.Equal(TrendReportJobStatuses.Processing, jobRepository.Job?.Status);
+    }
+
+    [Fact]
+    public async Task ConvergeTimedOutJobsAsyncDoesNotOverwriteConcurrentCompletion()
+    {
+        var processingBeforeUtc = DateTimeOffset.Parse("2026-07-06T00:15:00Z");
+        var jobRepository = new FakeTrendReportJobRepository
+        {
+            Job = CreateJob(runId: "trend-report:timeout-race", dataVersion: "v1") with
+            {
+                Status = TrendReportJobStatuses.Processing,
+                UpdatedAtUtc = processingBeforeUtc.AddMinutes(-1),
+            },
+            CompleteBeforeTimeoutUpdate = true,
+        };
+        var service = CreateService(jobRepository, new FakeTrendReportJobQueue());
+
+        var converged = await service.ConvergeTimedOutJobsAsync(
+            queuedBeforeUtc: processingBeforeUtc,
+            processingBeforeUtc,
+            maxCount: 10);
+
+        Assert.Equal(0, converged);
+        Assert.Equal(1, jobRepository.MarkTimedOutCallCount);
+        Assert.Equal(TrendReportJobStatuses.Completed, jobRepository.Job?.Status);
+    }
+
 
     private static TrendReportService CreateService(
         FakeTrendReportJobRepository jobRepository,
@@ -549,14 +590,6 @@ public sealed class TrendReportRunIdTests
             RequestedAtUtc: DateTimeOffset.Parse("2026-07-06T00:00:00Z"));
     }
 
-    private static TrendReportProcessingContext CreateProcessingContext(
-        int deliveryCount = 1,
-        int maxDeliveryCount = 3)
-    {
-        return new TrendReportProcessingContext(
-            deliveryCount,
-            maxDeliveryCount);
-    }
     private static TrendReportJob CreateJob(
         string runId,
         string dataVersion,
@@ -599,7 +632,8 @@ public sealed class TrendReportRunIdTests
         public int TryStartProcessingCallCount { get; private set; }
         public bool TryCompleteResult { get; set; }
         public bool ThrowAfterStartingProcessing { get; set; }
-        public int MarkFailedCallCount { get; private set; }
+        public int MarkTimedOutCallCount { get; private set; }
+        public bool CompleteBeforeTimeoutUpdate { get; set; }
         public int EnqueueRecoveryAttemptCount { get; private set; }
         public int GetForProcessingCallCount { get; private set; }
         public string? LastExpectedRunId { get; private set; }
@@ -703,6 +737,26 @@ public sealed class TrendReportRunIdTests
                 .Where(candidate =>
                     candidate.Status == TrendReportJobStatuses.EnqueuePending
                     && candidate.StartedAtUtc is null)
+                .Take(maxCount)
+                .ToArray();
+
+            return Task.FromResult<IReadOnlyList<TrendReportJob>>(jobs);
+        }
+
+        public Task<IReadOnlyList<TrendReportJob>> GetTimedOutActiveJobsAsync(
+            DateTimeOffset queuedBeforeUtc,
+            DateTimeOffset processingBeforeUtc,
+            int maxCount,
+            CancellationToken cancellationToken = default)
+        {
+            var jobs = AdditionalActiveJobs
+                .Concat(Job is not null ? new[] { Job } : Array.Empty<TrendReportJob>())
+                .Where(candidate =>
+                    (candidate.Status == TrendReportJobStatuses.Queued
+                        && candidate.UpdatedAtUtc <= queuedBeforeUtc)
+                    || (candidate.Status == TrendReportJobStatuses.Processing
+                        && candidate.UpdatedAtUtc <= processingBeforeUtc))
+                .OrderBy(candidate => candidate.UpdatedAtUtc)
                 .Take(maxCount)
                 .ToArray();
 
@@ -953,23 +1007,39 @@ public sealed class TrendReportRunIdTests
             };
             return Task.FromResult(true);
         }
-        public Task<bool> TryMarkFailedOnFinalDeliveryAsync(
+        public Task<bool> TryMarkTimedOutIfStillActiveAsync(
             int userId,
             Guid jobId,
             string expectedRunId,
             string expectedDataVersion,
+            DateTimeOffset queuedBeforeUtc,
+            DateTimeOffset processingBeforeUtc,
             CancellationToken cancellationToken = default)
         {
-            MarkFailedCallCount++;
+            MarkTimedOutCallCount++;
+
+            if (CompleteBeforeTimeoutUpdate && Job is not null)
+            {
+                var completedAtUtc = DateTimeOffset.UtcNow;
+                Job = Job with
+                {
+                    Status = TrendReportJobStatuses.Completed,
+                    CompletedAtUtc = completedAtUtc,
+                    UpdatedAtUtc = completedAtUtc,
+                };
+                return Task.FromResult(false);
+            }
 
             if (Job is null
                 || Job.UserId != userId
                 || Job.Id != jobId
                 || Job.RunId != expectedRunId
                 || Job.DataVersion != expectedDataVersion
-                || Job.Status is not (TrendReportJobStatuses.EnqueuePending
-                    or TrendReportJobStatuses.Queued
-                    or TrendReportJobStatuses.Processing))
+                || !(
+                    (Job.Status == TrendReportJobStatuses.Queued
+                        && Job.UpdatedAtUtc <= queuedBeforeUtc)
+                    || (Job.Status == TrendReportJobStatuses.Processing
+                        && Job.UpdatedAtUtc <= processingBeforeUtc)))
             {
                 return Task.FromResult(false);
             }
@@ -978,8 +1048,8 @@ public sealed class TrendReportRunIdTests
             Job = Job with
             {
                 Status = TrendReportJobStatuses.Failed,
-                CurrentStage = "Report generation failed",
-                ErrorMessage = "Report generation failed after the retry budget was exhausted.",
+                CurrentStage = "Report generation timed out",
+                ErrorMessage = "Report generation timed out. Please submit it again.",
                 CompletedAtUtc = now,
                 UpdatedAtUtc = now,
             };

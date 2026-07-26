@@ -20,6 +20,11 @@ public interface ITrendReportJobRepository
         DateTimeOffset olderThanUtc,
         int maxCount,
         CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<TrendReportJob>> GetTimedOutActiveJobsAsync(
+        DateTimeOffset queuedBeforeUtc,
+        DateTimeOffset processingBeforeUtc,
+        int maxCount,
+        CancellationToken cancellationToken = default);
     Task<TrendReportJob?> GetByIdAsync(int userId, Guid id, CancellationToken cancellationToken = default);
     Task<TrendReportJob?> GetForProcessingAsync(
         int userId,
@@ -75,13 +80,14 @@ public interface ITrendReportJobRepository
         TrendReportResultDto result,
         CancellationToken cancellationToken = default);
 
-    Task<bool> TryMarkFailedOnFinalDeliveryAsync(
+    Task<bool> TryMarkTimedOutIfStillActiveAsync(
         int userId,
         Guid jobId,
         string expectedRunId,
         string expectedDataVersion,
+        DateTimeOffset queuedBeforeUtc,
+        DateTimeOffset processingBeforeUtc,
         CancellationToken cancellationToken = default);
-
     Task<bool> TryMarkSupersededIfCurrentAsync(
         int userId,
         string runId,
@@ -94,7 +100,7 @@ public interface ITrendReportJobRepository
 public enum TrendReportRepositoryActions
 {
     StartProcessing,
-    MarkFailed,
+    MarkTimedOut,
     MarkSuperseded,
     MarkCancelled,
     MarkQueued,

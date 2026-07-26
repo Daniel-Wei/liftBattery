@@ -123,7 +123,6 @@ public sealed class TrendReportService : ITrendReportService
 
     public async Task ProcessAsync(
         TrendReportQueueMessageDto queueMessageDTO,
-        TrendReportProcessingContext processingContext,
         CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
@@ -187,19 +186,7 @@ public sealed class TrendReportService : ITrendReportService
         }
         catch (Exception)
         {
-            // Intermediate failures leave the Job active and are rethrown for redelivery.
-            // The final delivery may atomically fail the Job only if no terminal writer
-            // has already completed, cancelled, or superseded it.
-            if (processingContext.IsFinalDelivery)
-            {
-                await _trendReportJobRepo.TryMarkFailedOnFinalDeliveryAsync(
-                    queueMessageDTO.UserId,
-                    jobId,
-                    queueMessageDTO.RunId,
-                    queueMessageDTO.DataVersion,
-                    cancellationToken);
-            }
-
+            // Leave the valid message unsettled so Service Bus owns redelivery and DLQ.
             throw;
         }
     }
@@ -291,6 +278,41 @@ public sealed class TrendReportService : ITrendReportService
         }
 
         return recoveredCount;
+    }
+
+    public async Task<int> ConvergeTimedOutJobsAsync(
+        DateTimeOffset queuedBeforeUtc,
+        DateTimeOffset processingBeforeUtc,
+        int maxCount,
+        CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+
+        var candidates = await _trendReportJobRepo.GetTimedOutActiveJobsAsync(
+            queuedBeforeUtc,
+            processingBeforeUtc,
+            Math.Max(1, maxCount),
+            cancellationToken);
+        var convergedCount = 0;
+
+        foreach (var candidate in candidates)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            if (await _trendReportJobRepo.TryMarkTimedOutIfStillActiveAsync(
+                    candidate.UserId,
+                    candidate.Id,
+                    candidate.RunId,
+                    candidate.DataVersion,
+                    queuedBeforeUtc,
+                    processingBeforeUtc,
+                    cancellationToken))
+            {
+                convergedCount++;
+            }
+        }
+
+        return convergedCount;
     }
 
     #region: Private Helper Methods

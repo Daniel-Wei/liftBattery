@@ -200,6 +200,61 @@ public sealed class TrendReportJobRepository : ITrendReportJobRepository
             .ToArray();
     }
 
+    public async Task<IReadOnlyList<TrendReportJob>> GetTimedOutActiveJobsAsync(
+        DateTimeOffset queuedBeforeUtc,
+        DateTimeOffset processingBeforeUtc,
+        int maxCount,
+        CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+
+        await EnsureTableAsync();
+
+        var effectiveMaxCount = Math.Max(1, maxCount);
+        var candidates = new List<TrendReportJobEntity>(effectiveMaxCount * 2);
+
+        await foreach (var entity in _tableClient.QueryAsync<TrendReportJobEntity>(
+            entity => entity.Status == TrendReportJobStatuses.Queued
+                && entity.UpdatedAtUtc <= queuedBeforeUtc,
+            maxPerPage: effectiveMaxCount,
+            cancellationToken: cancellationToken))
+        {
+            candidates.Add(entity);
+            if (candidates.Count >= effectiveMaxCount)
+            {
+                break;
+            }
+        }
+
+        var processingCandidateCount = 0;
+        await foreach (var entity in _tableClient.QueryAsync<TrendReportJobEntity>(
+            entity => entity.Status == TrendReportJobStatuses.Processing
+                && entity.UpdatedAtUtc <= processingBeforeUtc,
+            maxPerPage: effectiveMaxCount,
+            cancellationToken: cancellationToken))
+        {
+            candidates.Add(entity);
+            processingCandidateCount++;
+            if (processingCandidateCount >= effectiveMaxCount)
+            {
+                break;
+            }
+        }
+
+        var jobs = new List<TrendReportJob>(effectiveMaxCount);
+        foreach (var entity in candidates
+            .OrderBy(entity => entity.UpdatedAtUtc)
+            .Take(effectiveMaxCount))
+        {
+            jobs.Add(await ToModelAsync(
+                entity,
+                includeSnapshot: false,
+                cancellationToken));
+        }
+
+        return jobs;
+    }
+
 
     #endregion
 
@@ -472,15 +527,17 @@ public sealed class TrendReportJobRepository : ITrendReportJobRepository
             cancellationToken);
     }
 
-    public Task<bool> TryMarkFailedOnFinalDeliveryAsync(
+    public Task<bool> TryMarkTimedOutIfStillActiveAsync(
         int userId,
         Guid jobId,
         string expectedRunId,
         string expectedDataVersion,
+        DateTimeOffset queuedBeforeUtc,
+        DateTimeOffset processingBeforeUtc,
         CancellationToken cancellationToken = default)
     {
-        // The final delivery may fail any still-active copy. A concurrent completion,
-        // cancellation, or supersession wins through the same ETag/status conditions.
+        // The scan is only a candidate snapshot. Re-read the row and require the exact
+        // run to remain in the same overdue active state before terminally failing it.
         return TryUpdateEntityAsync(
             userId,
             jobId,
@@ -489,16 +546,21 @@ public sealed class TrendReportJobRepository : ITrendReportJobRepository
             entity =>
                 entity.DataVersion == expectedDataVersion
                 && entity.RunId == expectedRunId
-                && IsActiveStatus(entity.Status)
-                && entity.ErrorMessage is null,
+                && entity.ErrorMessage is null
+                && (
+                    (entity.Status == TrendReportJobStatuses.Queued
+                        && entity.UpdatedAtUtc <= queuedBeforeUtc)
+                    || (entity.Status == TrendReportJobStatuses.Processing
+                        && entity.UpdatedAtUtc <= processingBeforeUtc)),
             (entity, now) =>
             {
                 entity.Status = TrendReportJobStatuses.Failed;
+                entity.ProgressPercent = 0;
                 entity.ErrorMessage = "训练报告生成失败，请稍后重试或联系管理员。";
                 entity.CompletedAtUtc = now;
-                entity.CurrentStage = "Report generation failed";
+                entity.CurrentStage = "Report generation timed out";
             },
-            operationName: TrendReportRepositoryActions.MarkFailed,
+            operationName: TrendReportRepositoryActions.MarkTimedOut,
             cancellationToken);
     }
 

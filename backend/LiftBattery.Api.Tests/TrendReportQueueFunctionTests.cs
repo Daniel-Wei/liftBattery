@@ -14,13 +14,13 @@ namespace LiftBattery.Api.Tests;
 public sealed class TrendReportQueueFunctionTests
 {
     [Fact]
-    public async Task NonFinalFailureIsNotSettledSoServiceBusCanRedeliver()
+    public async Task ProcessingFailureIsNotSettledSoServiceBusCanRedeliver()
     {
         var service = new FakeTrendReportService
         {
             ProcessException = new InvalidOperationException("Transient processing failure."),
         };
-        var function = CreateFunction(service, maxDeliveryCount: 3);
+        var function = CreateFunction(service);
         var messageActions = new RecordingServiceBusMessageActions();
 
         await Assert.ThrowsAsync<InvalidOperationException>(() =>
@@ -31,36 +31,33 @@ public sealed class TrendReportQueueFunctionTests
 
         Assert.Equal(0, messageActions.CompleteCount);
         Assert.Equal(0, messageActions.DeadLetterCount);
-        Assert.Equal(2, service.LastProcessingContext?.DeliveryCount);
-        Assert.False(service.LastProcessingContext?.IsFinalDelivery);
     }
 
     [Fact]
-    public async Task FinalFailureIsExplicitlyDeadLettered()
+    public async Task HighDeliveryCountFailureIsStillNotExplicitlyDeadLettered()
     {
         var service = new FakeTrendReportService
         {
             ProcessException = new InvalidOperationException("Final processing failure."),
         };
-        var function = CreateFunction(service, maxDeliveryCount: 3);
+        var function = CreateFunction(service);
         var messageActions = new RecordingServiceBusMessageActions();
 
-        await function.ProcessTrendReportJob(
-            CreateMessage(deliveryCount: 3),
-            messageActions,
-            CancellationToken.None);
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            function.ProcessTrendReportJob(
+                CreateMessage(deliveryCount: 3),
+                messageActions,
+                CancellationToken.None));
 
         Assert.Equal(0, messageActions.CompleteCount);
-        Assert.Equal(1, messageActions.DeadLetterCount);
-        Assert.Equal("TrendReportRetryLimitExceeded", messageActions.DeadLetterReason);
-        Assert.True(service.LastProcessingContext?.IsFinalDelivery);
+        Assert.Equal(0, messageActions.DeadLetterCount);
     }
 
     [Fact]
     public async Task SuccessfulOrIdempotentNoOpProcessingCompletesMessage()
     {
         var service = new FakeTrendReportService();
-        var function = CreateFunction(service, maxDeliveryCount: 3);
+        var function = CreateFunction(service);
         var messageActions = new RecordingServiceBusMessageActions();
 
         await function.ProcessTrendReportJob(
@@ -73,15 +70,9 @@ public sealed class TrendReportQueueFunctionTests
     }
 
     private static TrendReportQueueFunctions CreateFunction(
-        ITrendReportService service,
-        int maxDeliveryCount)
+        ITrendReportService service)
     {
-        var configuration = new ConfigurationBuilder()
-            .AddInMemoryCollection(new Dictionary<string, string?>
-            {
-                ["TrendReportMaxDeliveryCount"] = maxDeliveryCount.ToString(),
-            })
-            .Build();
+        var configuration = new ConfigurationBuilder().Build();
 
         return new TrendReportQueueFunctions(
             service,
@@ -137,14 +128,11 @@ public sealed class TrendReportQueueFunctionTests
     private sealed class FakeTrendReportService : ITrendReportService
     {
         public Exception? ProcessException { get; init; }
-        public TrendReportProcessingContext? LastProcessingContext { get; private set; }
 
         public Task ProcessAsync(
             TrendReportQueueMessageDto queueMessage,
-            TrendReportProcessingContext processingContext,
             CancellationToken cancellationToken = default)
         {
-            LastProcessingContext = processingContext;
             return ProcessException is null
                 ? Task.CompletedTask
                 : Task.FromException(ProcessException);
@@ -172,6 +160,13 @@ public sealed class TrendReportQueueFunctionTests
 
         public Task<int> RecoverUnstartedEnqueuesAsync(
             DateTimeOffset olderThanUtc,
+            int maxCount,
+            CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
+
+        public Task<int> ConvergeTimedOutJobsAsync(
+            DateTimeOffset queuedBeforeUtc,
+            DateTimeOffset processingBeforeUtc,
             int maxCount,
             CancellationToken cancellationToken = default) =>
             throw new NotSupportedException();

@@ -19,8 +19,12 @@ public interface ITrendReportService
         DateTimeOffset olderThanUtc,
         int maxCount,
         CancellationToken cancellationToken = default);
+    Task<int> ConvergeTimedOutJobsAsync(
+        DateTimeOffset queuedBeforeUtc,
+        DateTimeOffset processingBeforeUtc,
+        int maxCount,
+        CancellationToken cancellationToken = default);
     Task ProcessAsync(
         TrendReportQueueMessageDto queueMessage,
-        TrendReportProcessingContext processingContext,
         CancellationToken cancellationToken = default);
 }

@@ -11,12 +11,14 @@ namespace LiftBattery.Api.Functions;
 
 public sealed class TrendReportQueueFunctions
 {
-    private const int DefaultMaxDeliveryCount = 10;
+    private const int DefaultQueuedJobTimeoutMinutes = 15;
+    private const int DefaultProcessingJobTimeoutMinutes = 30;
     private static readonly JsonSerializerOptions QueueMessageJsonOptions = new(JsonSerializerDefaults.Web);
 
     private readonly ITrendReportService _service;
     private readonly ILogger<TrendReportQueueFunctions> _logger;
-    private readonly int _maxDeliveryCount;
+    private readonly TimeSpan _queuedJobTimeout;
+    private readonly TimeSpan _processingJobTimeout;
 
     public TrendReportQueueFunctions(
         ITrendReportService service,
@@ -25,11 +27,12 @@ public sealed class TrendReportQueueFunctions
     {
         _service = service;
         _logger = logger;
-        _maxDeliveryCount = int.TryParse(
-            configuration["TrendReportMaxDeliveryCount"],
-            out var configuredMaxDeliveryCount)
-                ? Math.Max(1, configuredMaxDeliveryCount)
-                : DefaultMaxDeliveryCount;
+        _queuedJobTimeout = TimeSpan.FromMinutes(ParsePositiveIntSetting(
+            configuration["TrendReportQueuedJobTimeoutMinutes"],
+            DefaultQueuedJobTimeoutMinutes));
+        _processingJobTimeout = TimeSpan.FromMinutes(ParsePositiveIntSetting(
+            configuration["TrendReportProcessingJobTimeoutMinutes"],
+            DefaultProcessingJobTimeoutMinutes));
     }
 
     [Function("RecoverPendingTrendReportEnqueues")]
@@ -54,9 +57,31 @@ public sealed class TrendReportQueueFunctions
         }
     }
 
+    [Function("ConvergeTimedOutTrendReportJobs")]
+    public async Task ConvergeTimedOutTrendReportJobs(
+        [TimerTrigger("%TrendReportJobConvergenceTimer%")] TimerInfo timerInfo,
+        CancellationToken cancellationToken)
+    {
+        var now = DateTimeOffset.UtcNow;
+        var convergedCount = await _service.ConvergeTimedOutJobsAsync(
+            queuedBeforeUtc: now - _queuedJobTimeout,
+            processingBeforeUtc: now - _processingJobTimeout,
+            maxCount: 50,
+            cancellationToken);
+
+        if (convergedCount > 0)
+        {
+            _logger.LogWarning(
+                "Converged timed-out trend report jobs. Count={ConvergedCount}, Last={Last}, Next={Next}.",
+                convergedCount,
+                timerInfo.ScheduleStatus?.Last,
+                timerInfo.ScheduleStatus?.Next);
+        }
+    }
+
     // Azure Functions invokes this when a queue message is available, including redeliveries.
-    // Invalid messages go straight to DLQ. Transient failures are thrown for redelivery;
-    // the configured final delivery marks the job Failed and is explicitly dead-lettered.
+    // Permanently invalid messages go straight to DLQ. Every valid-message processing
+    // failure escapes for broker-controlled redelivery and eventual automatic DLQ.
     [Function("ProcessTrendReportJob")]
     public async Task ProcessTrendReportJob(
         [ServiceBusTrigger("%TrendReportQueueName%", Connection = "ServiceBusConnection", AutoCompleteMessages = false)] ServiceBusReceivedMessage message,
@@ -96,43 +121,10 @@ public sealed class TrendReportQueueFunctions
             queueMessage.DataVersion,
             message.DeliveryCount);
 
-        var processingContext = new TrendReportProcessingContext(
-            DeliveryCount: Math.Max(1, message.DeliveryCount),
-            MaxDeliveryCount: _maxDeliveryCount);
-
-        try
-        {
-            await _service.ProcessAsync(
-                queueMessage,
-                processingContext,
-                cancellationToken);
-            await messageActions.CompleteMessageAsync(message, cancellationToken);
-        }
-        catch (OperationCanceledException)
-        {
-            // Host shutdown and lost invocation cancellation are retryable regardless
-            // of DeliveryCount, so never convert cancellation into a terminal failure.
-            throw;
-        }
-        catch (Exception exception) when (processingContext.IsFinalDelivery)
-        {
-            _logger.LogError(
-                exception,
-                "Dead-lettering trend report after retry budget was exhausted. MessageId={MessageId}, CorrelationId={CorrelationId}, RunId={RunId}, JobId={JobId}, DeliveryCount={DeliveryCount}, MaxDeliveryCount={MaxDeliveryCount}.",
-                message.MessageId,
-                message.CorrelationId,
-                queueMessage.RunId,
-                queueMessage.JobId,
-                message.DeliveryCount,
-                _maxDeliveryCount);
-
-            await messageActions.DeadLetterMessageAsync(
-                message,
-                new Dictionary<string, object>(),
-                "TrendReportRetryLimitExceeded",
-                $"Trend report processing failed after {message.DeliveryCount} deliveries.",
-                cancellationToken);
-        }
+        // Success and intentional stale/terminal no-ops are completed. Any exception
+        // leaves the valid message unsettled so Service Bus controls the retry budget.
+        await _service.ProcessAsync(queueMessage, cancellationToken);
+        await messageActions.CompleteMessageAsync(message, cancellationToken);
     }
 
     private static TrendReportQueueMessageDto? TryReadQueueMessage(ServiceBusReceivedMessage message)
@@ -157,6 +149,13 @@ public sealed class TrendReportQueueFunctions
             && !string.IsNullOrWhiteSpace(queueMessage.PeriodStart)
             && !string.IsNullOrWhiteSpace(queueMessage.PeriodEnd)
             && !string.IsNullOrWhiteSpace(queueMessage.DataVersion);
+    }
+
+    private static int ParsePositiveIntSetting(string? value, int defaultValue)
+    {
+        return int.TryParse(value, out var configuredValue)
+            ? Math.Max(1, configuredValue)
+            : defaultValue;
     }
 
     private async Task DeadLetterInvalidMessageAsync(

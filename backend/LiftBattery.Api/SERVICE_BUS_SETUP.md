@@ -4,12 +4,12 @@ The trend report flow requires:
 
 - An Azure Service Bus queue named `trend-report-jobs`.
 - `ServiceBusConnection` set to a Service Bus connection string with send and listen access.
-- `TrendReportMaxDeliveryCount` set to the queue's `MaxDeliveryCount` value (default example: `10`).
+- `TrendReportJobConvergenceTimer`, `TrendReportQueuedJobTimeoutMinutes`, and `TrendReportProcessingJobTimeoutMinutes` configured for stale-job convergence.
 - `AzureWebJobsStorage` pointing to Azure Storage or Azurite with Table and Blob support enabled.
 
 `TrendReportJobs` is created automatically in Table Storage, and the `TrendReportPayloadBlobContainerName` container defaults to `trend-report-payloads`. Table rows store status, request identity, Blob pointers, and the snapshot SHA-256; immutable snapshot/result JSON is stored in Blob Storage. The source `DataVersion` is stored on the SQL `Users.TrendReportDataVersion` column. The queue must be created before the Function App starts. Keep the queue's default dead-letter behavior enabled and configure duplicate detection when provisioning the queue.
 
-`TrendReportMaxDeliveryCount` and the queue's `MaxDeliveryCount` must remain equal. The worker uses that value to identify the final delivery, atomically mark the current run `Failed`, release its active-job lease, and explicitly dead-letter the message.
+Service Bus owns the retry budget and automatically dead-letters valid messages after the queue's `MaxDeliveryCount`. Application code does not mirror or guess that setting. An independent timer terminally fails jobs that exceed their configured business deadline and releases their matching active-job lease.
 
 The producer sends a JSON `TrendReportQueueMessageDto` body, not a plain job id. Its Service Bus `MessageId` is a stable business key:
 
@@ -29,10 +29,11 @@ Runtime flow:
 6. `ProcessTrendReportJob` validates the JSON message. Permanently invalid messages are sent to DLQ with a reason and description.
 7. Each valid delivery verifies `JobId`, `RunId`, `DataVersion`, the current SQL source `DataVersion`, and the current non-terminal status, then downloads the immutable snapshot Blob and verifies it against `SnapshotHash`. Moving `EnqueuePending` or `Queued` to `Processing` is best-effort display state; a redelivery may recompute an existing `Processing` job from the same verified snapshot.
 8. Duplicate workers are allowed to compute, but they do not persist intermediate progress. A worker uploads its result to a content-addressed Blob before conditionally publishing `ResultBlobName` in the terminal Table transaction. Status checks and ETag ensure that only the first terminal writer wins and `Completed`, `Failed`, `Cancelled`, or `Superseded` cannot be overwritten.
-9. A non-final processing exception leaves the job active and is rethrown for Service Bus redelivery. On the configured final delivery, the job is atomically marked `Failed` only if it is still active, its active-job lease is released, and the message is explicitly sent to DLQ with reason `TrendReportRetryLimitExceeded`.
+9. Every valid-message processing exception leaves the job active and escapes the Function without settlement. Service Bus controls redelivery and eventual automatic DLQ using the queue's actual `MaxDeliveryCount`.
 10. Completion is idempotent: duplicate workers producing identical JSON reuse the same content-addressed result Blob. If the terminal Table update succeeded but message completion did not, redelivery sees the terminal job, performs no processing write, and safely completes the message.
 11. `RecoverPendingTrendReportEnqueues` periodically considers unstarted `EnqueuePending` jobs older than the recovery cutoff. It re-enqueues a job only while the user's `active-job` lease still references that exact JobId and RunId.
-12. `GetTrendReport` returns status and results for frontend polling and refresh recovery. The frontend changes Generate to Cancel while a job is active. API responses contain user-facing messages only; internal identifiers and exception details remain in structured logs.
+12. `ConvergeTimedOutTrendReportJobs` scans overdue `Queued` and `Processing` jobs. It re-reads each candidate and uses RunId, DataVersion, status, deadline, and ETag conditions before atomically writing `Failed` and releasing the matching active-job lease. A concurrent completion, cancellation, or supersession wins without being overwritten.
+13. `GetTrendReport` returns status and results for frontend polling and refresh recovery. The frontend changes Generate to Cancel while a job is active. API responses contain user-facing messages only; internal identifiers and exception details remain in structured logs.
 
 Report source data CRUD invalidation:
 
