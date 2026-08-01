@@ -14,6 +14,8 @@ public sealed class LiftBatteryDbContext(DbContextOptions<LiftBatteryDbContext> 
     public DbSet<TrainingExercise> TrainingExercises => Set<TrainingExercise>();
     public DbSet<TrainingSession> TrainingSessions => Set<TrainingSession>();
     public DbSet<TrainingDay> TrainingDays => Set<TrainingDay>();
+    public DbSet<WeeklyReportSchedule> WeeklyReportSchedules => Set<WeeklyReportSchedule>();
+    public DbSet<WeeklyReportDelivery> WeeklyReportDeliveries => Set<WeeklyReportDelivery>();
 
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)

@@ -10,8 +10,7 @@ public sealed record WeeklyReportScheduleDto(
     string TimeZoneId,
     DateTimeOffset? LastRunAtUtc,
     DateTimeOffset? NextRunAtUtc,
-    string? LastRunKey,
-    int? LastRequestedJobId,
+    string? LastPeriodKey,
     DateTimeOffset CreatedAtUtc,
     DateTimeOffset UpdatedAtUtc);
 
@@ -22,26 +21,6 @@ public sealed record UpdateWeeklyReportScheduleRequestDto(
     string RecipientEmail,
     string? TimeZoneId);
 
-public sealed record WeeklyReportJobDto(
-    int Id,
-    int UserId,
-    string ScheduleId,
-    string RunKey,
-    string ReportType,
-    string WeekStartDate,
-    string WeekEndDate,
-    DateTimeOffset ScheduledForUtc,
-    string Status,
-    string? ErrorMessage,
-    DateTimeOffset RequestedAtUtc,
-    DateTimeOffset CreatedAtUtc,
-    DateTimeOffset UpdatedAtUtc,
-    DateTimeOffset? StartedAtUtc,
-    DateTimeOffset? CompletedAtUtc);
-
 public sealed record WeeklyReportQueueMessageDto(
-    int JobId,
-    int UserId,
     string ScheduleId,
-    string RunKey,
-    DateTimeOffset ScheduledForUtc);
+    string PeriodKey);

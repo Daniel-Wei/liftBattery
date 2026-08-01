@@ -64,8 +64,8 @@ public sealed class TrendReportService : ITrendReportService
         // Validate and normalize the request DTO.
         var validatedTrendReportReq = ValidateRequest(createTrendReportReqDTO);
 
-        // DataVersion is part of the durable Job identity and dedup key. Source rows
-        // are deliberately not loaded or copied into the Job during submission.
+        // DataVersion is part of the durable Job identity and dedup key. 
+        // Source rows are deliberately not loaded or copied into the Job during submission.
         var trendReportReqDataVersion = RequireCurrentDataVersion(
             await _sourceDataRepository.GetCurrentDataVersionAsync(
                 userId,
@@ -93,7 +93,8 @@ public sealed class TrendReportService : ITrendReportService
 
         try
         {
-            // Publish a compact JSON command. The consumer still loads the durable job from Azure Table Storage,
+            // Publish a compact JSON command. 
+            // The consumer still loads the durable job from Azure Table Storage,
             // but the message carries enough metadata for duplicate detection, correlation, retry, and DLQ debugging.
             var publishedJob = await PublishNewJobAsync(job, cancellationToken);
             return ToDto(publishedJob);
@@ -116,8 +117,9 @@ public sealed class TrendReportService : ITrendReportService
     {
         cancellationToken.ThrowIfCancellationRequested();
 
-        // Service Bus delivery is at-least-once. Duplicate deliveries may recapture
-        // the same SQL generation, but only one ETag-protected terminal update can win.
+        // Service Bus delivery is at-least-once. 
+        // Duplicate deliveries may recapture the same SQL generation, 
+        // but only one ETag-protected terminal update can win.
         try
         {
             var job = await GetActiveJobForMessageAsync(queueMessageDTO, cancellationToken);
@@ -127,9 +129,8 @@ public sealed class TrendReportService : ITrendReportService
                 return;
             }
 
-            // Version check 1 and both source-data reads share one SQL snapshot
-            // transaction. The returned in-memory snapshot therefore cannot mix data
-            // from different CRUD commits or label old rows with a newer version.
+            // Version check 1 and both source-data reads share one SQL snapshot transaction. 
+            // The returned in-memory snapshot therefore cannot mix data from different CRUD commits or label old rows with a newer version.
             var snapshot = await CaptureCurrentSnapshotAsync(job, cancellationToken);
             if (snapshot is null)
             {

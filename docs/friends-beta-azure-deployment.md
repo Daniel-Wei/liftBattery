@@ -108,9 +108,11 @@ Function App 至少需要以下设置：
 - `TrendReportTableName`：`TrendReportJobs`。
 - `TrendReportPayloadBlobContainerName`：`trend-report-payloads`。
 - `WeeklyReportQueueName`：`weekly-report-jobs`。
-- `WeeklyReportTableName`：`WeeklyReportJobs`。
 - `WeeklyReportBlobContainerName`：`weekly-reports`。
-- `WeeklyReportScheduleTimer`：Beta 可先用 `0 */15 * * * *` 验证，稳定后改成正式节奏。
+- `WeeklyReportScheduleTimer`：`0 */5 * * * *`，每五分钟只扫描 SQL 中带索引的到期 schedule。
+- `WeeklyReportDispatchBatchSize`：默认 `100`。
+- `WeeklyReportDispatchLeaseMinutes`：默认 `10`，防止 Timer 多实例重复领取。
+- `WeeklyReportProcessingLeaseMinutes`：默认 `30`，防止同一 period 的重复消息并发处理。
 - `APPLICATIONINSIGHTS_CONNECTION_STRING`：Application Insights connection string。
 - `Auth__BetaInviteCode`：朋友 Beta 邀请码。
 - `Auth__RequireSecureCookie`：Beta 必须是 `true`。
@@ -205,21 +207,14 @@ DLQ 逻辑：
 - Timer Function：`EnqueueDueWeeklyReports`。
 - Queue consumer：`ProcessWeeklyReportJob`。
 - Queue name：`weekly-report-jobs`。
-- Table name：`WeeklyReportJobs`。
+- SQL tables：`WeeklyReportSchedule`、`WeeklyReportDelivery`。
 - Blob container：`weekly-reports`。
 
 消息体是 `WeeklyReportQueueMessageDto`：
 
-- `DataVersion`：每周报告 schema 版本，目前来自 `WeeklyReportConstants.DataVersion`。
-- `MessageType`：报告消息类型。
-- `UserId`：用户。
-- `ReportType`：报告类型。
-- `WeekStartDate`、`WeekEndDate`：报告覆盖周期。
-- `ScheduledTime`、`Timezone`：排程时间和时区。
-- `RecipientEmail`：接收邮箱。
-- `IdempotencyKey`：防止同一用户同一周期重复发送。
-- `CorrelationId`：端到端追踪 ID。
-- `RequestedAtUtc`：入队时间。
+- `ScheduleId`：SQL schedule identity。
+- `PeriodKey`：报告周期 identity；与 `ScheduleId` 共同组成确定性 idempotency key。
+- `UserId`、接收邮箱、时区、源数据和 `DataVersion` 不进入消息，Worker 从 SQL 读取最新值。
 
 Blob 逻辑：
 
@@ -227,8 +222,8 @@ Blob 逻辑：
 - 趋势报告只持久化 Result，路径为 `users/{userId}/jobs/{jobId}/result-{sha256}.json`；Worker Snapshot 只存在于单次执行内存中，Table Job row 只保存 Result Blob pointer。
 - `WeeklyReportBlobStorage` 使用 `AzureWebJobsStorage` 连接 Storage。
 - container 默认 `weekly-reports`。
-- blob path 格式：`weekly-reports/{userId}/{weekStartDate}/weekly-trends-report-v{dataVersion}.pdf`。
-- metadata 写入 `userId`、`reportType`、`weekStartDate`、`weekEndDate`、`dataVersion`、`correlationId`、`generatedAt`。
+- blob path 格式：`schedules/{scheduleId}/periods/{periodKey}/weekly-report.pdf`。
+- metadata 写入报告周期、`SourceDataVersion`、`DataSampledAtUtc` 和 `GeneratedAtUtc`。
 
 DLQ 逻辑：
 

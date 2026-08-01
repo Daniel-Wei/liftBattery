@@ -11,6 +11,7 @@ public interface IEmailSender
         string recipientEmail,
         string subject,
         string body,
+        string idempotencyKey,
         EmailAttachment attachment,
         CancellationToken cancellationToken = default);
 }

@@ -27,6 +27,7 @@ export function ProfilePage({ onSignedOut }: ProfilePageProps) {
   const [weeksPerCycle, setWeeksPerCycle] = useState<number | "">(programSettings.weeksPerCycle);
   const [saved, setSaved] = useState(false);
   const [weeklyReportEnabled, setWeeklyReportEnabled] = useState(false);
+  const [weeklyReportDay, setWeeklyReportDay] = useState("Monday");
   const [weeklyReportTime, setWeeklyReportTime] = useState("08:00");
   const [weeklyReportEmail, setWeeklyReportEmail] = useState(user?.email ?? "");
   const [weeklyReportTimezone, setWeeklyReportTimezone] = useState(getBrowserTimezone());
@@ -57,9 +58,10 @@ export function ProfilePage({ onSignedOut }: ProfilePageProps) {
       .then((schedule) => {
         if (!isMounted) return;
         setWeeklyReportEnabled(schedule.enabled);
-        setWeeklyReportTime(schedule.scheduledTime);
+        setWeeklyReportDay(schedule.dayOfWeek);
+        setWeeklyReportTime(schedule.timeOfDay);
         setWeeklyReportEmail(schedule.recipientEmail || user.email);
-        setWeeklyReportTimezone(schedule.timezone || getBrowserTimezone());
+        setWeeklyReportTimezone(schedule.timeZoneId || getBrowserTimezone());
       })
       .catch((loadError) => {
         if (!isMounted) return;
@@ -114,14 +116,16 @@ export function ProfilePage({ onSignedOut }: ProfilePageProps) {
       setWeeklyReportSaving(true);
       const schedule = await updateWeeklyReportSchedule({
         enabled: weeklyReportEnabled,
-        scheduledTime: weeklyReportTime,
+        dayOfWeek: weeklyReportDay,
+        timeOfDay: weeklyReportTime,
         recipientEmail: normalizedEmail,
-        timezone: normalizedTimezone,
+        timeZoneId: normalizedTimezone,
       });
       setWeeklyReportEnabled(schedule.enabled);
-      setWeeklyReportTime(schedule.scheduledTime);
+      setWeeklyReportDay(schedule.dayOfWeek);
+      setWeeklyReportTime(schedule.timeOfDay);
       setWeeklyReportEmail(schedule.recipientEmail);
-      setWeeklyReportTimezone(schedule.timezone);
+      setWeeklyReportTimezone(schedule.timeZoneId);
       setWeeklyReportSaved(true);
     } catch (saveError) {
       setWeeklyReportError(saveError instanceof Error ? saveError.message : "保存每周报告设置失败。");
@@ -193,7 +197,7 @@ export function ProfilePage({ onSignedOut }: ProfilePageProps) {
           <div className="weekly-report-settings-header auth-form-span">
             <div>
               <h2 className="section-title">每周趋势报告计划</h2>
-              <p className="page-subtitle">每周一按指定时间生成上一训练周的趋势报告，并发送到指定邮箱。</p>
+              <p className="page-subtitle">每周按指定日期和时间生成前七天的趋势报告，并发送到指定邮箱。</p>
             </div>
             <label className="weekly-report-toggle">
               <span>自动发送</span>
@@ -207,12 +211,29 @@ export function ProfilePage({ onSignedOut }: ProfilePageProps) {
             </label>
           </div>
           <label className="training-form-field">
+            <span className="training-form-label">发送日期</span>
+            <select
+              className="training-input"
+              value={weeklyReportDay}
+              onChange={(event) => setWeeklyReportDay(event.target.value)}
+              disabled={weeklyReportLoading}
+            >
+              <option value="Monday">星期一</option>
+              <option value="Tuesday">星期二</option>
+              <option value="Wednesday">星期三</option>
+              <option value="Thursday">星期四</option>
+              <option value="Friday">星期五</option>
+              <option value="Saturday">星期六</option>
+              <option value="Sunday">星期日</option>
+            </select>
+          </label>
+          <label className="training-form-field">
             <span className="training-form-label">发送时间</span>
             <input
               className="training-input"
               type="text"
               inputMode="numeric"
-              pattern="[0-2][0-9]:[0-5][0-9]"
+              pattern="([0-1][0-9]|2[0-3]):[0-5][0-9]"
               value={weeklyReportTime}
               onChange={(event) => setWeeklyReportTime(event.target.value)}
               disabled={weeklyReportLoading}

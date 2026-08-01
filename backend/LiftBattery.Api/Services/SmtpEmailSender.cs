@@ -17,6 +17,7 @@ public sealed class SmtpEmailSender : IEmailSender
         string recipientEmail,
         string subject,
         string body,
+        string idempotencyKey,
         EmailAttachment attachment,
         CancellationToken cancellationToken = default)
     {
@@ -33,6 +34,9 @@ public sealed class SmtpEmailSender : IEmailSender
             Subject = subject,
             Body = body,
         };
+        // Providers that understand this key can suppress a resend after a worker
+        // crash between SMTP acceptance and the SQL Sent transaction.
+        message.Headers["X-Idempotency-Key"] = idempotencyKey;
         message.Attachments.Add(new Attachment(
             new MemoryStream(attachment.Content),
             attachment.FileName,

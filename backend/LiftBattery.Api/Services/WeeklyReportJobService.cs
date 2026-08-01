@@ -1,8 +1,8 @@
-using System.Security.Cryptography;
-using System.Text;
 using LiftBattery.Api.DTOs;
+using LiftBattery.Api.Entities;
 using LiftBattery.Api.Models;
 using LiftBattery.Api.Repositories;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 
 namespace LiftBattery.Api.Services;
@@ -10,247 +10,299 @@ namespace LiftBattery.Api.Services;
 public sealed class WeeklyReportJobService : IWeeklyReportJobService
 {
     private static readonly IReadOnlyList<string> WeekLabels = new[] { "W1" };
+    private static readonly TimeSpan DefaultProcessingLease = TimeSpan.FromMinutes(30);
 
-    private readonly IWeeklyReportJobRepository _repository;
-    private readonly IWeeklyReportQueue _queue;
-    private readonly ITrainingRepository _trainingRepository;
-    private readonly IPreCheckRepository _preCheckRepository;
+    private readonly IWeeklyReportScheduleRepository _scheduleRepository;
+    private readonly IWeeklyReportDeliveryRepository _deliveryRepository;
+    private readonly ITrendReportSourceDataRepository _sourceDataRepository;
     private readonly IWeeklyReportPdfGenerator _pdfGenerator;
     private readonly IWeeklyReportBlobStorage _blobStorage;
     private readonly IEmailSender _emailSender;
     private readonly TimeProvider _timeProvider;
     private readonly ILogger<WeeklyReportJobService> _logger;
+    private readonly TimeSpan _processingLease;
 
     public WeeklyReportJobService(
-        IWeeklyReportJobRepository repository,
-        IWeeklyReportQueue queue,
-        ITrainingRepository trainingRepository,
-        IPreCheckRepository preCheckRepository,
+        IWeeklyReportScheduleRepository scheduleRepository,
+        IWeeklyReportDeliveryRepository deliveryRepository,
+        ITrendReportSourceDataRepository sourceDataRepository,
         IWeeklyReportPdfGenerator pdfGenerator,
         IWeeklyReportBlobStorage blobStorage,
         IEmailSender emailSender,
         TimeProvider timeProvider,
+        IConfiguration configuration,
         ILogger<WeeklyReportJobService> logger)
     {
-        _repository = repository;
-        _queue = queue;
-        _trainingRepository = trainingRepository;
-        _preCheckRepository = preCheckRepository;
+        _scheduleRepository = scheduleRepository;
+        _deliveryRepository = deliveryRepository;
+        _sourceDataRepository = sourceDataRepository;
         _pdfGenerator = pdfGenerator;
         _blobStorage = blobStorage;
         _emailSender = emailSender;
         _timeProvider = timeProvider;
         _logger = logger;
-    }
-
-    public async Task<WeeklyReportJobDto> RequestScheduledWeeklyReportAsync(
-        int userId,
-        string scheduleId,
-        DateTimeOffset scheduledForUtc,
-        string recipientEmail,
-        string timeZoneId,
-        CancellationToken cancellationToken = default)
-    {
-        cancellationToken.ThrowIfCancellationRequested();
-
-        var runKey = CreateRunKey(scheduleId, scheduledForUtc);
-        var existing = await _repository.GetLatestByUserIdAndRunKeyAsync(
-            userId,
-            scheduleId,
-            runKey,
-            cancellationToken);
-
-        if (existing is not null && existing.Status != WeeklyReportJobStatuses.Failed)
-        {
-            _logger.LogInformation(
-                "Existing weekly report job reused. UserId={UserId}, ScheduleId={ScheduleId}, RunKey={RunKey}, JobId={JobId}.",
-                userId,
-                scheduleId,
-                runKey,
-                existing.Id);
-            return ToDto(existing);
-        }
-
-        var now = _timeProvider.GetUtcNow();
-        var (weekStartDate, weekEndDate) = GetReportWeek(scheduledForUtc, timeZoneId);
-        var job = new WeeklyReportJob(
-            CreateDeterministicJobId(runKey),
-            userId,
-            scheduleId,
-            runKey,
-            WeeklyReportConstants.ReportType,
-            weekStartDate,
-            weekEndDate,
-            scheduledForUtc,
-            timeZoneId,
-            recipientEmail,
-            WeeklyReportConstants.DataVersion,
-            WeeklyReportJobStatuses.Queued,
-            $"weekly-report:{userId}:{runKey}:{Guid.NewGuid():N}",
-            now,
-            now,
-            now,
-            null,
-            null,
-            null,
-            null,
-            null,
-            null,
-            null);
-
-        job = await _repository.CreateAsync(job, cancellationToken);
-
-        if (job.CreatedAtUtc != now)
-        {
-            _logger.LogInformation(
-                "Existing weekly report job reused after create conflict. UserId={UserId}, ScheduleId={ScheduleId}, RunKey={RunKey}, JobId={JobId}.",
-                userId,
-                scheduleId,
-                runKey,
-                job.Id);
-            return ToDto(job);
-        }
-
-        await _queue.EnqueueAsync(ToQueueMessage(job));
-
-        _logger.LogInformation(
-            "Weekly report queue message sent. UserId={UserId}, ScheduleId={ScheduleId}, RunKey={RunKey}, JobId={JobId}, ScheduledForUtc={ScheduledForUtc}.",
-            userId,
-            scheduleId,
-            runKey,
-            job.Id,
-            scheduledForUtc);
-
-        return ToDto(job);
+        _processingLease = TimeSpan.FromMinutes(Math.Max(
+            1,
+            configuration.GetValue(
+                "WeeklyReportProcessingLeaseMinutes",
+                (int)DefaultProcessingLease.TotalMinutes)));
     }
 
     public async Task ProcessAsync(
         WeeklyReportQueueMessageDto queueMessage,
         CancellationToken cancellationToken = default)
     {
-        ValidateQueueMessage(queueMessage);
+        if (string.IsNullOrWhiteSpace(queueMessage.ScheduleId)
+            || !WeeklyReportPeriod.TryParse(queueMessage.PeriodKey, out var period)
+            || period is null)
+        {
+            throw new ArgumentException("Weekly report queue message is invalid.");
+        }
 
-        var job = await _repository.GetByIdAsync(
-            queueMessage.UserId,
-            queueMessage.JobId,
+        // Service Bus contains no user, recipient, scheduling, or source-data state.
+        // Always reload the current SQL schedule when execution starts.
+        var schedule = await _scheduleRepository.GetByIdAsync(
+            queueMessage.ScheduleId,
+            cancellationToken);
+        if (schedule is null || !schedule.Enabled)
+        {
+            return;
+        }
+
+        var now = _timeProvider.GetUtcNow();
+        var processingClaimId = Guid.NewGuid().ToString("N");
+        var delivery = await _deliveryRepository.TryClaimAsync(
+            schedule.ScheduleId,
+            period,
+            processingClaimId,
+            now,
+            now.Add(_processingLease),
             cancellationToken);
 
-        if (job is null
-            || !string.Equals(job.ScheduleId, queueMessage.ScheduleId, StringComparison.Ordinal)
-            || !string.Equals(job.RunKey, queueMessage.RunKey, StringComparison.Ordinal)
-            || job.ScheduledForUtc != queueMessage.ScheduledForUtc)
+        if (delivery is null)
         {
+            // Another delivery of the same message owns this period. Its retry (or a
+            // later dispatcher pass after lease expiry) is responsible for recovery.
             return;
         }
 
-        if (!await _repository.TryStartProcessingAsync(
-            queueMessage.UserId,
-            queueMessage.JobId,
-            queueMessage.RunKey,
-            cancellationToken))
+        if (delivery.Status == WeeklyReportDeliveryStatuses.Sent)
         {
+            // At-least-once duplicate after successful commit: no PDF or email work.
             return;
         }
-
-        _logger.LogInformation(
-            "Weekly report worker started. UserId={UserId}, ScheduleId={ScheduleId}, RunKey={RunKey}, JobId={JobId}, ScheduledForUtc={ScheduledForUtc}.",
-            job.UserId,
-            job.ScheduleId,
-            job.RunKey,
-            job.Id,
-            job.ScheduledForUtc);
 
         try
         {
-            var result = await GenerateWeeklyResultAsync(job, cancellationToken);
-            var pdfBytes = _pdfGenerator.GeneratePdf(result, job.DataVersion, job.CorrelationId);
-            var blobName = await _blobStorage.UploadAsync(
-                job.UserId,
-                job.WeekStartDate.ToString("yyyy-MM-dd"),
-                job.WeekEndDate.ToString("yyyy-MM-dd"),
-                job.DataVersion,
-                job.CorrelationId,
-                pdfBytes,
+            var (blobPath, pdfBytes) = await GetOrCreateImmutablePdfAsync(
+                schedule,
+                period,
+                delivery,
+                processingClaimId,
                 cancellationToken);
 
+            // Recipient and Enabled may change while PDF generation is running. The
+            // PDF remains the sampled artifact, while delivery uses latest settings.
+            var latestSchedule = await _scheduleRepository.GetByIdAsync(
+                schedule.ScheduleId,
+                cancellationToken);
+            if (latestSchedule is null || !latestSchedule.Enabled)
+            {
+                await _deliveryRepository.ReleaseClaimAsync(
+                    schedule.ScheduleId,
+                    period.Key,
+                    processingClaimId,
+                    errorMessage: null,
+                    cancellationToken);
+                return;
+            }
+
+            var idempotencyKey = $"{schedule.ScheduleId}:{period.Key}";
             await _emailSender.SendAsync(
-                job.RecipientEmail,
-                $"LiftOps weekly trend report {job.WeekStartDate:yyyy-MM-dd} - {job.WeekEndDate:yyyy-MM-dd}",
+                latestSchedule.RecipientEmail,
+                $"LiftOps weekly trend report {period.Start:yyyy-MM-dd} - {period.End:yyyy-MM-dd}",
                 "Hello, your LiftOps weekly trend report is attached.",
+                idempotencyKey,
                 new EmailAttachment(
-                    $"weekly-trends-report-{job.WeekStartDate:yyyy-MM-dd}.pdf",
+                    $"weekly-trends-report-{period.Start:yyyy-MM-dd}.pdf",
                     "application/pdf",
                     pdfBytes),
                 cancellationToken);
 
-            await _repository.TryCompleteIfCurrentProcessingAsync(
-                job.UserId,
-                job.Id,
-                job.RunKey,
-                result,
-                blobName,
-                cancellationToken);
+            var sentAtUtc = _timeProvider.GetUtcNow();
+            var nextRunAtUtc = WeeklyReportScheduleService.CalculateNextRunUtc(
+                latestSchedule.DayOfWeek,
+                latestSchedule.LocalSendTime,
+                latestSchedule.TimeZoneId,
+                sentAtUtc);
+
+            // This transaction is the success boundary: Delivery becomes Sent and the
+            // same claimed schedule advances to its next occurrence together.
+            if (!await _deliveryRepository.CompleteSentAsync(
+                schedule.ScheduleId,
+                period.Key,
+                processingClaimId,
+                latestSchedule.RecipientEmail,
+                sentAtUtc,
+                nextRunAtUtc,
+                cancellationToken))
+            {
+                throw new InvalidOperationException(
+                    "Weekly report delivery could not be committed after sending.");
+            }
 
             _logger.LogInformation(
-                "Weekly report worker completed. UserId={UserId}, ScheduleId={ScheduleId}, RunKey={RunKey}, JobId={JobId}.",
-                job.UserId,
-                job.ScheduleId,
-                job.RunKey,
-                job.Id);
+                "Weekly report sent. ScheduleId={ScheduleId}, PeriodKey={PeriodKey}, BlobPath={BlobPath}.",
+                schedule.ScheduleId,
+                period.Key,
+                blobPath);
         }
         catch (Exception exception) when (exception is not OperationCanceledException)
         {
-            await _repository.TryMarkFailedIfCurrentProcessingAsync(
-                job.UserId,
-                job.Id,
-                job.RunKey,
-                exception.Message,
-                cancellationToken);
+            try
+            {
+                // Pending remains Pending and BlobReady remains BlobReady. Therefore a
+                // PDF failure regenerates on redelivery, while an email failure reuses
+                // the already persisted BlobPath and exact PDF bytes.
+                await _deliveryRepository.ReleaseClaimAsync(
+                    schedule.ScheduleId,
+                    period.Key,
+                    processingClaimId,
+                    exception.Message,
+                    cancellationToken);
+            }
+            catch (Exception releaseException) when (releaseException is not OperationCanceledException)
+            {
+                _logger.LogError(
+                    releaseException,
+                    "Failed to release weekly report processing claim. ScheduleId={ScheduleId}, PeriodKey={PeriodKey}.",
+                    schedule.ScheduleId,
+                    period.Key);
+            }
 
             _logger.LogError(
                 exception,
-                "Weekly report worker failed. UserId={UserId}, ScheduleId={ScheduleId}, RunKey={RunKey}, JobId={JobId}.",
-                job.UserId,
-                job.ScheduleId,
-                job.RunKey,
-                job.Id);
+                "Weekly report processing failed; Service Bus may redeliver. ScheduleId={ScheduleId}, PeriodKey={PeriodKey}.",
+                schedule.ScheduleId,
+                period.Key);
             throw;
         }
     }
 
-    private async Task<TrendReportResultDto> GenerateWeeklyResultAsync(
-        WeeklyReportJob job,
+    private async Task<(string BlobPath, byte[] PdfBytes)> GetOrCreateImmutablePdfAsync(
+        WeeklyReportSchedule schedule,
+        WeeklyReportPeriod period,
+        WeeklyReportDelivery delivery,
+        string processingClaimId,
         CancellationToken cancellationToken)
     {
-        var trainingDays = await _trainingRepository.GetByDateRangeAsync(
-            job.UserId,
-            job.WeekStartDate,
-            job.WeekEndDate,
+        if (!string.IsNullOrWhiteSpace(delivery.BlobPath))
+        {
+            return (
+                delivery.BlobPath,
+                await _blobStorage.DownloadAsync(delivery.BlobPath, cancellationToken));
+        }
+
+        // Covers a process crash after Blob upload but before BlobPath was written.
+        // The deterministic path makes the uploaded artifact discoverable and reusable.
+        var existingBlob = await _blobStorage.GetIfExistsAsync(
+            schedule.ScheduleId,
+            period.Key,
             cancellationToken);
-        var preChecks = await _preCheckRepository.GetByDateRangeAsync(
-            job.UserId,
-            job.WeekStartDate,
-            job.WeekEndDate,
+        if (existingBlob is not null)
+        {
+            if (!await _deliveryRepository.MarkBlobReadyAsync(
+                schedule.ScheduleId,
+                period.Key,
+                processingClaimId,
+                existingBlob.BlobPath,
+                cancellationToken))
+            {
+                throw LostProcessingClaim();
+            }
+
+            return (existingBlob.BlobPath, existingBlob.Content);
+        }
+
+        // DataVersion and all report source rows are captured in the same SQL snapshot
+        // transaction. The version is audit metadata only; it does not invalidate this
+        // scheduled report if the user edits data after sampling.
+        var capture = await _sourceDataRepository.CaptureSnapshotAsync(
+            schedule.UserId,
+            period.Start,
+            period.End,
+            cancellationToken);
+        var dataSampledAtUtc = _timeProvider.GetUtcNow();
+        var generatedAtUtc = _timeProvider.GetUtcNow();
+        var metadata = new WeeklyReportPdfMetadata(
+            period,
+            capture.DataVersion,
+            dataSampledAtUtc,
+            generatedAtUtc);
+
+        // Persist metadata before Blob upload. If the process dies immediately after
+        // upload, the next attempt can recover the deterministic Blob with its audit row.
+        if (!await _deliveryRepository.RecordGenerationMetadataAsync(
+            schedule.ScheduleId,
+            period.Key,
+            processingClaimId,
+            capture.DataVersion,
+            dataSampledAtUtc,
+            generatedAtUtc,
+            cancellationToken))
+        {
+            throw LostProcessingClaim();
+        }
+
+        var result = GenerateWeeklyResult(capture.Snapshot, period);
+        var pdfBytes = _pdfGenerator.GeneratePdf(result, metadata);
+        var blobPath = await _blobStorage.UploadAsync(
+            schedule.ScheduleId,
+            period.Key,
+            metadata,
+            pdfBytes,
             cancellationToken);
 
-        var sessions = trainingDays.SelectMany(day => day.Sessions).ToList();
+        // Email always uses bytes read back from Blob. This guarantees the attachment
+        // is exactly the immutable artifact referenced by WeeklyReportDelivery, even
+        // when an earlier attempt won the deterministic-path upload race.
+        pdfBytes = await _blobStorage.DownloadAsync(blobPath, cancellationToken);
+
+        if (!await _deliveryRepository.MarkBlobReadyAsync(
+            schedule.ScheduleId,
+            period.Key,
+            processingClaimId,
+            blobPath,
+            cancellationToken))
+        {
+            throw LostProcessingClaim();
+        }
+
+        return (blobPath, pdfBytes);
+    }
+
+    private static TrendReportResultDto GenerateWeeklyResult(
+        TrendReportReqSnapshot snapshot,
+        WeeklyReportPeriod period)
+    {
+        var sessions = snapshot.TrainingDays.SelectMany(day => day.Sessions).ToList();
         var workingSets = sessions
             .SelectMany(session => session.Exercises)
             .SelectMany(exercise => exercise.Sets)
             .Where(set => !set.IsWarmup)
             .ToList();
-        var readiness = preChecks.Count == 0
+        var readiness = snapshot.PreCheckLogs.Count == 0
             ? 0
-            : preChecks.Average(GetReadinessScore);
-        var sleep = preChecks.Count == 0
+            : snapshot.PreCheckLogs.Average(GetReadinessScore);
+        var sleep = snapshot.PreCheckLogs.Count == 0
             ? 0
-            : preChecks.Average(log => log.SleepHours);
+            : snapshot.PreCheckLogs.Average(log => log.SleepHours);
         var sessionLoad = sessions.Sum(session => session.DurationMinutes * session.SessionRpe);
         var volume = workingSets.Sum(set => set.Reps * set.WeightKg);
 
         return new TrendReportResultDto(
-            job.WeekStartDate.ToString("yyyy-MM-dd"),
-            job.WeekStartDate.ToString("yyyy-MM-dd"),
+            period.Start.ToString("yyyy-MM-dd"),
+            period.End.ToString("yyyy-MM-dd"),
             null,
             null,
             WeekLabels,
@@ -283,91 +335,14 @@ public sealed class WeeklyReportJobService : IWeeklyReportJobService
 
     private static decimal GetReadinessScore(PreCheckModel log)
     {
-        var recoverySoreness = 6 - log.Soreness;
-        var recoveryStress = 6 - log.Stress;
         var total = log.SleepQuality
-            + recoverySoreness
-            + recoveryStress
+            + (6 - log.Soreness)
+            + (6 - log.Stress)
             + log.Motivation
             + log.Energy;
         return Math.Round((total / 25m) * 100m, 0);
     }
 
-    private static (DateOnly WeekStartDate, DateOnly WeekEndDate) GetReportWeek(
-        DateTimeOffset scheduledForUtc,
-        string timeZoneId)
-    {
-        var timezone = GetTimeZone(timeZoneId);
-        var localScheduled = TimeZoneInfo.ConvertTime(scheduledForUtc, timezone);
-        var weekEnd = DateOnly.FromDateTime(localScheduled.Date).AddDays(-1);
-        return (weekEnd.AddDays(-6), weekEnd);
-    }
-
-    private static TimeZoneInfo GetTimeZone(string timeZoneId)
-    {
-        try
-        {
-            return TimeZoneInfo.FindSystemTimeZoneById(timeZoneId);
-        }
-        catch (TimeZoneNotFoundException)
-        {
-            return TimeZoneInfo.Utc;
-        }
-        catch (InvalidTimeZoneException)
-        {
-            return TimeZoneInfo.Utc;
-        }
-    }
-
-    private static WeeklyReportQueueMessageDto ToQueueMessage(WeeklyReportJob job)
-    {
-        return new WeeklyReportQueueMessageDto(
-            job.Id,
-            job.UserId,
-            job.ScheduleId,
-            job.RunKey,
-            job.ScheduledForUtc);
-    }
-
-    private static WeeklyReportJobDto ToDto(WeeklyReportJob job)
-    {
-        return new WeeklyReportJobDto(
-            job.Id,
-            job.UserId,
-            job.ScheduleId,
-            job.RunKey,
-            job.ReportType,
-            job.WeekStartDate.ToString("yyyy-MM-dd"),
-            job.WeekEndDate.ToString("yyyy-MM-dd"),
-            job.ScheduledForUtc,
-            job.Status,
-            job.ErrorMessage,
-            job.RequestedAtUtc,
-            job.CreatedAtUtc,
-            job.UpdatedAtUtc,
-            job.StartedAtUtc,
-            job.CompletedAtUtc);
-    }
-
-    private static string CreateRunKey(string scheduleId, DateTimeOffset scheduledForUtc)
-    {
-        return $"{scheduleId}:{scheduledForUtc:O}";
-    }
-
-    private static int CreateDeterministicJobId(string runKey)
-    {
-        var hash = SHA256.HashData(Encoding.UTF8.GetBytes(runKey));
-        return BitConverter.ToInt32(hash, 0) & int.MaxValue;
-    }
-
-    private static void ValidateQueueMessage(WeeklyReportQueueMessageDto queueMessage)
-    {
-        if (queueMessage.JobId <= 0
-            || queueMessage.UserId <= 0
-            || string.IsNullOrWhiteSpace(queueMessage.ScheduleId)
-            || string.IsNullOrWhiteSpace(queueMessage.RunKey))
-        {
-            throw new ArgumentException("Weekly report queue message is invalid.");
-        }
-    }
+    private static InvalidOperationException LostProcessingClaim() =>
+        new("Weekly report processing claim was lost.");
 }

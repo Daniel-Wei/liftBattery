@@ -736,8 +736,8 @@ public sealed class TrendReportJobRepository : ITrendReportJobRepository
             {
                 // The leased Job is authoritative while it is active:
                 
-                // - same DataVersion and parameters: an identical request already owns
-                //   the slot, so EvaluateCreateState returns that Job;
+                // - same DataVersion and parameters: 
+                //   an identical request already owns the slot, so EvaluateCreateState returns that Job;
                 
                 // - different DataVersion or parameters: another request owns the slot,
                 //   so EvaluateCreateState returns the product-level 409 conflict.
@@ -776,7 +776,7 @@ public sealed class TrendReportJobRepository : ITrendReportJobRepository
         //   Our later atomic create will conflict on the fixed per-user ActiveLease RowKey, 
         //   then HandleCreateConflictAsync reload the winner and returns the product-level 409.
         //
-        // - Re-reading ActiveLease here would only reduce some conflicts:s
+        // - Re-reading ActiveLease here would only reduce some conflicts:
         //   it cannot close the race, so the create transaction remains the authoritative guard.
         var dedup = await GetDedupEntityIfExistsAsync(
             partitionKey,

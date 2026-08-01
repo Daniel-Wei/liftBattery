@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Azure.Messaging.ServiceBus;
 using LiftBattery.Api.DTOs;
+using LiftBattery.Api.Models;
 using LiftBattery.Api.Services;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Extensions.Logging;
@@ -69,13 +70,11 @@ public sealed class WeeklyReportQueueFunctions
         }
 
         _logger.LogInformation(
-            "Processing weekly report queue message. MessageId={MessageId}, CorrelationId={CorrelationId}, JobId={JobId}, UserId={UserId}, ScheduleId={ScheduleId}, RunKey={RunKey}, DeliveryCount={DeliveryCount}.",
+            "Processing weekly report queue message. MessageId={MessageId}, CorrelationId={CorrelationId}, ScheduleId={ScheduleId}, PeriodKey={PeriodKey}, DeliveryCount={DeliveryCount}.",
             message.MessageId,
             message.CorrelationId,
-            queueMessage.JobId,
-            queueMessage.UserId,
             queueMessage.ScheduleId,
-            queueMessage.RunKey,
+            queueMessage.PeriodKey,
             message.DeliveryCount);
 
         await _jobService.ProcessAsync(queueMessage, cancellationToken);
@@ -98,10 +97,8 @@ public sealed class WeeklyReportQueueFunctions
 
     private static bool IsValidQueueMessage(WeeklyReportQueueMessageDto queueMessage)
     {
-        return queueMessage.JobId > 0
-            && queueMessage.UserId > 0
-            && !string.IsNullOrWhiteSpace(queueMessage.ScheduleId)
-            && !string.IsNullOrWhiteSpace(queueMessage.RunKey);
+        return !string.IsNullOrWhiteSpace(queueMessage.ScheduleId)
+            && WeeklyReportPeriod.TryParse(queueMessage.PeriodKey, out _);
     }
 
     private async Task DeadLetterInvalidMessageAsync(

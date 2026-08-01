@@ -4,5 +4,7 @@ namespace LiftBattery.Api.Services;
 
 public interface IWeeklyReportQueue
 {
-    Task EnqueueAsync(WeeklyReportQueueMessageDto queueMessage);
+    Task EnqueueAsync(
+        WeeklyReportQueueMessageDto queueMessage,
+        CancellationToken cancellationToken = default);
 }

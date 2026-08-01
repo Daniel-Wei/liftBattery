@@ -19,25 +19,29 @@ public sealed class WeeklyReportServiceBusQueue : IWeeklyReportQueue, IAsyncDisp
         _configuration = configuration;
     }
 
-    public async Task EnqueueAsync(WeeklyReportQueueMessageDto queueMessage)
+    public async Task EnqueueAsync(
+        WeeklyReportQueueMessageDto queueMessage,
+        CancellationToken cancellationToken = default)
     {
         var sender = GetSender();
         var body = JsonSerializer.Serialize(queueMessage, QueueMessageJsonOptions);
+        var idempotencyKey = $"{queueMessage.ScheduleId}:{queueMessage.PeriodKey}";
         var message = new ServiceBusMessage(body)
         {
-            MessageId = queueMessage.RunKey,
-            CorrelationId = queueMessage.RunKey,
+            // A fresh broker MessageId allows the Timer to republish after a crashed
+            // worker and expired schedule lease, even when Service Bus duplicate
+            // detection is enabled. SQL Delivery owns business idempotency instead.
+            MessageId = Guid.NewGuid().ToString("N"),
+            CorrelationId = idempotencyKey,
             ContentType = "application/json",
             Subject = WeeklyReportConstants.MessageType,
         };
         message.ApplicationProperties["messageType"] = WeeklyReportConstants.MessageType;
         message.ApplicationProperties["reportType"] = WeeklyReportConstants.ReportType;
-        message.ApplicationProperties["jobId"] = queueMessage.JobId;
-        message.ApplicationProperties["userId"] = queueMessage.UserId;
         message.ApplicationProperties["scheduleId"] = queueMessage.ScheduleId;
-        message.ApplicationProperties["runKey"] = queueMessage.RunKey;
-        message.ApplicationProperties["scheduledForUtc"] = queueMessage.ScheduledForUtc.ToString("O");
-        await sender.SendMessageAsync(message);
+        message.ApplicationProperties["periodKey"] = queueMessage.PeriodKey;
+        message.ApplicationProperties["idempotencyKey"] = idempotencyKey;
+        await sender.SendMessageAsync(message, cancellationToken);
     }
 
     public async ValueTask DisposeAsync()

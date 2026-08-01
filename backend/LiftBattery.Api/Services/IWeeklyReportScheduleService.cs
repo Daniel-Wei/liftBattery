@@ -14,13 +14,5 @@ public interface IWeeklyReportSchedulingService
 
 public interface IWeeklyReportJobService
 {
-    Task<WeeklyReportJobDto> RequestScheduledWeeklyReportAsync(
-        int userId,
-        string scheduleId,
-        DateTimeOffset scheduledForUtc,
-        string recipientEmail,
-        string timeZoneId,
-        CancellationToken cancellationToken = default);
-
     Task ProcessAsync(WeeklyReportQueueMessageDto queueMessage, CancellationToken cancellationToken = default);
 }

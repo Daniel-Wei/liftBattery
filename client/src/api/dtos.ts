@@ -137,22 +137,26 @@ export type TrendReportJobDto = {
 };
 
 export type WeeklyReportScheduleDto = {
+  scheduleId: string;
   userId: number;
   enabled: boolean;
-  scheduledTime: string;
+  dayOfWeek: string;
+  timeOfDay: string;
   recipientEmail: string;
-  timezone: string;
-  reportType: string;
+  timeZoneId: string;
+  lastRunAtUtc?: string;
+  nextRunAtUtc?: string;
+  lastPeriodKey?: string;
   createdAtUtc: string;
   updatedAtUtc: string;
-  dataVersion: number;
 };
 
 export type UpdateWeeklyReportScheduleRequestDto = {
   enabled: boolean;
-  scheduledTime: string;
+  dayOfWeek?: string;
+  timeOfDay: string;
   recipientEmail: string;
-  timezone?: string;
+  timeZoneId?: string;
 };
 
 export type RegisterRequestDto = {

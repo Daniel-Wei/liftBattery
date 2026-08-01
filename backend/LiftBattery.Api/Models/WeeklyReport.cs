@@ -1,62 +1,42 @@
-using LiftBattery.Api.DTOs;
-
 namespace LiftBattery.Api.Models;
 
 public static class WeeklyReportConstants
 {
-    public const int DataVersion = 1;
     public const string ReportType = "WeeklyTrendsReport";
     public const string MessageType = "WeeklyTrendsReportRequested";
     public const string DefaultTimeZoneId = "UTC";
 }
 
-public static class WeeklyReportJobStatuses
+public static class WeeklyReportDeliveryStatuses
 {
-    public const string Queued = "Queued";
-    public const string Processing = "Processing";
-    public const string Completed = "Completed";
-    public const string Failed = "Failed";
-    public const string Superseded = "Superseded";
+    public const string Pending = "Pending";
+    public const string BlobReady = "BlobReady";
+    public const string Sent = "Sent";
 }
 
-public sealed class WeeklyReportSchedule
+public sealed record WeeklyReportPeriod(DateOnly Start, DateOnly End)
 {
-    public string ScheduleId { get; init; } = string.Empty;
-    public int UserId { get; init; }
-    public bool Enabled { get; init; }
-    public DayOfWeek DayOfWeek { get; init; } = DayOfWeek.Monday;
-    public TimeOnly TimeOfDay { get; init; } = new(8, 0);
-    public string? TimeZoneId { get; init; } = WeeklyReportConstants.DefaultTimeZoneId;
-    public string RecipientEmail { get; init; } = string.Empty;
-    public DateTimeOffset? LastRunAtUtc { get; init; }
-    public DateTimeOffset? NextRunAtUtc { get; init; }
-    public string? LastRunKey { get; init; }
-    public int? LastRequestedJobId { get; init; }
-    public DateTimeOffset CreatedAtUtc { get; init; }
-    public DateTimeOffset UpdatedAtUtc { get; init; }
+    public string Key => $"{Start:yyyy-MM-dd}_{End:yyyy-MM-dd}";
+
+    public static bool TryParse(string periodKey, out WeeklyReportPeriod? period)
+    {
+        period = null;
+        var parts = periodKey.Split('_', StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length != 2
+            || !DateOnly.TryParseExact(parts[0], "yyyy-MM-dd", out var start)
+            || !DateOnly.TryParseExact(parts[1], "yyyy-MM-dd", out var end)
+            || end < start)
+        {
+            return false;
+        }
+
+        period = new WeeklyReportPeriod(start, end);
+        return true;
+    }
 }
 
-public sealed record WeeklyReportJob(
-    int Id,
-    int UserId,
-    string ScheduleId,
-    string RunKey,
-    string ReportType,
-    DateOnly WeekStartDate,
-    DateOnly WeekEndDate,
-    DateTimeOffset ScheduledForUtc,
-    string TimeZoneId,
-    string RecipientEmail,
-    int DataVersion,
-    string Status,
-    string CorrelationId,
-    DateTimeOffset RequestedAtUtc,
-    DateTimeOffset CreatedAtUtc,
-    DateTimeOffset UpdatedAtUtc,
-    DateTimeOffset? StartedAtUtc,
-    DateTimeOffset? GeneratedAtUtc,
-    DateTimeOffset? SentAtUtc,
-    DateTimeOffset? CompletedAtUtc,
-    string? BlobName,
-    string? ErrorMessage,
-    TrendReportResultDto? Result);
+public sealed record WeeklyReportPdfMetadata(
+    WeeklyReportPeriod ReportingPeriod,
+    string? SourceDataVersion,
+    DateTimeOffset DataSampledAtUtc,
+    DateTimeOffset GeneratedAtUtc);

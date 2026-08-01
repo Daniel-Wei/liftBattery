@@ -1,57 +1,100 @@
+using Azure;
 using Azure.Storage.Blobs;
 using Azure.Storage.Blobs.Models;
+using LiftBattery.Api.Models;
 using Microsoft.Extensions.Configuration;
 
 namespace LiftBattery.Api.Services;
 
 public sealed class WeeklyReportBlobStorage : IWeeklyReportBlobStorage
 {
-    private readonly IConfiguration _configuration;
+    private readonly BlobContainerClient _container;
+    private readonly Lazy<Task> _ensureContainerOnce;
 
     public WeeklyReportBlobStorage(IConfiguration configuration)
     {
-        _configuration = configuration;
+        var connectionString = configuration["AzureWebJobsStorage"]
+            ?? throw new InvalidOperationException("AzureWebJobsStorage is required.");
+        var containerName = configuration["WeeklyReportBlobContainerName"] ?? "weekly-reports";
+        _container = new BlobContainerClient(connectionString, containerName);
+        _ensureContainerOnce = new Lazy<Task>(() => _container.CreateIfNotExistsAsync());
+    }
+
+    public async Task<WeeklyReportBlob?> GetIfExistsAsync(
+        string scheduleId,
+        string periodKey,
+        CancellationToken cancellationToken = default)
+    {
+        await _ensureContainerOnce.Value;
+        var blobPath = GetBlobPath(scheduleId, periodKey);
+        var blob = _container.GetBlobClient(blobPath);
+
+        try
+        {
+            var response = await blob.DownloadContentAsync(cancellationToken);
+            return new WeeklyReportBlob(blobPath, response.Value.Content.ToArray());
+        }
+        catch (RequestFailedException exception) when (exception.Status == 404)
+        {
+            return null;
+        }
+    }
+
+    public async Task<byte[]> DownloadAsync(
+        string blobPath,
+        CancellationToken cancellationToken = default)
+    {
+        await _ensureContainerOnce.Value;
+        var response = await _container
+            .GetBlobClient(blobPath)
+            .DownloadContentAsync(cancellationToken);
+        return response.Value.Content.ToArray();
     }
 
     public async Task<string> UploadAsync(
-        int userId,
-        string weekStartDate,
-        string weekEndDate,
-        int dataVersion,
-        string correlationId,
+        string scheduleId,
+        string periodKey,
+        WeeklyReportPdfMetadata metadata,
         byte[] pdfBytes,
         CancellationToken cancellationToken = default)
     {
-        var connectionString = _configuration["AzureWebJobsStorage"]
-            ?? throw new InvalidOperationException("AzureWebJobsStorage is required.");
-        var containerName = _configuration["WeeklyReportBlobContainerName"] ?? "weekly-reports";
-        var blobName = $"weekly-reports/{userId}/{weekStartDate}/weekly-trends-report-v{dataVersion}.pdf";
-        var container = new BlobContainerClient(connectionString, containerName);
-        await container.CreateIfNotExistsAsync(cancellationToken: cancellationToken);
-        var blob = container.GetBlobClient(blobName);
+        await _ensureContainerOnce.Value;
+        var blobPath = GetBlobPath(scheduleId, periodKey);
+        var blob = _container.GetBlobClient(blobPath);
 
-        await using var stream = new MemoryStream(pdfBytes);
-        await blob.UploadAsync(
-            stream,
-            new BlobUploadOptions
-            {
-                HttpHeaders = new BlobHttpHeaders
+        try
+        {
+            await using var stream = new MemoryStream(pdfBytes, writable: false);
+            await blob.UploadAsync(
+                stream,
+                new BlobUploadOptions
                 {
-                    ContentType = "application/pdf",
+                    Conditions = new BlobRequestConditions { IfNoneMatch = ETag.All },
+                    HttpHeaders = new BlobHttpHeaders { ContentType = "application/pdf" },
+                    Metadata = new Dictionary<string, string>
+                    {
+                        ["scheduleId"] = scheduleId,
+                        ["periodKey"] = periodKey,
+                        ["reportingPeriodStart"] = metadata.ReportingPeriod.Start.ToString("yyyy-MM-dd"),
+                        ["reportingPeriodEnd"] = metadata.ReportingPeriod.End.ToString("yyyy-MM-dd"),
+                        ["sourceDataVersion"] = metadata.SourceDataVersion ?? "none",
+                        ["dataSampledAtUtc"] = metadata.DataSampledAtUtc.ToString("O"),
+                        ["generatedAtUtc"] = metadata.GeneratedAtUtc.ToString("O"),
+                    },
                 },
-                Metadata = new Dictionary<string, string>
-                {
-                    ["userId"] = userId.ToString(),
-                    ["reportType"] = "WeeklyTrendsReport",
-                    ["weekStartDate"] = weekStartDate,
-                    ["weekEndDate"] = weekEndDate,
-                    ["dataVersion"] = dataVersion.ToString(),
-                    ["correlationId"] = correlationId,
-                    ["generatedAt"] = DateTimeOffset.UtcNow.ToString("O"),
-                },
-            },
-            cancellationToken);
+                cancellationToken);
+        }
+        catch (RequestFailedException exception) when (exception.Status is 409 or 412)
+        {
+            // The path is deterministic. A crash may have uploaded the PDF before
+            // persisting BlobPath; the retry must reuse that immutable blob.
+        }
 
-        return blobName;
+        return blobPath;
+    }
+
+    private static string GetBlobPath(string scheduleId, string periodKey)
+    {
+        return $"schedules/{Uri.EscapeDataString(scheduleId)}/periods/{Uri.EscapeDataString(periodKey)}/weekly-report.pdf";
     }
 }

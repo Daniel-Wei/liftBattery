@@ -1,11 +1,11 @@
-using Azure;
 using LiftBattery.Api.Data;
 using LiftBattery.Api.DTOs;
-using LiftBattery.Api.Models;
+using LiftBattery.Api.Entities;
 using LiftBattery.Api.Repositories;
 using LiftBattery.Api.Services;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
 using Xunit;
 
@@ -14,117 +14,148 @@ namespace LiftBattery.Api.Tests;
 public sealed class WeeklyReportSchedulingServiceTests
 {
     [Fact]
-    public async Task DisabledSchedulesAreSkipped()
+    public async Task DisabledScheduleIsNotDispatched()
     {
         await using var database = await TestDatabase.CreateAsync();
-        var schedule = CreateSchedule(enabled: false, nextRunAtUtc: DateTimeOffset.Parse("2026-07-07T00:00:00Z"));
-        var repository = new FakeScheduleRepository(schedule);
-        var jobService = new FakeWeeklyReportJobService();
-        var service = CreateService(database.Context, repository, jobService, DateTimeOffset.Parse("2026-07-07T01:00:00Z"));
+        var repository = new FakeScheduleRepository(
+            CreateSchedule(false, DateTimeOffset.Parse("2026-07-07T00:00:00Z")));
+        var queue = new FakeWeeklyReportQueue();
+        var service = CreateService(database.Context, repository, queue);
 
         await service.ProcessDueSchedulesAsync();
 
-        Assert.Equal(0, jobService.RequestCount);
-        Assert.Equal(0, repository.UpdateCount);
+        Assert.Empty(queue.Messages);
     }
 
     [Fact]
-    public async Task FutureSchedulesAreSkipped()
+    public async Task FutureScheduleIsNotDispatched()
     {
         await using var database = await TestDatabase.CreateAsync();
-        var schedule = CreateSchedule(enabled: true, nextRunAtUtc: DateTimeOffset.Parse("2026-07-08T00:00:00Z"));
-        var repository = new FakeScheduleRepository(schedule);
-        var jobService = new FakeWeeklyReportJobService();
-        var service = CreateService(database.Context, repository, jobService, DateTimeOffset.Parse("2026-07-07T01:00:00Z"));
+        var repository = new FakeScheduleRepository(
+            CreateSchedule(true, DateTimeOffset.Parse("2026-07-08T00:00:00Z")));
+        var queue = new FakeWeeklyReportQueue();
+        var service = CreateService(database.Context, repository, queue);
 
         await service.ProcessDueSchedulesAsync();
 
-        Assert.Equal(0, jobService.RequestCount);
-        Assert.Equal(0, repository.UpdateCount);
+        Assert.Empty(queue.Messages);
     }
 
     [Fact]
-    public async Task DueScheduleRequestsWeeklyReportAndUpdatesMetadata()
+    public async Task DueSchedulePublishesOnlyScheduleAndPeriodAndKeepsNextRunUntilCompletion()
     {
         await using var database = await TestDatabase.CreateAsync();
         var dueAt = DateTimeOffset.Parse("2026-07-07T00:00:00Z");
-        var schedule = CreateSchedule(enabled: true, nextRunAtUtc: dueAt);
+        var schedule = CreateSchedule(true, dueAt);
         var repository = new FakeScheduleRepository(schedule);
-        var jobService = new FakeWeeklyReportJobService();
-        var service = CreateService(database.Context, repository, jobService, DateTimeOffset.Parse("2026-07-07T01:00:00Z"));
+        var queue = new FakeWeeklyReportQueue();
+        var service = CreateService(database.Context, repository, queue);
 
         await service.ProcessDueSchedulesAsync();
 
-        Assert.Equal(1, jobService.RequestCount);
-        Assert.Equal(1, repository.UpdateCount);
-        Assert.Equal(dueAt, repository.Schedule.LastRunAtUtc);
-        Assert.Equal("weekly-report-user-1:2026-07-07T00:00:00.0000000+00:00", repository.Schedule.LastRunKey);
-        Assert.Equal(123, repository.Schedule.LastRequestedJobId);
-        Assert.NotNull(repository.Schedule.NextRunAtUtc);
+        var message = Assert.Single(queue.Messages);
+        Assert.Equal(schedule.ScheduleId, message.ScheduleId);
+        Assert.Equal("2026-06-30_2026-07-06", message.PeriodKey);
+        Assert.Equal(dueAt, repository.Schedule.NextRunAtUtc);
+        Assert.Equal(message.PeriodKey, repository.Schedule.ClaimedPeriodKey);
     }
 
     [Fact]
-    public async Task FailedJobRequestDoesNotMarkScheduleSuccessful()
+    public async Task QueueFailureReleasesDispatcherClaimForNextTimerPass()
     {
         await using var database = await TestDatabase.CreateAsync();
-        var dueAt = DateTimeOffset.Parse("2026-07-07T00:00:00Z");
-        var schedule = CreateSchedule(enabled: true, nextRunAtUtc: dueAt);
-        var repository = new FakeScheduleRepository(schedule);
-        var jobService = new FakeWeeklyReportJobService { ThrowOnRequest = true };
-        var service = CreateService(database.Context, repository, jobService, DateTimeOffset.Parse("2026-07-07T01:00:00Z"));
+        var repository = new FakeScheduleRepository(
+            CreateSchedule(true, DateTimeOffset.Parse("2026-07-07T00:00:00Z")));
+        var queue = new FakeWeeklyReportQueue { ThrowOnEnqueue = true };
+        var service = CreateService(database.Context, repository, queue);
 
         await service.ProcessDueSchedulesAsync();
 
-        Assert.Equal(1, jobService.RequestCount);
-        Assert.Equal(0, repository.UpdateCount);
-        Assert.Null(repository.Schedule.LastRunAtUtc);
-        Assert.Null(repository.Schedule.LastRunKey);
+        Assert.Equal(1, repository.ReleaseCount);
+        Assert.Null(repository.Schedule.LeaseUntilUtc);
+        Assert.Null(repository.Schedule.ClaimedBy);
     }
 
     [Fact]
-    public async Task ETagConflictDoesNotRequestAnotherJobInSameRun()
+    public async Task ActiveDispatcherLeasePreventsRepeatedTimerDispatch()
     {
         await using var database = await TestDatabase.CreateAsync();
-        var dueAt = DateTimeOffset.Parse("2026-07-07T00:00:00Z");
-        var schedule = CreateSchedule(enabled: true, nextRunAtUtc: dueAt);
-        var repository = new FakeScheduleRepository(schedule) { FailUpdates = true };
-        var jobService = new FakeWeeklyReportJobService();
-        var service = CreateService(database.Context, repository, jobService, DateTimeOffset.Parse("2026-07-07T01:00:00Z"));
+        var repository = new FakeScheduleRepository(
+            CreateSchedule(true, DateTimeOffset.Parse("2026-07-07T00:00:00Z")));
+        var queue = new FakeWeeklyReportQueue();
+        var service = CreateService(database.Context, repository, queue);
 
         await service.ProcessDueSchedulesAsync();
+        await service.ProcessDueSchedulesAsync();
 
-        Assert.Equal(1, jobService.RequestCount);
-        Assert.Equal(1, repository.UpdateCount);
-        Assert.Null(repository.Schedule.LastRunKey);
+        Assert.Single(queue.Messages);
     }
 
     [Fact]
-    public async Task RepeatedTimerExecutionDoesNotRequestSameRunTwiceAfterMetadataUpdate()
+    public async Task SqlRepositoryConditionalClaimHasOnlyOneWinner()
     {
         await using var database = await TestDatabase.CreateAsync();
-        var dueAt = DateTimeOffset.Parse("2026-07-07T00:00:00Z");
-        var schedule = CreateSchedule(enabled: true, nextRunAtUtc: dueAt);
+        var now = DateTimeOffset.Parse("2026-07-07T01:00:00Z");
+        database.Context.Users.Add(new User
+        {
+            DisplayName = "Test",
+            Email = "test@example.com",
+            NormalizedEmail = "TEST@EXAMPLE.COM",
+            PasswordHash = "hash",
+            CreatedAtUtc = now,
+            UpdatedAtUtc = now,
+        });
+        await database.Context.SaveChangesAsync();
+        database.Context.WeeklyReportSchedules.Add(CreateSchedule(
+            true,
+            DateTimeOffset.Parse("2026-07-07T00:00:00Z")));
+        await database.Context.SaveChangesAsync();
+        var repository = new WeeklyReportScheduleSqlRepository(database.Context);
+
+        var first = await repository.ClaimDueAsync(now, now.AddMinutes(10), "timer-a", 100);
+        var second = await repository.ClaimDueAsync(now, now.AddMinutes(10), "timer-b", 100);
+
+        Assert.Single(first);
+        Assert.Empty(second);
+    }
+
+    [Fact]
+    public async Task SavingLaterTimeDoesNotScheduleAnAlreadySentPeriodAgain()
+    {
+        await using var database = await TestDatabase.CreateAsync();
+        var schedule = CreateSchedule(true, DateTimeOffset.Parse("2026-07-14T00:00:00Z"));
+        schedule.LastPeriodKey = "2026-06-30_2026-07-06";
         var repository = new FakeScheduleRepository(schedule);
-        var jobService = new FakeWeeklyReportJobService();
-        var service = CreateService(database.Context, repository, jobService, DateTimeOffset.Parse("2026-07-07T01:00:00Z"));
+        var service = CreateService(database.Context, repository, new FakeWeeklyReportQueue());
 
-        await service.ProcessDueSchedulesAsync();
-        await service.ProcessDueSchedulesAsync();
+        await service.SaveForUserAsync(
+            1,
+            new UpdateWeeklyReportScheduleRequestDto(
+                true,
+                "Tuesday",
+                "02:00",
+                "test@example.com",
+                "UTC"));
 
-        Assert.Equal(1, jobService.RequestCount);
+        Assert.Equal(
+            DateTimeOffset.Parse("2026-07-14T02:00:00Z"),
+            repository.Schedule.NextRunAtUtc);
     }
 
     private static WeeklyReportScheduleService CreateService(
         LiftBatteryDbContext context,
         IWeeklyReportScheduleRepository repository,
-        IWeeklyReportJobService jobService,
-        DateTimeOffset now)
+        IWeeklyReportQueue queue)
     {
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection()
+            .Build();
         return new WeeklyReportScheduleService(
             repository,
-            jobService,
+            queue,
             context,
-            new FixedTimeProvider(now),
+            new FixedTimeProvider(DateTimeOffset.Parse("2026-07-07T01:00:00Z")),
+            configuration,
             NullLogger<WeeklyReportScheduleService>.Instance);
     }
 
@@ -137,7 +168,7 @@ public sealed class WeeklyReportSchedulingServiceTests
             UserId = 1,
             Enabled = enabled,
             DayOfWeek = DayOfWeek.Tuesday,
-            TimeOfDay = new TimeOnly(0, 0),
+            LocalSendTime = new TimeOnly(0, 0),
             TimeZoneId = "UTC",
             RecipientEmail = "test@example.com",
             NextRunAtUtc = nextRunAtUtc,
@@ -148,119 +179,104 @@ public sealed class WeeklyReportSchedulingServiceTests
 
     private sealed class FakeScheduleRepository : IWeeklyReportScheduleRepository
     {
-        private static readonly ETag TestETag = new("\"test-etag\"");
-
         public FakeScheduleRepository(WeeklyReportSchedule schedule)
         {
             Schedule = schedule;
         }
 
         public WeeklyReportSchedule Schedule { get; private set; }
+        public int ReleaseCount { get; private set; }
 
-        public bool FailUpdates { get; init; }
-
-        public int UpdateCount { get; private set; }
-
-        public Task<WeeklyReportScheduleDocument?> GetByUserIdAsync(
+        public Task<WeeklyReportSchedule?> GetByUserIdAsync(
             int userId,
-            CancellationToken cancellationToken = default)
-        {
-            return Task.FromResult<WeeklyReportScheduleDocument?>(new WeeklyReportScheduleDocument(Schedule, TestETag));
-        }
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult<WeeklyReportSchedule?>(Schedule.UserId == userId ? Schedule : null);
+
+        public Task<WeeklyReportSchedule?> GetByIdAsync(
+            string scheduleId,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult<WeeklyReportSchedule?>(Schedule.ScheduleId == scheduleId ? Schedule : null);
 
         public Task<WeeklyReportSchedule> UpsertForUserAsync(
             WeeklyReportSchedule schedule,
-            ETag? etag = null,
             CancellationToken cancellationToken = default)
         {
             Schedule = schedule;
             return Task.FromResult(schedule);
         }
 
-        public Task<IReadOnlyList<WeeklyReportScheduleDocument>> GetEnabledAsync(
+        public Task<IReadOnlyList<WeeklyReportScheduleClaim>> ClaimDueAsync(
+            DateTimeOffset nowUtc,
+            DateTimeOffset leaseUntilUtc,
+            string dispatcherId,
+            int batchSize,
             CancellationToken cancellationToken = default)
         {
-            return Task.FromResult<IReadOnlyList<WeeklyReportScheduleDocument>>(
-                new[] { new WeeklyReportScheduleDocument(Schedule, TestETag) });
+            if (!Schedule.Enabled
+                || Schedule.NextRunAtUtc is null
+                || Schedule.NextRunAtUtc > nowUtc
+                || Schedule.LeaseUntilUtc >= nowUtc)
+            {
+                return Task.FromResult<IReadOnlyList<WeeklyReportScheduleClaim>>(Array.Empty<WeeklyReportScheduleClaim>());
+            }
+
+            var token = $"{dispatcherId}:claim";
+            Schedule.LeaseUntilUtc = leaseUntilUtc;
+            Schedule.ClaimedBy = token;
+            return Task.FromResult<IReadOnlyList<WeeklyReportScheduleClaim>>(
+                new[] { new WeeklyReportScheduleClaim(Schedule, token) });
         }
 
-        public Task<bool> TryUpdateAsync(
-            WeeklyReportSchedule schedule,
-            ETag etag,
+        public Task<bool> SetClaimedPeriodAsync(
+            string scheduleId,
+            string claimToken,
+            string periodKey,
             CancellationToken cancellationToken = default)
         {
-            UpdateCount++;
-
-            if (FailUpdates)
+            if (Schedule.ScheduleId != scheduleId || Schedule.ClaimedBy != claimToken)
             {
                 return Task.FromResult(false);
             }
 
-            Schedule = schedule;
+            Schedule.ClaimedPeriodKey = periodKey;
             return Task.FromResult(true);
+        }
+
+        public Task ReleaseClaimAsync(
+            string scheduleId,
+            string claimToken,
+            CancellationToken cancellationToken = default)
+        {
+            ReleaseCount++;
+            Schedule.LeaseUntilUtc = null;
+            Schedule.ClaimedBy = null;
+            Schedule.ClaimedPeriodKey = null;
+            return Task.CompletedTask;
         }
     }
 
-    private sealed class FakeWeeklyReportJobService : IWeeklyReportJobService
+    private sealed class FakeWeeklyReportQueue : IWeeklyReportQueue
     {
-        public int RequestCount { get; private set; }
+        public List<WeeklyReportQueueMessageDto> Messages { get; } = new();
+        public bool ThrowOnEnqueue { get; init; }
 
-        public bool ThrowOnRequest { get; init; }
-
-        public Task<WeeklyReportJobDto> RequestScheduledWeeklyReportAsync(
-            int userId,
-            string scheduleId,
-            DateTimeOffset scheduledForUtc,
-            string recipientEmail,
-            string timeZoneId,
-            CancellationToken cancellationToken = default)
-        {
-            RequestCount++;
-
-            if (ThrowOnRequest)
-            {
-                throw new InvalidOperationException("Request failed.");
-            }
-
-            return Task.FromResult(new WeeklyReportJobDto(
-                123,
-                userId,
-                scheduleId,
-                $"{scheduleId}:{scheduledForUtc:O}",
-                WeeklyReportConstants.ReportType,
-                "2026-06-30",
-                "2026-07-06",
-                scheduledForUtc,
-                WeeklyReportJobStatuses.Queued,
-                null,
-                scheduledForUtc,
-                scheduledForUtc,
-                scheduledForUtc,
-                null,
-                null));
-        }
-
-        public Task ProcessAsync(
+        public Task EnqueueAsync(
             WeeklyReportQueueMessageDto queueMessage,
             CancellationToken cancellationToken = default)
         {
-            throw new NotSupportedException();
+            if (ThrowOnEnqueue)
+            {
+                throw new InvalidOperationException("Queue unavailable.");
+            }
+
+            Messages.Add(queueMessage);
+            return Task.CompletedTask;
         }
     }
 
-    private sealed class FixedTimeProvider : TimeProvider
+    private sealed class FixedTimeProvider(DateTimeOffset now) : TimeProvider
     {
-        private readonly DateTimeOffset _now;
-
-        public FixedTimeProvider(DateTimeOffset now)
-        {
-            _now = now;
-        }
-
-        public override DateTimeOffset GetUtcNow()
-        {
-            return _now;
-        }
+        public override DateTimeOffset GetUtcNow() => now;
     }
 
     private sealed class TestDatabase : IAsyncDisposable
@@ -279,10 +295,10 @@ public sealed class WeeklyReportSchedulingServiceTests
         {
             var connection = new SqliteConnection("Data Source=:memory:");
             await connection.OpenAsync();
-            var options = new DbContextOptionsBuilder<LiftBatteryDbContext>()
-                .UseSqlite(connection)
-                .Options;
-            var context = new LiftBatteryDbContext(options);
+            var context = new LiftBatteryDbContext(
+                new DbContextOptionsBuilder<LiftBatteryDbContext>()
+                    .UseSqlite(connection)
+                    .Options);
             await context.Database.EnsureCreatedAsync();
             return new TestDatabase(connection, context);
         }
