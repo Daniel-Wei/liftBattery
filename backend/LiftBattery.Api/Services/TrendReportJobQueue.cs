@@ -38,9 +38,6 @@ public sealed class TrendReportJobQueue : ITrendReportJobQueue, IAsyncDisposable
         message.ApplicationProperties["runId"] = queueMessage.RunId;
         message.ApplicationProperties["jobId"] = queueMessage.JobId.ToString("N");
         message.ApplicationProperties["userId"] = queueMessage.UserId;
-        message.ApplicationProperties["periodStart"] = queueMessage.PeriodStart;
-        message.ApplicationProperties["periodEnd"] = queueMessage.PeriodEnd;
-        message.ApplicationProperties["dataVersion"] = queueMessage.DataVersion;
         await sender.SendMessageAsync(message, cancellationToken);
     }
 

@@ -34,38 +34,6 @@ public sealed class TrendReportPayloadBlobStore : ITrendReportPayloadStore
         });
     }
 
-    public Task<StoredTrendReportPayload> StoreSnapshotAsync(
-        int userId,
-        Guid jobId,
-        TrendReportReqSnapshot snapshot,
-        CancellationToken cancellationToken = default)
-    {
-        return StorePayloadAsync(
-            userId,
-            jobId,
-            payloadType: "snapshot",
-            snapshot,
-            cancellationToken);
-    }
-
-    public async Task<TrendReportReqSnapshot> LoadSnapshotAsync(
-        string blobName,
-        string expectedSha256,
-        CancellationToken cancellationToken = default)
-    {
-        if (string.IsNullOrWhiteSpace(expectedSha256))
-        {
-            throw new InvalidOperationException(
-                $"Trend report snapshot blob {blobName} has no stored SHA-256 hash.");
-        }
-
-        var content = await DownloadAndVerifyAsync(
-            blobName,
-            expectedSha256,
-            cancellationToken);
-        return DeserializePayload<TrendReportReqSnapshot>(content, blobName);
-    }
-
     public Task<StoredTrendReportPayload> StoreResultAsync(
         int userId,
         Guid jobId,
@@ -90,18 +58,6 @@ public sealed class TrendReportPayloadBlobStore : ITrendReportPayloadStore
             expectedSha256,
             cancellationToken);
         return DeserializePayload<TrendReportResultDto>(content, blobName);
-    }
-
-    public async Task DeleteIfExistsAsync(
-        string blobName,
-        CancellationToken cancellationToken = default)
-    {
-        cancellationToken.ThrowIfCancellationRequested();
-        await EnsureContainerAsync();
-        await _container.DeleteBlobIfExistsAsync(
-            blobName,
-            DeleteSnapshotsOption.IncludeSnapshots,
-            cancellationToken: cancellationToken);
     }
 
     private async Task<StoredTrendReportPayload> StorePayloadAsync<TPayload>(

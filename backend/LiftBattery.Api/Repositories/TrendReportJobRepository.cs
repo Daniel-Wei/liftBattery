@@ -89,35 +89,10 @@ public sealed class TrendReportJobRepository : ITrendReportJobRepository
 
     #region: Getters
 
-    public Task<TrendReportJob?> GetByIdAsync(
+    public async Task<TrendReportJob?> GetByIdAsync(
         int userId,
         Guid id,
         CancellationToken cancellationToken = default)
-    {
-        return GetByIdAsync(
-            userId,
-            id,
-            includeSnapshot: false,
-            cancellationToken);
-    }
-
-    public Task<TrendReportJob?> GetForProcessingAsync(
-        int userId,
-        Guid id,
-        CancellationToken cancellationToken = default)
-    {
-        return GetByIdAsync(
-            userId,
-            id,
-            includeSnapshot: true,
-            cancellationToken);
-    }
-
-    private async Task<TrendReportJob?> GetByIdAsync(
-        int userId,
-        Guid id,
-        bool includeSnapshot,
-        CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
 
@@ -129,10 +104,7 @@ public sealed class TrendReportJobRepository : ITrendReportJobRepository
                 GetJobPartitionKey(userId),
                 GetJobRowKey(id),
                 cancellationToken: cancellationToken);
-            return await ToModelAsync(
-                response.Value,
-                includeSnapshot,
-                cancellationToken);
+            return await ToModelAsync(response.Value, cancellationToken);
         }
         catch (RequestFailedException exception) when (exception.Status == HttpNotFoundStatusCode)
         {
@@ -162,7 +134,7 @@ public sealed class TrendReportJobRepository : ITrendReportJobRepository
 
             if (IsActiveStatus(jobEntity.Status))
             {
-                jobs.Add(await ToModelAsync(jobEntity, includeSnapshot: false, cancellationToken));
+                jobs.Add(await ToModelAsync(jobEntity, cancellationToken));
             }
         }
 
@@ -187,7 +159,7 @@ public sealed class TrendReportJobRepository : ITrendReportJobRepository
             maxPerPage: Math.Max(1, maxCount),
             cancellationToken: cancellationToken))
         {
-            jobs.Add(await ToModelAsync(jobEntity, includeSnapshot: false, cancellationToken));
+            jobs.Add(await ToModelAsync(jobEntity, cancellationToken));
 
             if (jobs.Count >= maxCount)
             {
@@ -246,10 +218,7 @@ public sealed class TrendReportJobRepository : ITrendReportJobRepository
             .OrderBy(entity => entity.UpdatedAtUtc)
             .Take(effectiveMaxCount))
         {
-            jobs.Add(await ToModelAsync(
-                entity,
-                includeSnapshot: false,
-                cancellationToken));
+            jobs.Add(await ToModelAsync(entity, cancellationToken));
         }
 
         return jobs;
@@ -433,7 +402,7 @@ public sealed class TrendReportJobRepository : ITrendReportJobRepository
                 cancellationToken);
 
             return canEnqueue
-                ? await ToModelAsync(entity, includeSnapshot: false, cancellationToken)
+                ? await ToModelAsync(entity, cancellationToken)
                 : null;
         }
         catch (RequestFailedException exception) when (exception.Status == HttpNotFoundStatusCode
@@ -590,6 +559,35 @@ public sealed class TrendReportJobRepository : ITrendReportJobRepository
             cancellationToken);
     }
 
+    public Task<bool> TryMarkFailedIfCurrentActiveAsync(
+        int userId,
+        Guid jobId,
+        string expectedRunId,
+        string expectedDataVersion,
+        string userMessage,
+        CancellationToken cancellationToken = default)
+    {
+        return TryUpdateEntityAsync(
+            userId,
+            jobId,
+            expectedRunId,
+            expectedDataVersion,
+            entity =>
+                entity.DataVersion == expectedDataVersion
+                && entity.RunId == expectedRunId
+                && IsActiveStatus(entity.Status),
+            (entity, now) =>
+            {
+                entity.Status = TrendReportJobStatuses.Failed;
+                entity.ProgressPercent = 0;
+                entity.CurrentStage = "Report generation cannot continue";
+                entity.ErrorMessage = userMessage;
+                entity.CompletedAtUtc = now;
+            },
+            operationName: TrendReportRepositoryActions.MarkFailed,
+            cancellationToken);
+    }
+
     private async Task<bool> TryUpdateEntityAsync(
         int userId,
         Guid jobId,
@@ -704,23 +702,6 @@ public sealed class TrendReportJobRepository : ITrendReportJobRepository
     #endregion
 
     #region: Private Helper Methods
-
-    private async Task TryDeleteUncommittedPayloadAsync(string blobName)
-    {
-        try
-        {
-            await _payloadStore.DeleteIfExistsAsync(blobName, CancellationToken.None);
-        }
-        catch (Exception exception)
-        {
-            // The failed Table transaction references no candidate payload. Cleanup is
-            // best-effort and must not hide the committed winner from the caller.
-            _logger.LogWarning(
-                exception,
-                "Failed to delete uncommitted trend report payload. BlobName={BlobName}.",
-                blobName);
-        }
-    }
 
     private Task EnsureTableAsync()
     {
@@ -926,17 +907,9 @@ public sealed class TrendReportJobRepository : ITrendReportJobRepository
         CreateJobState createState,
         CancellationToken cancellationToken)
     {
-        // Blob Storage and Table Storage cannot share a transaction. 
-        // Persist the immutable snapshot first so a committed Job never points to missing content.
-        var storedSnapshot = await _payloadStore.StoreSnapshotAsync(
-            createdJob.UserId,
-            createdJob.Id,
-            newJobCandidate.Snapshot,
-            cancellationToken);
         var transactionActions = BuildCreateTransactionActions(
             createdJob,
-            createState,
-            storedSnapshot);
+            createState);
 
         try
         {
@@ -950,10 +923,6 @@ public sealed class TrendReportJobRepository : ITrendReportJobRepository
         }
         catch (RequestFailedException exception) when (IsConcurrencyConflict(exception))
         {
-            // A 409/412 means this transaction committed no Table rows, so this
-            // candidate's JobId-scoped snapshot is unreferenced and can be removed.
-            await TryDeleteUncommittedPayloadAsync(storedSnapshot.BlobName);
-
             // The conflict can mean either that an identical-parameter tab won this
             // request's dedup row or that a different-parameter tab won the user-wide
             // active lease. Reloading the committed state distinguishes those outcomes.
@@ -964,9 +933,6 @@ public sealed class TrendReportJobRepository : ITrendReportJobRepository
         }
         catch (RequestFailedException exception)
         {
-            // A non-concurrency response can be ambiguous after transport failure. Keep
-            // the snapshot rather than risk deleting content referenced by a committed
-            // transaction; retention cleanup can remove an actual orphan later.
             LogCreateOrGetFailure(
                 exception,
                 newJobCandidate,
@@ -977,8 +943,7 @@ public sealed class TrendReportJobRepository : ITrendReportJobRepository
 
     private IReadOnlyList<TableTransactionAction> BuildCreateTransactionActions(
         TrendReportJob createdJob,
-        CreateJobState createState,
-        StoredTrendReportPayload storedSnapshot)
+        CreateJobState createState)
     {
         var now = DateTimeOffset.UtcNow;
         var actions = new List<TableTransactionAction>();
@@ -1008,7 +973,7 @@ public sealed class TrendReportJobRepository : ITrendReportJobRepository
 
         actions.Add(new TableTransactionAction(
             TableTransactionActionType.Add,
-            ToEntity(createdJob, storedSnapshot)));
+            ToEntity(createdJob)));
         actions.Add(new TableTransactionAction(
             TableTransactionActionType.Add,
             ToActiveJobLease(
@@ -1232,7 +1197,6 @@ public sealed class TrendReportJobRepository : ITrendReportJobRepository
             Request: newJob.Request,
             RunId: runId,
             DataVersion: newJob.DataVersion,
-            Snapshot: newJob.Snapshot,
             Result: null,
             ErrorMessage: null,
             CreatedAtUtc: now,
@@ -1291,9 +1255,7 @@ public sealed class TrendReportJobRepository : ITrendReportJobRepository
             newJob.DataVersion);
     }
 
-    private TrendReportJobEntity ToEntity(
-        TrendReportJob job,
-        StoredTrendReportPayload storedSnapshot)
+    private TrendReportJobEntity ToEntity(TrendReportJob job)
     {
         return new TrendReportJobEntity
         {
@@ -1306,8 +1268,6 @@ public sealed class TrendReportJobRepository : ITrendReportJobRepository
             RunId = job.RunId,
             DataVersion = job.DataVersion,
             RequestJson = JsonSerializer.Serialize(job.Request, _jsonOptions),
-            SnapshotBlobName = storedSnapshot.BlobName,
-            SnapshotHash = storedSnapshot.Sha256,
             ResultBlobName = null,
             ErrorMessage = job.ErrorMessage,
             EnqueueRecoveryAttemptCount = 0,
@@ -1322,17 +1282,10 @@ public sealed class TrendReportJobRepository : ITrendReportJobRepository
 
     private async Task<TrendReportJob> ToModelAsync(
         TrendReportJobEntity entity,
-        bool includeSnapshot,
         CancellationToken cancellationToken)
     {
         var request = JsonSerializer.Deserialize<TrendReportRequest>(entity.RequestJson, _jsonOptions)
             ?? throw new InvalidOperationException("Report job request is invalid.");
-        var snapshot = includeSnapshot
-            ? await _payloadStore.LoadSnapshotAsync(
-                entity.SnapshotBlobName,
-                entity.SnapshotHash,
-                cancellationToken)
-            : null;
         var result = string.IsNullOrWhiteSpace(entity.ResultBlobName)
             ? null
             : await _payloadStore.LoadResultAsync(
@@ -1354,7 +1307,6 @@ public sealed class TrendReportJobRepository : ITrendReportJobRepository
             request,
             entity.RunId,
             entity.DataVersion,
-            snapshot,
             result,
             entity.ErrorMessage,
             entity.CreatedAtUtc,

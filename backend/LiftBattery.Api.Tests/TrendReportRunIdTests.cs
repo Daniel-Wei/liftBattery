@@ -13,12 +13,12 @@ public sealed class TrendReportRunIdTests
         Guid.Parse("00000000-0000-0000-0000-000000000123");
 
     [Fact]
-    public async Task SubmitAsyncReturnsNoDataWithoutCreatingJobWhenSnapshotIsEmpty()
+    public async Task SubmitAsyncReturnsNoDataWithoutCreatingJobWhenDataVersionIsMissing()
     {
         var jobRepository = new FakeTrendReportJobRepository();
         var sourceDataRepository = new FakeTrendReportSourceDataRepository
         {
-            CurrentDataVersion = "v1",
+            CurrentDataVersion = null,
         };
         var queue = new FakeTrendReportJobQueue();
         var service = CreateService(
@@ -32,30 +32,31 @@ public sealed class TrendReportRunIdTests
         Assert.Contains("No training or pre-check data", exception.Message);
         Assert.Null(jobRepository.CreatedJob);
         Assert.Equal(0, queue.EnqueueCount);
-        Assert.Equal(1, sourceDataRepository.CaptureCallCount);
-        Assert.Equal(0, sourceDataRepository.CurrentDataVersionReadCallCount);
+        Assert.Equal(0, sourceDataRepository.CaptureCallCount);
+        Assert.Equal(1, sourceDataRepository.CurrentDataVersionReadCallCount);
     }
 
     [Fact]
-    public async Task SubmitAsyncFailsWhenSourceDataExistsWithoutDataVersion()
+    public async Task SubmitAsyncCreatesLightweightJobWithoutCapturingSourceRows()
     {
         var jobRepository = new FakeTrendReportJobRepository();
         var sourceDataRepository = new FakeTrendReportSourceDataRepository
         {
-            CurrentDataVersion = null,
+            CurrentDataVersion = "v1",
         };
         sourceDataRepository.TrainingDays.Add(CreateTrainingDay());
+        var queue = new FakeTrendReportJobQueue();
         var service = CreateService(
             jobRepository,
-            new FakeTrendReportJobQueue(),
+            queue,
             sourceDataRepository: sourceDataRepository);
 
-        var exception = await Assert.ThrowsAsync<InvalidOperationException>(
-            () => service.SubmitAsync(1, CreateRequest()));
+        await service.SubmitAsync(1, CreateRequest());
 
-        Assert.Contains("no DataVersion was found", exception.Message);
-        Assert.Null(jobRepository.CreatedJob);
-        Assert.Equal(1, sourceDataRepository.CaptureCallCount);
+        Assert.NotNull(jobRepository.CreatedJob);
+        Assert.Equal(1, queue.EnqueueCount);
+        Assert.Equal(0, sourceDataRepository.CaptureCallCount);
+        Assert.Equal(1, sourceDataRepository.CurrentDataVersionReadCallCount);
     }
 
     [Fact]
@@ -160,7 +161,8 @@ public sealed class TrendReportRunIdTests
         Assert.StartsWith("trend-report:", jobRepository.CreatedJob.RunId);
         Assert.Equal(jobRepository.CreatedJob.RunId, queue.EnqueuedMessage.RunId);
         Assert.Equal(jobRepository.CreatedJob.RunId, dto.RunId);
-        Assert.Equal(1, sourceDataRepository.CaptureCallCount);
+        Assert.Equal(0, sourceDataRepository.CaptureCallCount);
+        Assert.Equal(1, sourceDataRepository.CurrentDataVersionReadCallCount);
     }
 
     [Fact]
@@ -328,10 +330,9 @@ public sealed class TrendReportRunIdTests
         var service = CreateService(jobRepository, new FakeTrendReportJobQueue());
 
         await service.ProcessAsync(
-            CreateQueueMessage(runId: "trend-report:stale", dataVersion: "v1"));
+            CreateQueueMessage(runId: "trend-report:stale"));
 
         Assert.Equal(0, jobRepository.TryStartProcessingCallCount);
-        Assert.Equal(0, jobRepository.GetForProcessingCallCount);
     }
 
     [Fact]
@@ -351,11 +352,61 @@ public sealed class TrendReportRunIdTests
         var service = CreateService(jobRepository, new FakeTrendReportJobQueue(), sourceDataRepository: sourceDataRepository);
 
         await service.ProcessAsync(
-            CreateQueueMessage(runId: "trend-report:stale-data", dataVersion: "v1"));
+            CreateQueueMessage(runId: "trend-report:stale-data"));
 
         Assert.Equal(TrendReportJobStatuses.Superseded, jobRepository.Job?.Status);
         Assert.Equal(0, jobRepository.TryStartProcessingCallCount);
-        Assert.Equal(0, jobRepository.GetForProcessingCallCount);
+        Assert.Equal(1, sourceDataRepository.CaptureCallCount);
+        Assert.Equal(0, sourceDataRepository.CurrentDataVersionReadCallCount);
+    }
+
+    [Fact]
+    public async Task ProcessAsyncMarksJobFailedWhenSelectedPeriodHasNoSourceData()
+    {
+        var jobRepository = new FakeTrendReportJobRepository
+        {
+            Job = CreateJob(runId: "trend-report:no-data", dataVersion: "v1"),
+        };
+        var sourceDataRepository = new FakeTrendReportSourceDataRepository
+        {
+            CurrentDataVersion = "v1",
+        };
+        var service = CreateService(
+            jobRepository,
+            new FakeTrendReportJobQueue(),
+            sourceDataRepository: sourceDataRepository);
+
+        await service.ProcessAsync(CreateQueueMessage(runId: "trend-report:no-data"));
+
+        Assert.Equal(TrendReportJobStatuses.Failed, jobRepository.Job?.Status);
+        Assert.Contains("No training or pre-check data", jobRepository.Job?.ErrorMessage);
+        Assert.Equal(0, jobRepository.TryStartProcessingCallCount);
+        Assert.Equal(1, sourceDataRepository.CaptureCallCount);
+        Assert.Equal(0, sourceDataRepository.CurrentDataVersionReadCallCount);
+    }
+
+    [Fact]
+    public async Task ProcessAsyncDiscardsResultWhenSqlDataVersionChangesDuringGeneration()
+    {
+        var jobRepository = new FakeTrendReportJobRepository
+        {
+            Job = CreateJob(runId: "trend-report:changed-during-run", dataVersion: "v1"),
+            TryCompleteResult = true,
+        };
+        var sourceDataRepository = CreatePopulatedSourceDataRepository();
+        sourceDataRepository.DataVersionAfterCapture = "v2";
+        var service = CreateService(
+            jobRepository,
+            new FakeTrendReportJobQueue(),
+            sourceDataRepository: sourceDataRepository);
+
+        await service.ProcessAsync(
+            CreateQueueMessage(runId: "trend-report:changed-during-run"));
+
+        Assert.Equal(TrendReportJobStatuses.Superseded, jobRepository.Job?.Status);
+        Assert.Null(jobRepository.Job?.Result);
+        Assert.Equal(1, sourceDataRepository.CaptureCallCount);
+        Assert.Equal(1, sourceDataRepository.CurrentDataVersionReadCallCount);
     }
 
     [Fact]
@@ -366,14 +417,19 @@ public sealed class TrendReportRunIdTests
             Job = CreateJob(runId: "trend-report:current", dataVersion: "v1"),
             TryStartProcessingResult = false,
         };
-        var service = CreateService(jobRepository, new FakeTrendReportJobQueue());
+        var sourceDataRepository = CreatePopulatedSourceDataRepository();
+        var service = CreateService(
+            jobRepository,
+            new FakeTrendReportJobQueue(),
+            sourceDataRepository: sourceDataRepository);
 
         await service.ProcessAsync(
-            CreateQueueMessage(runId: "trend-report:current", dataVersion: "v1"));
+            CreateQueueMessage(runId: "trend-report:current"));
 
         Assert.Equal(1, jobRepository.TryStartProcessingCallCount);
-        Assert.Equal(1, jobRepository.GetForProcessingCallCount);
         Assert.Equal("trend-report:current", jobRepository.LastExpectedRunId);
+        Assert.Equal(1, sourceDataRepository.CaptureCallCount);
+        Assert.Equal(1, sourceDataRepository.CurrentDataVersionReadCallCount);
     }
 
     [Fact]
@@ -389,7 +445,7 @@ public sealed class TrendReportRunIdTests
 
         await Assert.ThrowsAsync<InvalidOperationException>(() =>
             service.ProcessAsync(
-                CreateQueueMessage(runId: "trend-report:retry", dataVersion: "v1")));
+                CreateQueueMessage(runId: "trend-report:retry")));
 
         Assert.Equal(TrendReportJobStatuses.Processing, jobRepository.Job?.Status);
         Assert.Equal(0, jobRepository.MarkTimedOutCallCount);
@@ -410,7 +466,7 @@ public sealed class TrendReportRunIdTests
         var service = CreateService(jobRepository, new FakeTrendReportJobQueue());
 
         await service.ProcessAsync(
-            CreateQueueMessage(runId: "trend-report:retry", dataVersion: "v1"));
+            CreateQueueMessage(runId: "trend-report:retry"));
 
         Assert.Equal(TrendReportJobStatuses.Completed, jobRepository.Job?.Status);
         Assert.Equal(1, jobRepository.TryStartProcessingCallCount);
@@ -429,7 +485,7 @@ public sealed class TrendReportRunIdTests
         var service = CreateService(jobRepository, new FakeTrendReportJobQueue());
 
         await service.ProcessAsync(
-            CreateQueueMessage(runId: "trend-report:race", dataVersion: "v1"));
+            CreateQueueMessage(runId: "trend-report:race"));
 
         Assert.Equal(TrendReportJobStatuses.Completed, jobRepository.Job?.Status);
     }
@@ -658,18 +714,12 @@ public sealed class TrendReportRunIdTests
             null);
     }
 
-    private static TrendReportQueueMessageDto CreateQueueMessage(
-        string runId,
-        string dataVersion)
+    private static TrendReportQueueMessageDto CreateQueueMessage(string runId)
     {
         return new TrendReportQueueMessageDto(
             JobId: DefaultJobId,
             RunId: runId,
-            UserId: 1,
-            PeriodStart: "2026-07-06",
-            PeriodEnd: "2026-07-12",
-            DataVersion: dataVersion,
-            RequestedAtUtc: DateTimeOffset.Parse("2026-07-06T00:00:00Z"));
+            UserId: 1);
     }
 
     private static TrendReportJob CreateJob(
@@ -692,9 +742,6 @@ public sealed class TrendReportRunIdTests
                 null),
             RunId: runId,
             DataVersion: dataVersion,
-            Snapshot: new TrendReportReqSnapshot(
-                Array.Empty<TrainingDayModel>(),
-                Array.Empty<PreCheckModel>()),
             Result: null,
             ErrorMessage: null,
             CreatedAtUtc: now,
@@ -717,7 +764,6 @@ public sealed class TrendReportRunIdTests
         public int MarkTimedOutCallCount { get; private set; }
         public bool CompleteBeforeTimeoutUpdate { get; set; }
         public int EnqueueRecoveryAttemptCount { get; private set; }
-        public int GetForProcessingCallCount { get; private set; }
         public string? LastExpectedRunId { get; private set; }
 
 
@@ -772,7 +818,6 @@ public sealed class TrendReportRunIdTests
                     Request: newJob.Request,
                     RunId: newJob.RunId,
                     DataVersion: newJob.DataVersion,
-                    Snapshot: newJob.Snapshot,
                     Result: null,
                     ErrorMessage: null,
                     CreatedAtUtc: now,
@@ -855,15 +900,6 @@ public sealed class TrendReportRunIdTests
                 .SingleOrDefault(candidate => candidate.UserId == userId && candidate.Id == id);
             return Task.FromResult<TrendReportJob?>(job);
         }
-        public Task<TrendReportJob?> GetForProcessingAsync(
-            int userId,
-            Guid id,
-            CancellationToken cancellationToken = default)
-        {
-            GetForProcessingCallCount++;
-            return GetByIdAsync(userId, id, cancellationToken);
-        }
-
         public Task<bool> TryMarkCancelledIfActiveAsync(
             int userId,
             Guid jobId,
@@ -1165,6 +1201,36 @@ public sealed class TrendReportRunIdTests
             return Task.FromResult(true);
         }
 
+        public Task<bool> TryMarkFailedIfCurrentActiveAsync(
+            int userId,
+            Guid jobId,
+            string expectedRunId,
+            string expectedDataVersion,
+            string userMessage,
+            CancellationToken cancellationToken = default)
+        {
+            if (Job is null
+                || Job.UserId != userId
+                || Job.Id != jobId
+                || Job.RunId != expectedRunId
+                || Job.DataVersion != expectedDataVersion
+                || !IsActiveStatus(Job.Status))
+            {
+                return Task.FromResult(false);
+            }
+
+            var now = DateTimeOffset.UtcNow;
+            Job = Job with
+            {
+                Status = TrendReportJobStatuses.Failed,
+                CurrentStage = "Report generation cannot continue",
+                ErrorMessage = userMessage,
+                CompletedAtUtc = now,
+                UpdatedAtUtc = now,
+            };
+            return Task.FromResult(true);
+        }
+
         private static bool IsActiveStatus(string status)
         {
             return status is TrendReportJobStatuses.EnqueuePending
@@ -1200,6 +1266,7 @@ public sealed class TrendReportRunIdTests
         public List<TrainingDayModel> TrainingDays { get; } = new();
         public List<PreCheckModel> PreCheckLogs { get; } = new();
         public string? CurrentDataVersion { get; set; }
+        public string? DataVersionAfterCapture { get; set; }
         public int CaptureCallCount { get; private set; }
         public int CurrentDataVersionReadCallCount { get; private set; }
 
@@ -1219,9 +1286,11 @@ public sealed class TrendReportRunIdTests
             CancellationToken cancellationToken = default)
         {
             CaptureCallCount++;
-            return Task.FromResult(new TrendReportSourceDataCapture(
+            var capture = new TrendReportSourceDataCapture(
                 CurrentDataVersion,
-                new TrendReportReqSnapshot(TrainingDays, PreCheckLogs)));
+                new TrendReportReqSnapshot(TrainingDays, PreCheckLogs));
+            CurrentDataVersion = DataVersionAfterCapture ?? CurrentDataVersion;
+            return Task.FromResult(capture);
         }
 
         public Task<string?> GetCurrentDataVersionAsync(

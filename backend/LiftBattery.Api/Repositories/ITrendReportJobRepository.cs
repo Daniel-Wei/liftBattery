@@ -26,10 +26,6 @@ public interface ITrendReportJobRepository
         int maxCount,
         CancellationToken cancellationToken = default);
     Task<TrendReportJob?> GetByIdAsync(int userId, Guid id, CancellationToken cancellationToken = default);
-    Task<TrendReportJob?> GetForProcessingAsync(
-        int userId,
-        Guid id,
-        CancellationToken cancellationToken = default);
     Task<bool> TryMarkCancelledIfActiveAsync(
         int userId,
         Guid jobId,
@@ -94,6 +90,13 @@ public interface ITrendReportJobRepository
         Guid jobId,
         string expectedDataVersion,
         CancellationToken cancellationToken = default);
+    Task<bool> TryMarkFailedIfCurrentActiveAsync(
+        int userId,
+        Guid jobId,
+        string expectedRunId,
+        string expectedDataVersion,
+        string userMessage,
+        CancellationToken cancellationToken = default);
 
 }
 
@@ -105,6 +108,7 @@ public enum TrendReportRepositoryActions
     MarkCancelled,
     MarkQueued,
     MarkCompleted,
+    MarkFailed,
     RecordInitialEnqueueFailure,
     BeginEnqueueRecoveryAttempt,
     RecordEnqueueRecoveryFailure,

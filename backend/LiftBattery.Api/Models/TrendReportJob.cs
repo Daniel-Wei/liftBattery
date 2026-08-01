@@ -28,8 +28,7 @@ public sealed record NewTrendReportJob(
     string CurrentStage,
     TrendReportRequest Request,
     string RunId,
-    string DataVersion,
-    TrendReportReqSnapshot Snapshot);
+    string DataVersion);
 
 public sealed record TrendReportJob(
     Guid Id,
@@ -40,7 +39,6 @@ public sealed record TrendReportJob(
     TrendReportRequest Request,
     string RunId,
     string DataVersion,
-    TrendReportReqSnapshot? Snapshot,
     TrendReportResultDto? Result,
     string? ErrorMessage,
     DateTimeOffset CreatedAtUtc,

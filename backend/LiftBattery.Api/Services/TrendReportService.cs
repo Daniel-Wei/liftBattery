@@ -51,9 +51,9 @@ public sealed class TrendReportService : ITrendReportService
     }
 
     // Synchronous submission path:
-    // 1. validate the request and capture a submission-time data snapshot
+    // 1. validate the request and read the current authoritative SQL DataVersion
     // 2. persist the initial EnqueuePending job in Azure Table Storage
-    // 3. enqueue a compact job command for background processing
+    // 3. enqueue a compact trigger; the worker captures source data when execution starts
     public async Task<TrendReportJobDto> SubmitAsync(
         int userId,
         CreateTrendReportRequestDto createTrendReportReqDTO,
@@ -64,21 +64,12 @@ public sealed class TrendReportService : ITrendReportService
         // Validate and normalize the request DTO.
         var validatedTrendReportReq = ValidateRequest(createTrendReportReqDTO);
 
-        // Capture the version and both source collections from one SQL snapshot.
-        // This prevents a concurrent CRUD from producing old data labelled with a
-        // newer DataVersion (or a mixed Training/PreCheck snapshot).
-        var (snapshotStart, rangeEnd) = GetSnapshotRange(validatedTrendReportReq);
-        var sourceDataCapture = await _sourceDataRepository.CaptureSnapshotAsync(
-            userId,
-            snapshotStart,
-            rangeEnd,
-            cancellationToken);
-
-        var trendReportReqSnapshot = sourceDataCapture.Snapshot;
-        EnsureSnapshotHasData(trendReportReqSnapshot);
-        var trendReportReqDataVersion = RequireCapturedDataVersion(
-            userId,
-            sourceDataCapture.DataVersion);
+        // DataVersion is part of the durable Job identity and dedup key. Source rows
+        // are deliberately not loaded or copied into the Job during submission.
+        var trendReportReqDataVersion = RequireCurrentDataVersion(
+            await _sourceDataRepository.GetCurrentDataVersionAsync(
+                userId,
+                cancellationToken));
 
         var runId = CreateRunId();
         var newJobCandidate = new NewTrendReportJob(
@@ -86,9 +77,7 @@ public sealed class TrendReportService : ITrendReportService
             "正在提交后台队列",
             validatedTrendReportReq,
             runId,
-            trendReportReqDataVersion,
-            // The request stores the selected report period; the snapshot stores database data at submission time.
-            trendReportReqSnapshot);
+            trendReportReqDataVersion);
 
         var createResult = await _trendReportJobRepo.CreateOrGetAsync(
             newJobCandidate,
@@ -127,18 +116,22 @@ public sealed class TrendReportService : ITrendReportService
     {
         cancellationToken.ThrowIfCancellationRequested();
 
-        var jobId = queueMessageDTO.JobId;
-
-        // Service Bus delivery is at-least-once. 
-        // Duplicate deliveries may compute the same immutable snapshot, but only one ETag-protected terminal update can win.
+        // Service Bus delivery is at-least-once. Duplicate deliveries may recapture
+        // the same SQL generation, but only one ETag-protected terminal update can win.
         try
         {
-            var job = await GetProcessableJobAsync(
-                queueMessageDTO,
-                includeSnapshot: true,
-                cancellationToken);
+            var job = await GetActiveJobForMessageAsync(queueMessageDTO, cancellationToken);
 
             if (job is null)
+            {
+                return;
+            }
+
+            // Version check 1 and both source-data reads share one SQL snapshot
+            // transaction. The returned in-memory snapshot therefore cannot mix data
+            // from different CRUD commits or label old rows with a newer version.
+            var snapshot = await CaptureCurrentSnapshotAsync(job, cancellationToken);
+            if (snapshot is null)
             {
                 return;
             }
@@ -147,36 +140,40 @@ public sealed class TrendReportService : ITrendReportService
             // Losing this best-effort transition is harmless: 
             // another delivery may have started it, and final persistence still checks JobId, RunId, DataVersion, status, and ETag.
             await _trendReportJobRepo.TryStartProcessingAsync(
-                queueMessageDTO.UserId,
-                jobId,
-                queueMessageDTO.RunId,
-                queueMessageDTO.DataVersion,
+                job.UserId,
+                job.Id,
+                job.RunId,
+                job.DataVersion,
                 cancellationToken);
 
             await DelayForDemoAsync(cancellationToken);
 
-            if (await GetProcessableJobAsync(queueMessageDTO, cancellationToken: cancellationToken) is null)
+            // TryStartProcessingAsync may lose either to another delivery or to a
+            // terminal writer. Reloading Table state distinguishes the harmless first
+            // case from cancellation/supersession without another SQL version read.
+            if (await GetActiveJobForMessageAsync(queueMessageDTO, cancellationToken) is null)
             {
                 return;
             }
 
-            var snapshot = job.Snapshot
-                ?? throw new InvalidOperationException(
-                    $"Trend report job {job.Id} was loaded for processing without its snapshot.");
             var result = GenerateResult(job.Request, snapshot);
 
             await DelayForDemoAsync(cancellationToken);
 
-            if (await GetProcessableJobAsync(queueMessageDTO, cancellationToken: cancellationToken) is null)
+            var jobBeforeCompletion = await GetActiveJobForMessageAsync(
+                queueMessageDTO,
+                cancellationToken);
+            if (jobBeforeCompletion is null
+                || !await HasCurrentDataVersionAsync(jobBeforeCompletion, cancellationToken))
             {
                 return;
             }
 
             await _trendReportJobRepo.TryCompleteIfCurrentActiveAsync(
-                queueMessageDTO.UserId,
-                job.Id,
-                queueMessageDTO.RunId,
-                queueMessageDTO.DataVersion,
+                jobBeforeCompletion.UserId,
+                jobBeforeCompletion.Id,
+                jobBeforeCompletion.RunId,
+                jobBeforeCompletion.DataVersion,
                 result,
                 cancellationToken);
         }
@@ -322,11 +319,7 @@ public sealed class TrendReportService : ITrendReportService
         return new TrendReportQueueMessageDto(
             job.Id,
             job.RunId,
-            job.UserId,
-            job.Request.StartWeek.ToString("yyyy-MM-dd"),
-            job.Request.EndWeek.AddDays(6).ToString("yyyy-MM-dd"),
-            job.DataVersion,
-            job.CreatedAtUtc);
+            job.UserId);
     }
 
     private async Task<TrendReportJob> PublishNewJobAsync(
@@ -411,23 +404,21 @@ public sealed class TrendReportService : ITrendReportService
     {
         return $"trend-report:{Guid.NewGuid():N}";
     }
-    private async Task<TrendReportJob?> GetProcessableJobAsync(
+    private async Task<TrendReportJob?> GetActiveJobForMessageAsync(
         TrendReportQueueMessageDto message,
-        bool includeSnapshot = false,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
 
-        // Validate the lightweight Table state before downloading a potentially large
-        // snapshot. Stale or terminal deliveries must remain cheap idempotent no-ops.
+        // Service Bus carries only a lightweight trigger. The durable Job row owns the
+        // request and captured DataVersion; RunId rejects a delivery for another run.
         var latestJob = await _trendReportJobRepo.GetByIdAsync(
             message.UserId,
             message.JobId,
             cancellationToken);
 
         if (latestJob is null
-            || latestJob.RunId != message.RunId
-            || latestJob.DataVersion != message.DataVersion)
+            || latestJob.RunId != message.RunId)
         {
             // The Job was removed or this message belongs to another persisted run.
             // Completing this stale delivery is safe because it cannot produce a result
@@ -452,58 +443,72 @@ public sealed class TrendReportService : ITrendReportService
                 $"Trend report job {latestJob.Id} has unsupported processing status '{latestJob.Status}'.");
         }
 
-        var currentUserDataVersion = await _sourceDataRepository
-            .GetCurrentDataVersionAsync(
-                latestJob.UserId,
-                cancellationToken);
+        return latestJob;
+    }
 
-        if (latestJob.DataVersion != currentUserDataVersion)
-        {
-            await _trendReportJobRepo.TryMarkSupersededIfCurrentAsync(
-                latestJob.UserId,
-                latestJob.RunId,
-                latestJob.Id,
-                latestJob.DataVersion,
-                cancellationToken);
-
-            return null;
-        }
-
-        if (!includeSnapshot)
-        {
-            return latestJob;
-        }
-
-        // Re-read the exact run with its verified Blob payload only after the cheap
-        // identity, terminal-state, and DataVersion checks above have passed.
-        var jobWithSnapshot = await _trendReportJobRepo.GetForProcessingAsync(
-            message.UserId,
-            message.JobId,
+    private async Task<TrendReportReqSnapshot?> CaptureCurrentSnapshotAsync(
+        TrendReportJob job,
+        CancellationToken cancellationToken)
+    {
+        var (snapshotStart, rangeEnd) = GetSnapshotRange(job.Request);
+        var sourceDataCapture = await _sourceDataRepository.CaptureSnapshotAsync(
+            job.UserId,
+            snapshotStart,
+            rangeEnd,
             cancellationToken);
 
-        if (jobWithSnapshot is null
-            || jobWithSnapshot.RunId != message.RunId
-            || jobWithSnapshot.DataVersion != message.DataVersion)
+        if (!string.Equals(
+                job.DataVersion,
+                sourceDataCapture.DataVersion,
+                StringComparison.Ordinal))
         {
+            await _trendReportJobRepo.TryMarkSupersededIfCurrentAsync(
+                job.UserId,
+                job.RunId,
+                job.Id,
+                job.DataVersion,
+                cancellationToken);
             return null;
         }
 
-        if (jobWithSnapshot.Status is TrendReportJobStatuses.Completed
-            or TrendReportJobStatuses.Failed
-            or TrendReportJobStatuses.Cancelled
-            or TrendReportJobStatuses.Superseded)
+        if (!SnapshotHasData(sourceDataCapture.Snapshot))
         {
-            // A terminal writer won between the metadata read and payload read.
+            await _trendReportJobRepo.TryMarkFailedIfCurrentActiveAsync(
+                job.UserId,
+                job.Id,
+                job.RunId,
+                job.DataVersion,
+                "No training or pre-check data was found for the selected report period.",
+                cancellationToken);
             return null;
         }
 
-        if (!IsActiveJobStatus(jobWithSnapshot.Status))
+        return sourceDataCapture.Snapshot;
+    }
+
+    private async Task<bool> HasCurrentDataVersionAsync(
+        TrendReportJob job,
+        CancellationToken cancellationToken)
+    {
+        var currentUserDataVersion = await _sourceDataRepository.GetCurrentDataVersionAsync(
+            job.UserId,
+            cancellationToken);
+
+        if (string.Equals(
+                job.DataVersion,
+                currentUserDataVersion,
+                StringComparison.Ordinal))
         {
-            throw new InvalidOperationException(
-                $"Trend report job {jobWithSnapshot.Id} has unsupported processing status '{jobWithSnapshot.Status}'.");
+            return true;
         }
 
-        return jobWithSnapshot;
+        await _trendReportJobRepo.TryMarkSupersededIfCurrentAsync(
+            job.UserId,
+            job.RunId,
+            job.Id,
+            job.DataVersion,
+            cancellationToken);
+        return false;
     }
 
     private Task DelayForDemoAsync(CancellationToken cancellationToken)
@@ -520,6 +525,12 @@ public sealed class TrendReportService : ITrendReportService
             userId,
             snapshotStart,
             rangeEnd);
+        if (!SnapshotHasData(sourceDataCapture.Snapshot))
+        {
+            throw new TrendReportNoDataException(
+                "No training or pre-check data was found for the selected report period.");
+        }
+
         return sourceDataCapture.Snapshot;
     }
 
@@ -1029,24 +1040,20 @@ public sealed class TrendReportService : ITrendReportService
         return first >= second ? first : second;
     }
 
-    private static void EnsureSnapshotHasData(TrendReportReqSnapshot snapshot)
+    private static bool SnapshotHasData(TrendReportReqSnapshot snapshot)
     {
-        if (snapshot.TrainingDays.Count == 0 && snapshot.PreCheckLogs.Count == 0)
-        {
-            throw new TrendReportNoDataException(
-                "No training or pre-check data was found for the selected report period.");
-        }
+        return snapshot.TrainingDays.Count > 0 || snapshot.PreCheckLogs.Count > 0;
     }
 
-    private static string RequireCapturedDataVersion(int userId, string? storedDataVersion)
+    private static string RequireCurrentDataVersion(string? currentDataVersion)
     {
-        if (!string.IsNullOrWhiteSpace(storedDataVersion))
+        if (!string.IsNullOrWhiteSpace(currentDataVersion))
         {
-            return storedDataVersion;
+            return currentDataVersion;
         }
 
-        throw new InvalidOperationException(
-            $"Trend report source data exists for user {userId}, but no DataVersion was found.");
+        throw new TrendReportNoDataException(
+            "No training or pre-check data has been stored yet.");
     }
 
     private static void ValidateUserId(int userId)

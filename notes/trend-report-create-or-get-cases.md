@@ -15,7 +15,7 @@ All rows for a user share one Azure Table partition so creation can use one atom
 
 | Row | RowKey | Stored purpose |
 | --- | --- | --- |
-| Job | `JobId` as GUID text | Durable state, request, RunId, DataVersion, snapshot/result Blob pointers |
+| Job | `JobId` as GUID text | Durable state, request, RunId, DataVersion, and result Blob pointer |
 | Dedup | `dedup:` + SHA-256 | Points the exact logical request to `JobId` |
 | ActiveLease | one fixed RowKey | Points the user's single active slot to `JobId + RunId` |
 
@@ -153,7 +153,7 @@ This is not background replacement: the terminal Job remains terminal until the 
 
 ## Phase 3: atomic create
 
-The immutable snapshot is stored in Blob Storage first. The Table transaction then writes:
+No source-data snapshot is stored during creation. The Table transaction writes only lightweight coordination state:
 
 ```csharp
 // Add a new dedup row, or ETag-update the existing terminal request's pointer.
@@ -162,7 +162,7 @@ actions.Add(dedupAction);
 // New Job always starts as EnqueuePending.
 actions.Add(new TableTransactionAction(
     TableTransactionActionType.Add,
-    ToEntity(createdJob, storedSnapshot)));
+    ToEntity(createdJob)));
 
 // Fixed RowKey enforces at most one active Job for this user.
 actions.Add(new TableTransactionAction(
@@ -174,7 +174,7 @@ Because all Table actions share one partition, either Dedup + Job + ActiveLease 
 
 ## Concurrent create conflict
 
-A `409` or `412` means the candidate transaction wrote no Table rows. The candidate snapshot Blob is deleted, and committed state is reloaded once:
+A `409` or `412` means the candidate transaction wrote no Table rows. Committed state is reloaded once:
 
 ```csharp
 var latestState = await LoadCreateStateAsync(
@@ -227,7 +227,7 @@ flowchart TD
 
     N --> O{"Table transaction result"}
     O -- "Committed" --> P["Return newly created EnqueuePending Job"]
-    O -- "409 / 412" --> Q["Delete candidate Blob and reload winner once"]
+    O -- "409 / 412" --> Q["Reload winner once"]
     Q --> S{"Winner explains conflict?"}
     S -- "Same request" --> R
     S -- "Different active request" --> K

@@ -1,281 +1,206 @@
-# Trend report processing case design
+# Trend report worker processing cases
 
-## Scope
+## Queue contract
 
-This document covers all outcomes after a Trend Report Service Bus message is delivered: invalid input, stale delivery, cancellation, DataVersion change, duplicate delivery, successful completion, transient failure, and timeout convergence.
-
-## Message identity
-
-The queue message is a compact command:
+The Service Bus payload is a lightweight trigger:
 
 ```csharp
 public sealed record TrendReportQueueMessageDto(
     Guid JobId,
     string RunId,
-    int UserId,
-    string PeriodStart,
-    string PeriodEnd,
-    string DataVersion,
-    DateTimeOffset RequestedAtUtc);
+    int UserId);
 ```
 
-The durable Job remains authoritative. `JobId + RunId + DataVersion` identifies the exact execution. Dates in the message are correlation/debugging fields; processing uses the request and immutable snapshot loaded from durable storage.
+Processing uses the request and captured DataVersion from the durable Job row. SQL owns the current DataVersion.
 
-## Case 1: invalid message
+## Case 1: invalid queue payload
 
-The Function validates deserialization and required identity fields before calling the service.
+Malformed JSON or missing required identity fields is explicitly dead-lettered because retry cannot repair it:
 
 ```csharp
-if (queueMessage is null)
+if (queueMessage is null || !IsValidQueueMessage(queueMessage))
 {
-    await DeadLetterInvalidMessageAsync(..., "InvalidTrendReportQueueMessage", ...);
-    return;
-}
-
-if (!IsValidQueueMessage(queueMessage))
-{
-    await DeadLetterInvalidMessageAsync(..., "InvalidTrendReportQueueMessage", ...);
+    await DeadLetterInvalidMessageAsync(...);
     return;
 }
 ```
 
-Invalid input cannot become valid on retry, so it is explicitly sent to DLQ.
+## Case 2: missing Job or wrong RunId
 
-## Case 2: Job missing or execution identity differs
-
-`GetProcessableJobAsync` first loads only the lightweight Table row:
+The worker first loads lightweight Azure Table state:
 
 ```csharp
-var latestJob = await _trendReportJobRepo.GetByIdAsync(
+var latestJob = await _jobRepository.GetByIdAsync(
     message.UserId,
     message.JobId,
     cancellationToken);
 
-if (latestJob is null
-    || latestJob.RunId != message.RunId
-    || latestJob.DataVersion != message.DataVersion)
+if (latestJob is null || latestJob.RunId != message.RunId)
 {
     return null;
 }
 ```
 
-This is an intentional stale no-op. Examples:
+This is an intentional stale no-op. The Function completes the message.
 
-- an old message refers to a removed Job;
-- a message belongs to a different execution identity;
-- an earlier duplicate arrives after durable state moved on.
+## Case 3: terminal Job
 
-The service returns successfully and the Function completes the message.
+`Completed`, `Failed`, `Cancelled`, and `Superseded` are immutable terminal states. Duplicate/redelivered messages return successfully without computation and are completed.
 
-## Case 3: Job is terminal
+## Case 4: unsupported persisted status
 
-`Completed`, `Failed`, `Cancelled`, and `Superseded` are immutable terminal states:
+A status outside the active and terminal sets is treated as corruption or an unsupported schema change. The worker throws; the valid message remains unsettled and follows Service Bus redelivery/DLQ policy.
+
+## Case 5: version check 1 and source capture
+
+The worker reads DataVersion, Training, and Pre-check data in one SQL snapshot transaction:
 
 ```csharp
-if (latestJob.Status is TrendReportJobStatuses.Completed
-    or TrendReportJobStatuses.Failed
-    or TrendReportJobStatuses.Cancelled
-    or TrendReportJobStatuses.Superseded)
+var sourceDataCapture = await _sourceDataRepository.CaptureSnapshotAsync(
+    job.UserId,
+    snapshotStart,
+    rangeEnd,
+    cancellationToken);
+
+if (job.DataVersion != sourceDataCapture.DataVersion)
 {
+    await _jobRepository.TryMarkSupersededIfCurrentAsync(...);
     return null;
 }
+
+var snapshot = sourceDataCapture.Snapshot;
 ```
 
-A duplicate delivery after any terminal winner is a successful no-op. It cannot regenerate or overwrite the result.
+Outcomes:
 
-## Case 4: unsupported status
+- different version: conditionally mark `Superseded`, release ActiveLease, complete the message;
+- same version with no rows in the selected period: conditionally mark `Failed` with a user-safe no-data message, release ActiveLease, complete the message;
+- same version with data: continue with the immutable in-memory snapshot.
 
-Only `EnqueuePending`, `Queued`, and `Processing` are processable. An unknown persisted status is treated as a system error:
+No snapshot is stored in Azure Table or Blob Storage.
 
-```csharp
-if (!IsActiveJobStatus(latestJob.Status))
-{
-    throw new InvalidOperationException(...);
-}
-```
-
-The exception escapes for broker retry and logging rather than guessing whether the state is active or terminal.
-
-## Case 5: source DataVersion changed
-
-Before downloading the snapshot, the worker compares the Job's captured version with the current global SQL version:
+## Case 6: best-effort Processing transition
 
 ```csharp
-var currentUserDataVersion = await _sourceDataRepository
-    .GetCurrentDataVersionAsync(latestJob.UserId, cancellationToken);
-
-if (latestJob.DataVersion != currentUserDataVersion)
-{
-    await _trendReportJobRepo.TryMarkSupersededIfCurrentAsync(
-        latestJob.UserId,
-        latestJob.RunId,
-        latestJob.Id,
-        latestJob.DataVersion,
-        cancellationToken);
-
-    return null;
-}
-```
-
-The conditional transition releases ActiveLease only if the same execution is still active. The message is then completed as a stale no-op.
-
-This repeats the eager CRUD invalidation rule because SQL and Azure Table cannot participate in one transaction.
-
-## Case 6: snapshot load and integrity verification
-
-Only an identity-valid, active, current-version Job downloads its snapshot Blob:
-
-```csharp
-var jobWithSnapshot = await _trendReportJobRepo.GetForProcessingAsync(
-    message.UserId,
-    message.JobId,
+await _jobRepository.TryStartProcessingAsync(
+    job.UserId,
+    job.Id,
+    job.RunId,
+    job.DataVersion,
     cancellationToken);
 ```
 
-The Job row stores `SnapshotBlobName` and `SnapshotHash`; the payload store downloads the Blob and verifies SHA-256 before deserialization. A missing Blob, missing hash, hash mismatch, or invalid JSON throws. The valid message remains unsettled for broker retry and eventually DLQ if the corruption persists.
+`Processing` is a display state, not a worker lock. Another delivery may already have written it. After this attempt, the worker reloads Table state:
 
-After the slower Blob read, identity and status are checked again. A cancellation, supersede, or completion that won during the download becomes a no-op.
+- still active: continue;
+- terminal: stop and complete the message;
+- missing/wrong RunId: stale no-op.
 
-## Case 7: start processing
+This Table reload does not query SQL again.
 
-The service makes a best-effort transition to `Processing`:
-
-```csharp
-await _trendReportJobRepo.TryStartProcessingAsync(
-    message.UserId,
-    message.JobId,
-    message.RunId,
-    message.DataVersion,
-    cancellationToken);
-```
-
-Failure to win this state write does not stop calculation. Another delivery may already have written `Processing`. `Processing` is display state, not exclusive ownership.
-
-## Case 8: cancellation or supersede during calculation
-
-The worker calls `GetProcessableJobAsync` again before generating and again before terminal persistence:
+## Case 7: deterministic calculation
 
 ```csharp
-if (await GetProcessableJobAsync(message, cancellationToken: cancellationToken) is null)
-{
-    return;
-}
-
 var result = GenerateResult(job.Request, snapshot);
+```
 
-if (await GetProcessableJobAsync(message, cancellationToken: cancellationToken) is null)
+The calculation reads only the per-attempt immutable snapshot. It never queries live Training or Pre-check rows.
+
+## Case 8: version check 2 before completion
+
+Immediately before result persistence, the worker reloads active Job state and reads the current SQL version:
+
+```csharp
+var currentDataVersion = await _sourceDataRepository.GetCurrentDataVersionAsync(
+    job.UserId,
+    cancellationToken);
+
+if (job.DataVersion != currentDataVersion)
 {
+    await _jobRepository.TryMarkSupersededIfCurrentAsync(...);
     return;
 }
 ```
 
-These checks close the asynchronous windows around calculation:
-
-- user cancellation wins -> Job is `Cancelled`; worker exits;
-- CRUD wins -> Job/version is `Superseded`; worker exits;
-- duplicate worker completes first -> Job is `Completed`; worker exits.
-
-The final conditional update is still required because state can change immediately after the last read.
-
-## Case 9: duplicate delivery completes concurrently
-
-Both deliveries may calculate the same immutable snapshot. Results are stored content-addressably, then completion is attempted conditionally:
+If unchanged, the repository stores the immutable result Blob and conditionally publishes its pointer:
 
 ```csharp
-await _trendReportJobRepo.TryCompleteIfCurrentActiveAsync(
-    message.UserId,
-    message.JobId,
-    message.RunId,
-    message.DataVersion,
+await _jobRepository.TryCompleteIfCurrentActiveAsync(
+    job.UserId,
+    job.Id,
+    job.RunId,
+    job.DataVersion,
     result,
     cancellationToken);
 ```
 
-The repository requires matching identity, active status, no error, and the ETag read with that row. Only one delivery can change the Job to `Completed` and atomically release ActiveLease. A losing `412` becomes `false`.
+The Table transition requires matching JobId, RunId, DataVersion, active status, and ETag. A competing cancellation, supersession, timeout, or completion causes the update to lose harmlessly.
 
-## Case 10: transient exception or process crash
+The final SQL check and Azure completion are not one distributed transaction. Absolute atomicity across that boundary requires SQL-backed Job completion or a transactional outbox/gate design.
 
-`ProcessAsync` does not mark the Job `Failed` on an ordinary attempt exception:
+## Case 9: duplicate delivery
 
-```csharp
-catch (OperationCanceledException)
-{
-    throw;
-}
-catch (Exception)
-{
-    // Service Bus owns redelivery and DLQ for valid messages.
-    throw;
-}
-```
+Two deliveries for the same RunId may both capture the same SQL generation and calculate. This is safe because:
 
-The Function does not complete the message. Service Bus redelivers it, and a `Processing` Job is accepted for recomputation. This covers a hard process crash where no catch block executes.
+- source snapshots are isolated and immutable per attempt;
+- result Blob names are content-addressed;
+- only one ETag-protected terminal update can win;
+- the loser observes terminal state or a failed precondition and becomes a no-op.
 
-## Case 11: retries exhausted or Job abandoned
+## Case 10: transient failure or process crash
 
-Service Bus can move a message to DLQ after `MaxDeliveryCount` without invoking the application for a special final attempt. A timer independently converges old active Jobs:
+Any unexpected exception escapes `ProcessAsync`. The Function does not settle the valid message, so Service Bus redelivers it. A `Processing` Job remains eligible for recomputation.
 
-```csharp
-await _service.ConvergeTimedOutJobsAsync(
-    queuedBeforeUtc: now - _queuedJobTimeout,
-    processingBeforeUtc: now - _processingJobTimeout,
-    maxCount: 50,
-    cancellationToken);
-```
+This covers both a caught infrastructure error and a hard process crash where no catch block runs.
 
-The final update requires the exact run to still be overdue and active. If a legitimate worker completed after the timer query, ETag and status checks protect its completion.
+## Case 11: exhausted broker retries
 
-## Full processing flow
+Service Bus may DLQ after `MaxDeliveryCount` without giving application code a special final callback. A timer independently scans old `Queued` and `Processing` Jobs and conditionally marks them `Failed`, releasing the active lease.
+
+## Complete flow
 
 ```mermaid
 flowchart TD
-    A["Service Bus delivery"] --> B{"JSON and required fields valid?"}
+    A["Service Bus delivery"] --> B{"Payload valid?"}
     B -- "No" --> C["Explicit DLQ"]
-    B -- "Yes" --> D["Load lightweight Job row"]
-    D --> E{"Job exists and identity matches?"}
-    E -- "No" --> Z["Successful stale no-op; complete"]
-    E -- "Yes" --> F{"Status"}
-    F -- "Terminal" --> Z
-    F -- "Unknown" --> X["Throw; broker retry"]
-    F -- "Active" --> G["Read current global SQL DataVersion"]
-    G --> H{"Version current?"}
-    H -- "No" --> I["Conditionally Superseded + release lease"]
-    I --> Z
-    H -- "Yes" --> J["Load and hash-verify snapshot Blob"]
-    J --> K{"Still same active execution?"}
-    K -- "No" --> Z
-    K -- "Yes" --> L["Best-effort mark Processing"]
-    L --> M["Recheck processability"]
-    M --> N{"Still active/current?"}
-    N -- "No" --> Z
-    N -- "Yes" --> O["Generate deterministic report"]
-    O --> P["Recheck processability"]
-    P --> Q{"Still active/current?"}
-    Q -- "No" --> Z
-    Q -- "Yes" --> R["Store result Blob"]
-    R --> S["ETag-protected Completed + release lease"]
-    S --> Z
-
-    J -. "Exception / crash" .-> X
-    L -. "Exception / crash" .-> X
-    O -. "Exception / crash" .-> X
-    R -. "Exception / crash" .-> X
-    X --> T["Message unsettled"]
-    T --> U{"Broker retry budget remains?"}
-    U -- "Yes" --> A
-    U -- "No" --> V["Broker DLQ"]
-    V --> W["Timer conditionally converges overdue Job to Failed"]
+    B -- "Yes" --> D["Load Job row"]
+    D --> E{"JobId and RunId current?"}
+    E -- "No" --> F["Stale no-op; complete"]
+    E -- "Yes" --> G{"Status"}
+    G -- "Terminal" --> F
+    G -- "Unknown" --> H["Throw; broker retry"]
+    G -- "Active" --> I["SQL snapshot transaction"]
+    I --> J["Read DataVersion + Training + Pre-check"]
+    J --> K{"Version equals Job?"}
+    K -- "No" --> L["Conditional Superseded"]
+    K -- "Yes" --> M{"Snapshot has data?"}
+    M -- "No" --> N["Conditional Failed: no data"]
+    M -- "Yes" --> O["Best-effort Processing"]
+    O --> P{"Job still active?"}
+    P -- "No" --> F
+    P -- "Yes" --> Q["Generate from in-memory snapshot"]
+    Q --> R["Reload active Job"]
+    R --> S["Read current SQL DataVersion"]
+    S --> T{"Still equal?"}
+    T -- "No" --> L
+    T -- "Yes" --> U["Store result Blob"]
+    U --> V["ETag-conditional Completed"]
+    L --> F
+    N --> F
+    V --> F
 ```
 
 ## Outcome table
 
-| Durable state / event | Worker outcome | Message settlement |
-| --- | --- | --- |
-| Invalid message | No processing | Explicit DLQ |
-| Missing/mismatched Job identity | Stale no-op | Complete |
-| Completed/Failed/Cancelled/Superseded | Duplicate no-op | Complete |
-| Active but old DataVersion | Conditional Superseded | Complete |
-| Valid active current Job | Generate and attempt completion | Complete on return |
-| Duplicate active deliveries | Both may compute; one terminal writer wins | Both complete if no exception |
-| Transient failure or crash | Leave active for redelivery | Unsettled; broker retry |
-| Retry budget exhausted | Broker DLQ; timer later converges stale Job | DLQ |
+| Observed case | Job action | Message action |
+|---|---|---|
+| Invalid payload | None | Explicit DLQ |
+| Missing Job / wrong RunId | None | Complete |
+| Terminal Job | None | Complete |
+| Unsupported status | None | Retry, then broker DLQ |
+| SQL version differs at start | Conditional Superseded | Complete |
+| Selected period has no data | Conditional Failed | Complete |
+| SQL version changes during calculation | Conditional Superseded | Complete |
+| Duplicate active delivery | Compete on terminal ETag | Complete on return |
+| Transient failure / crash | Keep active | Leave unsettled |
+| Timed-out active Job | Conditional Failed by timer | Independent of message |

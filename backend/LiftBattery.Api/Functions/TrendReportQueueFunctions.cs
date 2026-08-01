@@ -113,12 +113,11 @@ public sealed class TrendReportQueueFunctions
         }
 
         _logger.LogInformation(
-            "Processing trend report queue message. MessageId={MessageId}, CorrelationId={CorrelationId}, RunId={RunId}, JobId={JobId}, DataVersion={DataVersion}, DeliveryCount={DeliveryCount}.",
+            "Processing trend report queue message. MessageId={MessageId}, CorrelationId={CorrelationId}, RunId={RunId}, JobId={JobId}, DeliveryCount={DeliveryCount}.",
             message.MessageId,
             message.CorrelationId,
             queueMessage.RunId,
             queueMessage.JobId,
-            queueMessage.DataVersion,
             message.DeliveryCount);
 
         // Success and intentional stale/terminal no-ops are completed. Any exception
@@ -145,10 +144,7 @@ public sealed class TrendReportQueueFunctions
     {
         return queueMessage.JobId != Guid.Empty
             && queueMessage.UserId > 0
-            && !string.IsNullOrWhiteSpace(queueMessage.RunId)
-            && !string.IsNullOrWhiteSpace(queueMessage.PeriodStart)
-            && !string.IsNullOrWhiteSpace(queueMessage.PeriodEnd)
-            && !string.IsNullOrWhiteSpace(queueMessage.DataVersion);
+            && !string.IsNullOrWhiteSpace(queueMessage.RunId);
     }
 
     private static int ParsePositiveIntSetting(string? value, int defaultValue)

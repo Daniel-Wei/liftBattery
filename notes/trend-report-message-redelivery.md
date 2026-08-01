@@ -1,29 +1,17 @@
 # Trend report message redelivery and Job recovery
 
-## Purpose
+## Delivery model
 
-The Trend Report worker uses Azure Service Bus PeekLock delivery. A valid message is therefore processed **at least once**, not exactly once. The design allows the same `RunId` to be computed again after a crash while ensuring that only one terminal Job update wins.
+The Trend Report worker uses Azure Service Bus PeekLock delivery. A valid message is processed at least once, not exactly once.
 
-There are two separate recovery problems:
+There are two independent recovery problems:
 
-1. **Table-to-queue handoff recovery**: a Job was stored as `EnqueuePending`, but the send failed or the process stopped around the send.
-2. **Worker redelivery**: Service Bus delivered a valid message, processing failed or the process died, and the broker delivers the same message again.
+1. Table Job creation succeeded but the initial Service Bus send or the following `Queued` update did not finish.
+2. Service Bus delivered a valid message, but processing threw or the process crashed.
 
-The first is handled by a timer. The second is owned by Service Bus. A second convergence timer prevents a Job from remaining active forever after broker retries are exhausted or infrastructure is misconfigured.
+The enqueue-recovery timer handles the first. Service Bus redelivery handles the second. A timeout-convergence timer prevents Jobs from remaining active forever after broker retries are exhausted or infrastructure is misconfigured.
 
-## Queue Function settlement rule
-
-`TrendReportQueueFunctions.ProcessTrendReportJob` explicitly disables auto-completion:
-
-```csharp
-[ServiceBusTrigger(
-    "%TrendReportQueueName%",
-    Connection = "ServiceBusConnection",
-    AutoCompleteMessages = false)]
-ServiceBusReceivedMessage message
-```
-
-The Function settles messages as follows:
+## Message settlement
 
 ```csharp
 var queueMessage = TryReadQueueMessage(message);
@@ -34,98 +22,93 @@ if (queueMessage is null || !IsValidQueueMessage(queueMessage))
     return;
 }
 
-// A successful result and an intentional stale/terminal no-op are both success.
 await _service.ProcessAsync(queueMessage, cancellationToken);
 await messageActions.CompleteMessageAsync(message, cancellationToken);
 ```
 
-- Invalid JSON or missing required identity fields is permanent input failure, so it is explicitly dead-lettered.
+- Invalid messages are explicitly DLQ'd because retry cannot repair their payload.
 - A valid message is completed only after `ProcessAsync` returns.
-- Any exception escapes. The message remains unsettled, its lock eventually expires, and Service Bus redelivers it until the queue's `MaxDeliveryCount` moves it to DLQ.
+- An unexpected exception escapes; the message remains unsettled and Service Bus redelivers it.
+- Intentional stale/terminal outcomes return normally and are completed.
 
-## Why `Processing` is reprocessable
+## Lightweight trigger
 
-`Processing` is a UI state, not a worker lease. Consider this timing:
+The queue message contains only `JobId`, `RunId`, and `UserId`. It does not contain DataVersion, request parameters, or source rows.
+
+The durable Job row supplies:
+
+- normalized request parameters;
+- the DataVersion captured at submission;
+- current status;
+- the terminal result pointer when complete.
+
+SQL `User.TrendReportDataVersion` supplies the current authoritative version.
+
+## What a redelivery does
+
+Suppose delivery A changes the Job to `Processing` and the process crashes. Delivery B:
+
+1. loads the same JobId and RunId;
+2. accepts `Processing` as reprocessable;
+3. opens a SQL snapshot transaction;
+4. reads the current DataVersion, Training, and Pre-check rows together;
+5. continues only when the captured SQL version equals `Job.DataVersion`;
+6. recomputes from the new per-attempt immutable snapshot;
+7. checks SQL DataVersion again immediately before completion;
+8. competes on the ETag-protected terminal update.
 
 ```text
-Delivery 1: reads Queued
-Delivery 1: changes Job to Processing
-Delivery 1: process crashes before completion
+Delivery 1: Queued -> Processing -> process crashes
 Service Bus: lock expires
-Delivery 2: reads the same Job in Processing
-Delivery 2: recomputes the immutable snapshot and completes it
+Delivery 2: Processing -> recapture same SQL generation -> compute -> Completed
 ```
 
-Rejecting `Processing` on Delivery 2 would permanently strand the Job. The processability check therefore accepts all active statuses:
+No processing-attempt ownership token is required. Duplicate work is permitted; terminal publication is conditional.
+
+## Conditional completion
 
 ```csharp
-if (latestJob.Status is not (
-    TrendReportJobStatuses.EnqueuePending
-    or TrendReportJobStatuses.Queued
-    or TrendReportJobStatuses.Processing))
-{
-    throw new InvalidOperationException(...);
-}
-```
-
-The initial state update is best effort:
-
-```csharp
-await _trendReportJobRepo.TryStartProcessingAsync(
-    message.UserId,
-    message.JobId,
-    message.RunId,
-    message.DataVersion,
+await _jobRepository.TryCompleteIfCurrentActiveAsync(
+    job.UserId,
+    job.Id,
+    job.RunId,
+    job.DataVersion,
+    result,
     cancellationToken);
 ```
 
-Two deliveries may both continue. This is intentional. The snapshot is immutable, so duplicate calculation is safe; exclusive ownership is enforced only when publishing a terminal result.
+The repository:
 
-## Terminal write idempotency
+1. writes the deterministic result to a content-addressed Blob;
+2. reloads the Job row;
+3. requires matching RunId, DataVersion, active status, and no error;
+4. writes `Completed` with the row ETag;
+5. releases the per-user ActiveLease in the same Azure Table partition transaction.
 
-Before every important phase, `GetProcessableJobAsync` reloads durable state and checks:
+Two deliveries may calculate concurrently, but only one terminal transition wins. The other gets a terminal row or ETag precondition failure and returns without replacing the winner.
 
-- `JobId`, `RunId`, and `DataVersion` still identify the same execution;
-- the Job is still active;
-- the Job DataVersion is still the user's current global DataVersion.
+## Data changes during redelivery
 
-Completion then uses the exact identity, active-state predicate, and Azure Table ETag:
+Every processing attempt performs two SQL checks:
 
-```csharp
-return await TryUpdateEntityAsync(
-    userId,
-    jobId,
-    expectedRunId,
-    expectedDataVersion,
-    entity =>
-        entity.DataVersion == expectedDataVersion
-        && entity.RunId == expectedRunId
-        && IsActiveStatus(entity.Status)
-        && entity.ErrorMessage is null,
-    (entity, now) =>
-    {
-        entity.Status = TrendReportJobStatuses.Completed;
-        entity.ResultBlobName = storedResult.BlobName;
-        entity.CompletedAtUtc = now;
-    },
-    ...);
-```
+- check 1 is part of the SQL snapshot capture and avoids computing from a generation different from the Job;
+- check 2 is a scalar SQL read immediately before terminal persistence and discards work if CRUD committed during calculation.
 
-`TryUpdateEntityAsync` updates with `entity.ETag`. If two deliveries race, the first terminal transaction wins and the second receives `412 Precondition Failed`, which is converted to `false`. The second result cannot overwrite the winner.
+If either check differs, the Job is conditionally marked `Superseded`, the ActiveLease is released, and the message is completed as a stale no-op.
 
-## Enqueue recovery timer
+The Service Bus message is not consulted for freshness.
 
-Blob/Table persistence and Service Bus sending cannot share one transaction. The Job is first committed as `EnqueuePending`; after send, it is conditionally changed to `Queued`.
+## Enqueue recovery
 
-If the process stops after send but before the state update, recovery may send the same `RunId` again. That duplicate is safe because the worker behavior above is idempotent.
+Job creation atomically persists Job + dedup + ActiveLease as `EnqueuePending`. Service Bus and Azure Table cannot share one transaction, so a timer scans old pending rows:
 
 ```csharp
-var claimedJob = await _trendReportJobRepo.TryBeginEnqueueRecoveryAttemptAsync(
+var claimedJob = await _jobRepository.TryBeginEnqueueRecoveryAttemptAsync(
     candidate.UserId,
     candidate.Id,
     candidate.RunId,
     candidate.DataVersion,
-    _enqueueRecoveryMaxAttempts,
+    maxAttempts,
     cancellationToken);
 
 if (claimedJob is not null)
@@ -134,67 +117,58 @@ if (claimedJob is not null)
 }
 ```
 
-The recovery attempt is conditional on the exact run remaining `EnqueuePending`. A bounded retry count eventually marks a persistently unsendable Job `Failed` and releases its active lease.
+The ETag condition lets one recovery invocation claim an attempt. If the send succeeded but the process crashed before the Table update, recovery may send the same RunId again; normal worker idempotency handles that duplicate.
 
-## Timed-out Job convergence
+## Timeout convergence
 
-Service Bus may automatically DLQ a message without application code getting one final callback. A periodic scan therefore finds old `Queued` and `Processing` Jobs and conditionally marks them `Failed`:
+Service Bus can move a message to DLQ after `MaxDeliveryCount` without invoking application code for a final attempt. A periodic scan finds old `Queued` and `Processing` Jobs and conditionally marks them `Failed`:
 
 ```csharp
-var candidates = await _trendReportJobRepo.GetTimedOutActiveJobsAsync(
+await _jobRepository.TryMarkTimedOutIfStillActiveAsync(
+    candidate.UserId,
+    candidate.Id,
+    candidate.RunId,
+    candidate.DataVersion,
     queuedBeforeUtc,
     processingBeforeUtc,
-    maxCount,
     cancellationToken);
-
-foreach (var candidate in candidates)
-{
-    await _trendReportJobRepo.TryMarkTimedOutIfStillActiveAsync(
-        candidate.UserId,
-        candidate.Id,
-        candidate.RunId,
-        candidate.DataVersion,
-        queuedBeforeUtc,
-        processingBeforeUtc,
-        cancellationToken);
-}
 ```
 
-The scan result is only a candidate list. The conditional update re-reads the row and checks identity, status, timestamp, and ETag. A Job completed after the scan cannot be changed back to `Failed`.
+The status, timestamps, RunId, DataVersion, and ETag must still match. A Job that completed or was superseded after the scan is not overwritten.
 
-## End-to-end flow
+## Flow
 
 ```mermaid
 flowchart TD
-    A["Service Bus delivers message"] --> B{"Valid message?"}
+    A["Service Bus delivers trigger"] --> B{"Payload valid?"}
     B -- "No" --> C["Explicit DLQ"]
-    B -- "Yes" --> D["Load Job metadata"]
-    D --> E{"Same RunId and DataVersion?"}
-    E -- "No" --> F["Stale no-op; complete message"]
-    E -- "Yes" --> G{"Terminal Job?"}
-    G -- "Yes" --> F
-    G -- "No" --> H{"Current global DataVersion?"}
-    H -- "No" --> I["Conditionally mark Superseded"]
-    I --> F
-    H -- "Yes" --> J["Load and verify snapshot Blob"]
-    J --> K["Best-effort mark Processing"]
-    K --> L["Generate deterministic result"]
-    L --> M["Reload processability"]
-    M --> N["ETag-protected terminal completion"]
-    N --> F
-    J -. "Exception or crash" .-> O["Message remains unsettled"]
-    K -. "Exception or crash" .-> O
-    L -. "Exception or crash" .-> O
-    O --> P["Lock expires / broker redelivers"]
-    P --> D
-    O -. "MaxDeliveryCount reached" .-> Q["Broker DLQ"]
-    Q --> R["Timeout timer eventually marks stale active Job Failed"]
+    B -- "Yes" --> D["Load durable Job"]
+    D --> E{"Same JobId and RunId?"}
+    E -- "No" --> F["Stale no-op; complete"]
+    E -- "Yes" --> G{"Active status?"}
+    G -- "No: terminal" --> F
+    G -- "Unknown" --> H["Throw; leave unsettled"]
+    G -- "Yes" --> I["SQL snapshot: version + source rows"]
+    I --> J{"Version equals Job?"}
+    J -- "No" --> K["Conditional Superseded"]
+    J -- "Yes" --> L["Generate from in-memory snapshot"]
+    L --> M["Read SQL version again"]
+    M --> N{"Still equal?"}
+    N -- "No" --> K
+    N -- "Yes" --> O["Store result Blob"]
+    O --> P["ETag-conditional Completed"]
+    K --> F
+    P --> F
+    H --> Q["Lock expires / broker redelivery"]
+    Q --> A
 ```
 
-## Operational invariants
+## Required invariants
 
-- Queue `MaxDeliveryCount` must be configured in infrastructure, not assumed by application code.
-- `Processing` must remain reprocessable for the same `JobId + RunId + DataVersion`.
-- Result generation must remain deterministic for an immutable snapshot.
-- Every terminal write must be conditional and release the per-user active lease atomically.
-- The timeout window must be longer than the expected maximum legitimate report runtime.
+- JobId is never reused.
+- RunId identifies the durable execution referenced by a message.
+- SQL is the DataVersion authority; Service Bus carries no version.
+- `Processing` remains reprocessable for the same JobId and RunId.
+- Each attempt calculates only from its SQL-consistent in-memory snapshot.
+- Result publication remains conditional and idempotent.
+- Queue `MaxDeliveryCount` is configured in infrastructure, while timeout convergence remains an independent safety net.

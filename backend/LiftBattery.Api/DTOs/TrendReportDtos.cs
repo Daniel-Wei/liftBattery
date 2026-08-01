@@ -56,8 +56,4 @@ public sealed record TrendReportJobDto(
 public sealed record TrendReportQueueMessageDto(
     Guid JobId,
     string RunId,
-    int UserId,
-    string PeriodStart,
-    string PeriodEnd,
-    string DataVersion,
-    DateTimeOffset RequestedAtUtc);
+    int UserId);

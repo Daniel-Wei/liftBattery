@@ -180,15 +180,12 @@ dotnet ef database update --project backend\LiftBattery.Api\LiftBattery.Api.cspr
 - `JobId`：Table job id。
 - `RunId`：本次运行相关 ID，也作为 `CorrelationId`。
 - `UserId`：当前用户。
-- `PeriodStart`、`PeriodEnd`：报告周期。
-- `DataVersion`：训练数据版本。
-- `RequestedAtUtc`：请求时间。
 
 DataVersion 逻辑：
 
 - SQL `Users.TrendReportDataVersion` 是每个用户当前源数据版本的唯一权威来源。
 - 保存或删除 Training/PreCheck 时，源数据和新 `DataVersion` 由同一次 SQL `SaveChangesAsync` 原子提交。
-- 提交报告时，`DataVersion`、Training 和 PreCheck 在同一个 SQL snapshot transaction 中读取。
+- 提交报告时只读取当前 SQL `DataVersion`；Worker 开始执行时才在同一个 SQL snapshot transaction 中读取 `DataVersion`、Training 和 PreCheck。
 - 如果已有 queued/processing job 覆盖被修改日期，旧 job 会直接进入 `Superseded`。
 - Consumer 会比较 job 与当前 SQL `DataVersion`，避免旧数据写回新结果。
 
@@ -227,7 +224,7 @@ DLQ 逻辑：
 Blob 逻辑：
 
 - `TrendReportPayloadBlobStore` 使用 `AzureWebJobsStorage`，container 默认 `trend-report-payloads`。
-- 趋势报告 Snapshot/Result 使用 `users/{userId}/jobs/{jobId}/{payloadType}-{sha256}.json`；Table Job row 只保存 Blob pointer 和 Snapshot SHA-256。
+- 趋势报告只持久化 Result，路径为 `users/{userId}/jobs/{jobId}/result-{sha256}.json`；Worker Snapshot 只存在于单次执行内存中，Table Job row 只保存 Result Blob pointer。
 - `WeeklyReportBlobStorage` 使用 `AzureWebJobsStorage` 连接 Storage。
 - container 默认 `weekly-reports`。
 - blob path 格式：`weekly-reports/{userId}/{weekStartDate}/weekly-trends-report-v{dataVersion}.pdf`。
@@ -249,7 +246,7 @@ DLQ 逻辑：
 4. 保存 pre-check，确认 Azure SQL 有数据。
 5. 保存训练记录，确认 Azure SQL 有数据。
 6. 打开趋势报告页，生成报告，确认 `trend-report-jobs` 有消息被消费。
-7. 轮询 `GetTrendReport`，确认状态从 queued/processing 到 completed，并确认 `trend-report-payloads` 中同时存在 snapshot/result JSON。
+7. 轮询 `GetTrendReport`，确认状态从 queued/processing 到 completed，并确认 `trend-report-payloads` 中存在 result JSON；Worker source snapshot 只在单次执行的内存中存在，不再持久化 snapshot JSON。
 8. 修改训练记录，确认旧趋势报告提示过期或重新生成。
 9. 启用每周报告 schedule，把 timer 临时设成短周期，确认 `weekly-report-jobs` 入队。
 10. 确认每周报告 PDF 上传到 Blob，并且 metadata 有 correlationId。

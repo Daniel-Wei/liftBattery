@@ -18,8 +18,6 @@ public sealed class TrendReportJobEntity : ITableEntity
     public string RunId { get; set; } = string.Empty;
     public string DataVersion { get; set; } = string.Empty;
     public string RequestJson { get; set; } = string.Empty;
-    public string SnapshotBlobName { get; set; } = string.Empty;
-    public string SnapshotHash { get; set; } = string.Empty;
     public string? ResultBlobName { get; set; }
     public string? ErrorMessage { get; set; }
     public int EnqueueRecoveryAttemptCount { get; set; }

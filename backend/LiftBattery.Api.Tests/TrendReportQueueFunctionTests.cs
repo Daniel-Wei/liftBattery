@@ -85,11 +85,7 @@ public sealed class TrendReportQueueFunctionTests
         var queueMessage = new TrendReportQueueMessageDto(
             JobId: Guid.Parse("00000000-0000-0000-0000-000000000123"),
             RunId: "trend-report:test-run",
-            UserId: 1,
-            PeriodStart: "2026-07-06",
-            PeriodEnd: "2026-07-12",
-            DataVersion: "v1",
-            RequestedAtUtc: DateTimeOffset.Parse("2026-07-06T00:00:00Z"));
+            UserId: 1);
 
         return ServiceBusModelFactory.ServiceBusReceivedMessage(
             body: BinaryData.FromString(JsonSerializer.Serialize(queueMessage)),

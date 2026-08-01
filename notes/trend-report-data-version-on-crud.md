@@ -1,47 +1,32 @@
-# Trend report DataVersion during Training and Pre-check CRUD
+# Trend report DataVersion and SQL source snapshots
 
-## Chosen consistency model
+## Invariant
 
-`TrendReportDataVersion` is a **global per-user source-data generation**. Any successful Training or Pre-check create, update, or delete creates a new version for that user.
-
-The rule is global, not date-range scoped:
+`User.TrendReportDataVersion` is the authoritative global source-data generation for one user. Only successful Training or Pre-check CRUD advances it.
 
 ```text
-same user + same DataVersion + same report parameters = same logical report request
+same user + same DataVersion + same normalized report parameters
+= same logical trend-report request
 ```
 
-This matches the dedup key and worker check. A source change makes every active Job captured from an older version `Superseded`, even when the changed row is outside the Job's selected report dates.
+The Service Bus message is never a DataVersion authority. It contains only `UserId`, `JobId`, and `RunId`, which are enough to locate the durable Job run.
 
-## Why source data and version are both in SQL
+## CRUD transaction
 
-The old split design could label old SQL data with a new Azure Table version:
-
-```text
-Submit reads old Training data
-CRUD commits new Training data
-CRUD bumps Table DataVersion to v2
-Submit reads v2
-Submit persists old snapshot + v2
-```
-
-Keeping both the source rows and `User.TrendReportDataVersion` in the same SQL transaction removes that invalid combination.
-
-## CRUD write transaction
-
-Training save stages both changes in the same EF Core unit of work:
+Each source mutation stages a new version on the tracked SQL User before the caller commits:
 
 ```csharp
-// Add or update the TrainingDay / TrainingSession entities first.
+_dbContext.TrainingSessions.Remove(session);
+
 await _trendReportSourceDataRepository.StageDataVersionChangeAsync(
     userId,
-    now,
+    DateTimeOffset.UtcNow,
     cancellationToken);
 
-// One database commit persists both source data and the User version.
 await _dbContext.SaveChangesAsync(cancellationToken);
 ```
 
-Pre-check upsert and both delete paths follow the same rule. `StageDataVersionChangeAsync` deliberately does not save independently:
+`StageDataVersionChangeAsync` deliberately does not call `SaveChangesAsync`:
 
 ```csharp
 public async Task StageDataVersionChangeAsync(
@@ -55,25 +40,47 @@ public async Task StageDataVersionChangeAsync(
 
     if (user is null)
     {
-        throw new InvalidOperationException(...);
+        throw new InvalidOperationException(
+            $"Cannot update trend report DataVersion because user {userId} does not exist.");
     }
 
-    // This tracked change is committed by the source repository's SaveChanges.
     user.TrendReportDataVersion = CreateDataVersion(updatedAtUtc);
 }
 ```
 
-Consequences:
+Consequently the domain write and version bump have one SQL commit boundary:
 
-- source write fails -> DataVersion also rolls back;
-- DataVersion write fails -> source write also rolls back;
-- successful CRUD always has one committed source generation.
+```text
+source write fails     -> DataVersion rolls back
+DataVersion write fails -> source mutation rolls back
+both succeed           -> both become visible together
+```
 
-The first successful source write initializes the nullable version. Each later mutation replaces it with a timestamp-plus-GUID value.
+## Submission
 
-## Submission snapshot transaction
+Submission validates the request and reads only the current SQL version:
 
-Submission reads version, Training, and Pre-check within one SQL snapshot-isolation transaction:
+```csharp
+var dataVersion = RequireCurrentDataVersion(
+    await _sourceDataRepository.GetCurrentDataVersionAsync(
+        userId,
+        cancellationToken));
+
+var candidate = new NewTrendReportJob(
+    userId,
+    "Submitting report job",
+    request,
+    runId,
+    dataVersion);
+```
+
+No Training/Pre-check rows are copied into the Job, and no snapshot Blob is created. The captured version remains part of the Job and dedup identity.
+
+If CRUD commits after this read but before Job creation, the Job keeps the older version. The worker detects that mismatch during version check 1 and supersedes the Job without generating a report.
+
+## Worker version check 1 and snapshot creation
+
+At execution start, `CaptureSnapshotAsync` reads the current version, Training, and Pre-check rows inside one SQL snapshot-isolation transaction:
 
 ```csharp
 await using var transaction = await _dbContext.Database.BeginTransactionAsync(
@@ -81,127 +88,91 @@ await using var transaction = await _dbContext.Database.BeginTransactionAsync(
     cancellationToken);
 
 var dataVersion = await _dbContext.Users
-    .AsNoTracking()
-    .Where(candidate => candidate.Id == userId)
-    .Select(candidate => candidate.TrendReportDataVersion)
+    .Where(user => user.Id == userId)
+    .Select(user => user.TrendReportDataVersion)
     .SingleOrDefaultAsync(cancellationToken);
 
-var trainingDays = await _dbContext.TrainingDays
-    .AsNoTracking()
-    .Include(day => day.Sessions)
-        .ThenInclude(session => session.Exercises)
-            .ThenInclude(exercise => exercise.Sets)
-    .Where(day => day.UserId == userId && day.Date >= from && day.Date <= to)
-    .ToListAsync(cancellationToken);
-
-var preChecks = await _dbContext.PreChecks
-    .AsNoTracking()
-    .Where(item => item.UserId == userId)
-    .Where(item => item.PreCheckDate >= from && item.PreCheckDate <= to)
-    .ToListAsync(cancellationToken);
+var trainingDays = await LoadTrainingDaysAsync(...);
+var preCheckLogs = await LoadPreChecksAsync(...);
 
 await transaction.CommitAsync(cancellationToken);
 ```
 
-A concurrent CRUD is observed as either:
-
-- old Training + old Pre-check + old version; or
-- new Training + new Pre-check + new version.
-
-It cannot produce a mixed snapshot or attach the wrong version.
-
-## Eager active-Job invalidation
-
-After the SQL repository has committed, the application service invokes:
+The worker compares the captured SQL generation with the durable Job:
 
 ```csharp
-await _trendReportInvalidationService.InvalidateForReportDataChangeAsync(
-    userId,
-    cancellationToken);
+if (job.DataVersion != sourceDataCapture.DataVersion)
+{
+    await _jobRepository.TryMarkSupersededIfCurrentAsync(...);
+    return;
+}
+
+var snapshot = sourceDataCapture.Snapshot;
 ```
 
-The invalidation service reads the committed global version and supersedes every active Job whose stored version differs:
+The snapshot is immutable in memory for that processing attempt. A Service Bus redelivery recaptures it; if the SQL generation is unchanged, it observes the same committed generation. If the version changed, the delivery becomes a stale no-op.
+
+## Worker version check 2
+
+After calculation and immediately before terminal persistence, the worker reads the SQL version again:
 
 ```csharp
 var currentDataVersion = await _sourceDataRepository.GetCurrentDataVersionAsync(
-    userId,
-    cancellationToken);
-var activeJobs = await _jobRepository.GetActiveByUserIdAsync(
-    userId,
+    job.UserId,
     cancellationToken);
 
-foreach (var job in activeJobs)
+if (job.DataVersion != currentDataVersion)
 {
-    if (job.DataVersion == currentDataVersion)
-    {
-        continue;
-    }
-
-    await _jobRepository.TryMarkSupersededIfCurrentAsync(
-        userId,
-        job.RunId,
-        job.Id,
-        job.DataVersion,
-        cancellationToken);
+    await _jobRepository.TryMarkSupersededIfCurrentAsync(...);
+    return;
 }
+
+await _jobRepository.TryCompleteIfCurrentActiveAsync(
+    job.UserId,
+    job.Id,
+    job.RunId,
+    job.DataVersion,
+    result,
+    cancellationToken);
 ```
 
-This update is conditional. If a worker completed or another action terminally changed the Job after the active-job query, the stale invalidation attempt returns `false` and does not overwrite the terminal winner.
+This avoids publishing a result when CRUD changed the source during calculation. The Table completion is additionally guarded by JobId, RunId, DataVersion, active status, and ETag.
 
-The worker repeats the global version check before processing and before completion. This is necessary because CRUD and invalidation are not part of the Azure Table transaction: a worker may run in the small interval after SQL commits but before eager invalidation reaches the Job.
+SQL and Azure Table/Blob cannot participate in one transaction. Therefore the final SQL read is adjacent to, but not atomic with, the Azure completion write. Absolute cross-store atomicity would require moving the Job completion record into SQL or introducing a transactional SQL completion/outbox design.
 
-## Frontend behavior
+## CRUD invalidation
 
-The client no longer invents an `Outdated` status. After any successful Training or Pre-check save/delete, listener middleware reloads the currently displayed Job:
-
-```ts
-startAppListening({
-  matcher: isAnyOf(
-    saveTrainingSession.fulfilled,
-    deleteTrainingSession.fulfilled,
-    savePreCheck.fulfilled,
-    deletePreCheckLog.fulfilled,
-  ),
-  effect: async (_action, listenerApi) => {
-    const jobId = listenerApi.getState().trendReport.job?.id;
-
-    if (jobId) {
-      await listenerApi.dispatch(fetchTrendReportJob(jobId));
-    }
-  },
-});
-```
-
-The backend is the status authority. Active old-version Jobs are returned as `Superseded`. Completed Jobs remain immutable historical reports; a later Generate request captures the new DataVersion and therefore uses a different dedup key.
-
-## End-to-end flow
+After a CRUD commit, eager invalidation reads the committed SQL version and conditionally supersedes active Jobs captured from older generations. This reduces wasted worker work, while the worker's two SQL checks remain the correctness fallback when invalidation is delayed or fails.
 
 ```mermaid
 flowchart TD
-    A["User saves or deletes Training / Pre-check"] --> B["EF tracks source-row mutation"]
-    B --> C["Stage new User.TrendReportDataVersion"]
-    C --> D{"Single SQL SaveChanges succeeds?"}
-    D -- "No" --> E["Rollback source data and version"]
-    D -- "Yes" --> F["Read committed global DataVersion"]
-    F --> G["Query active Jobs for user"]
-    G --> H{"Job version equals current version?"}
-    H -- "Yes" --> I["Leave Job unchanged"]
-    H -- "No" --> J["Conditional Superseded transition"]
-    J --> K["Atomically release ActiveLease"]
-    I --> L["CRUD HTTP response succeeds"]
-    K --> L
-    L --> M["Frontend listener fetches displayed Job"]
-    M --> N["UI renders backend status"]
+    A["Training or Pre-check CRUD"] --> B["SQL transaction"]
+    B --> C["Mutate domain rows"]
+    C --> D["Bump User.TrendReportDataVersion"]
+    D --> E{"SQL commit succeeds?"}
+    E -- "No" --> F["Rollback both"]
+    E -- "Yes" --> G["Both become visible"]
+    G --> H["Eagerly supersede older active Jobs"]
 
-    O["Concurrent report submission"] --> P["SQL snapshot transaction"]
-    P --> Q["Read version + Training + Pre-check consistently"]
-    Q --> R["Persist immutable snapshot under captured version"]
+    I["Submit report"] --> J["Read current SQL DataVersion"]
+    J --> K["Create lightweight Job and queue trigger"]
+    K --> L["Worker SQL snapshot transaction"]
+    L --> M["Read version + Training + Pre-check"]
+    M --> N{"Captured version equals Job version?"}
+    N -- "No" --> O["Superseded"]
+    N -- "Yes" --> P["Generate from in-memory snapshot"]
+    P --> Q["Read current SQL version again"]
+    Q --> R{"Still equal?"}
+    R -- "No" --> O
+    R -- "Yes" --> S["ETag-conditional result completion"]
 ```
 
-## Invariants
+## Summary
 
-- Only source-data CRUD creates or advances DataVersion; Job creation only reads it.
-- DataVersion and source mutation commit in one SQL transaction.
-- Submission captures version and both source collections in one SQL snapshot transaction.
-- Invalidation and worker processing use the same global per-user rule.
-- The frontend never fabricates a report status.
+- SQL `User.TrendReportDataVersion` is authoritative.
+- Source CRUD and version bump commit together.
+- Submission reads the version but does not capture or persist source rows.
+- Worker check 1 and snapshot creation share one SQL snapshot transaction.
+- Worker calculation uses only that immutable in-memory snapshot.
+- Worker check 2 reads SQL immediately before conditional completion.
+- Service Bus carries no DataVersion.
