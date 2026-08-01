@@ -52,9 +52,9 @@ public sealed class TrendReportSourceDataRepository : ITrendReportSourceDataRepo
                 IsolationLevel.Snapshot,
                 cancellationToken);
 
-            // All three reads use one SQL snapshot. A concurrent source CRUD therefore
-            // produces either old data + old version or new data + new version, never a
-            // snapshot assembled from one state and labelled with another state's version.
+            // All three reads use one SQL snapshot. 
+            // A concurrent source CRUD therefore produces either old data + old version or new data + new version, 
+            // never a snapshot assembled from one state and labelled with another state's version.
             var dataVersion = await _dbContext.Users
                 .AsNoTracking()
                 .Where(candidate => candidate.Id == userId)
