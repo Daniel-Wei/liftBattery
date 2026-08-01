@@ -848,36 +848,38 @@ public sealed class TrendReportJobRepository : ITrendReportJobRepository
                 // No active lease and no dedup job: this request may try the atomic create.
                 return null;
             }
-
-            if (existingCurrentReqJobWithoutLease.Status == TrendReportJobStatuses.Completed)
+            else
             {
-                // Completed results are immutable and reusable after their lease is released.
-                return new CreateOrGetTrendReportJobResult(
-                    existingCurrentReqJobWithoutLease,
-                    WasCreated: false);
+                if (existingCurrentReqJobWithoutLease.Status == TrendReportJobStatuses.Completed)
+                {
+                    // Completed results are immutable and reusable after their lease is released.
+                    return new CreateOrGetTrendReportJobResult(
+                        existingCurrentReqJobWithoutLease,
+                        WasCreated: false);
+                }
+                else if (IsActiveStatus(existingCurrentReqJobWithoutLease.Status))
+                {
+                    // The lease was read before this request's dedup. 
+                    // An identical request may therefore have atomically created Dedup + Job + ActiveLease between those reads. 
+                    // Return that winning Job; the earlier null lease observation is stale.
+                    return new CreateOrGetTrendReportJobResult(
+                        existingCurrentReqJobWithoutLease,
+                        WasCreated: false);
+                }
+                else if (IsTerminalStatus(existingCurrentReqJobWithoutLease.Status))
+                {
+                    // Failed, Cancelled, and Superseded are not reused. 
+                    // This explicit Generate request may try to atomically repoint the dedup row to a new Job.
+                    return null;
+                }
+                else
+                {
+                    // Refuse to guess how an unknown persisted status should participate in deduplication. 
+                    // The internal details are logged and never shown to the user.
+                    throw new InvalidOperationException(
+                        $"Trend report job {existingCurrentReqJobWithoutLease.Id} has unsupported status '{existingCurrentReqJobWithoutLease.Status}'.");
+                }
             }
-
-            if (IsActiveStatus(existingCurrentReqJobWithoutLease.Status))
-            {
-                // The lease was read before this request's dedup. An identical request may
-                // therefore have atomically created Dedup + Job + ActiveLease between those
-                // reads. Return that winning Job; the earlier null lease observation is stale.
-                return new CreateOrGetTrendReportJobResult(
-                    existingCurrentReqJobWithoutLease,
-                    WasCreated: false);
-            }
-
-            if (IsTerminalStatus(existingCurrentReqJobWithoutLease.Status))
-            {
-                // Failed, Cancelled, and Superseded are not reused. This explicit Generate
-                // request may try to atomically repoint the dedup row to a new Job.
-                return null;
-            }
-
-            // Refuse to guess how an unknown persisted status should participate in
-            // deduplication. The internal details are logged and never shown to the user.
-            throw new InvalidOperationException(
-                $"Trend report job {existingCurrentReqJobWithoutLease.Id} has unsupported status '{existingCurrentReqJobWithoutLease.Status}'.");
         }
     }
 
@@ -924,15 +926,12 @@ public sealed class TrendReportJobRepository : ITrendReportJobRepository
         CreateJobState createState,
         CancellationToken cancellationToken)
     {
-        // Blob Storage and Table Storage cannot share a transaction. Persist the
-        // immutable snapshot first so a committed Job never points to missing content.
-        var snapshot = createdJob.Snapshot
-            ?? throw new InvalidOperationException(
-                $"New trend report job {createdJob.Id} has no snapshot.");
+        // Blob Storage and Table Storage cannot share a transaction. 
+        // Persist the immutable snapshot first so a committed Job never points to missing content.
         var storedSnapshot = await _payloadStore.StoreSnapshotAsync(
             createdJob.UserId,
             createdJob.Id,
-            snapshot,
+            newJobCandidate.Snapshot,
             cancellationToken);
         var transactionActions = BuildCreateTransactionActions(
             createdJob,
