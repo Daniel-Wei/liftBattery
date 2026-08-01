@@ -743,6 +743,9 @@ public sealed class TrendReportJobRepository : ITrendReportJobRepository
 
         if (activeJobLease is not null)
         {
+            // Inside this GetJobOwnedByActiveLeaseAsync call:
+            // no leased job or mismatched RunId is a storage corruption bug, not a normal missing-lease condition.
+            // both invalid cases are logged and return a generic 503 to the user, without exposing internal details.
             var leasedJob = await GetJobOwnedByActiveLeaseAsync(
                 newJobCandidate.UserId,
                 activeJobLease,
@@ -751,8 +754,10 @@ public sealed class TrendReportJobRepository : ITrendReportJobRepository
             if (IsActiveStatus(leasedJob.Status))
             {
                 // The leased Job is authoritative while it is active:
+                
                 // - same DataVersion and parameters: an identical request already owns
                 //   the slot, so EvaluateCreateState returns that Job;
+                
                 // - different DataVersion or parameters: another request owns the slot,
                 //   so EvaluateCreateState returns the product-level 409 conflict.
                 return new CreateJobState(
@@ -766,24 +771,32 @@ public sealed class TrendReportJobRepository : ITrendReportJobRepository
                         : null,
                     activeJobLease);
             }
-
-            if (!IsTerminalStatus(leasedJob.Status))
+            else if (IsTerminalStatus(leasedJob.Status))
             {
-                // A lease may only point to a known active Job or to a terminal Job
-                // observed across an atomic terminal transition. Do not guess how an
-                // unknown persisted status participates in the single-active rule.
-                throw new InvalidOperationException(
-                    $"Trend report active-job lease references job {leasedJob.Id} with unsupported status '{leasedJob.Status}'.");
+                // We read the lease before another operation atomically transitioned the Job to a terminal status and deleted that lease. 
+                // Our in-memory lease is stale, so continue exactly as though no active lease had been observed.
             }
-
-            // The worker terminally updated the Job and deleted its lease atomically
-            // after our lease read but before our Job read. Continue exactly as if no
-            // active lease had been observed. A truly orphaned lease will still make
-            // the later create transaction fail on the fixed active-job RowKey.
+            else
+            {
+                // A persisted status outside the known active/terminal sets is corruption
+                // or an unsupported schema change. Do not treat it as an available slot.
+                throw new InvalidOperationException(
+                    $"Trend report active-job lease references job {leasedJob.Id} " +
+                    $"with unsupported status '{leasedJob.Status}'.");
+            }
         }
-        // Step 2: No usable active lease was observed. Read this request's dedup once.
-        // If another identical request commits after the lease read, this read can see
-        // its active Job; that is a normal concurrent winner, not a missing-lease bug.
+        // Step 2: No usable active lease was observed by the earlier read.
+        // That observation may already be stale:
+        //
+        // - If an identical request commits now, 
+        //   this request-specific dedup read can observe its Job directly and return the winner.
+        //
+        // - If a different-parameter request commits now, it uses another dedup RowKey and is invisible to this read. 
+        //   Our later atomic create will conflict on the fixed per-user ActiveLease RowKey, 
+        //   then HandleCreateConflictAsync reload the winner and returns the product-level 409.
+        //
+        // - Re-reading ActiveLease here would only reduce some conflicts:s
+        //   it cannot close the race, so the create transaction remains the authoritative guard.
         var dedup = await GetDedupEntityIfExistsAsync(
             partitionKey,
             dedupRowKey,
@@ -810,22 +823,19 @@ public sealed class TrendReportJobRepository : ITrendReportJobRepository
 
         if (activeJobLease is not null)
         {
-            // LoadCreateStateAsync resolved the Job referenced by this authoritative
-            // lease. A matching request returns it; a different request receives 409.
+            // LoadCreateStateAsync resolved the leased Job referenced by this authoritative active lease. 
+            // A matching request returns it; a different request receives 409.
             var existingCurrentReqJob = createState.ExistingCurrentReqJob;
 
-            if (existingCurrentReqJob is not null
-                && ActiveJobLeaseMatchesExistingCurrentReqJob(
-                    activeJobLease,
-                    existingCurrentReqJob))
+            if (existingCurrentReqJob is not null)
             {
                 return new CreateOrGetTrendReportJobResult(
                     existingCurrentReqJob,
                     WasCreated: false);
             }
 
-            // A different request owns the active slot. The API logs its JobId for
-            // diagnosis but does not expose that internal identifier to the user.
+            // A different request owns the active slot. 
+            // The API logs its JobId for diagnosis but does not expose that internal identifier to the user.
             throw new TrendReportActiveJobExistsException(
                 activeJobLease.JobId);
         }
@@ -906,14 +916,6 @@ public sealed class TrendReportJobRepository : ITrendReportJobRepository
     {
         return job.DataVersion == newJobCandidate.DataVersion
             && job.Request == newJobCandidate.Request;
-    }
-
-    private static bool ActiveJobLeaseMatchesExistingCurrentReqJob(
-        TrendReportActiveJobEntity activeJobLease,
-        TrendReportJob existingCurrentReqJob)
-    {
-        return activeJobLease.JobId == existingCurrentReqJob.Id
-            && activeJobLease.RunId == existingCurrentReqJob.RunId;
     }
 
     private async Task<CreateOrGetTrendReportJobResult> PersistNewJobAsync(
