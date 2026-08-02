@@ -1,4 +1,9 @@
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "/api";
+export function resolveApiBaseUrl(configuredBaseUrl: string | undefined) {
+  const normalizedBaseUrl = configuredBaseUrl?.trim().replace(/\/+$/, "");
+  return normalizedBaseUrl || "/api";
+}
+
+const API_BASE_URL = resolveApiBaseUrl(import.meta.env.VITE_API_BASE_URL);
 
 type HttpRequestOptions = {
   method?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
