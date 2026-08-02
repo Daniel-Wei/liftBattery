@@ -29,7 +29,6 @@ export function LoginPage({ onAuthenticated, onRegister }: LoginPageProps) {
       <section className="auth-card">
         <p className="landing-eyebrow">LiftBattery Beta</p>
         <h1 className="page-title">登录</h1>
-        <p className="page-subtitle">用你的封闭 Beta 账号继续训练记录。</p>
 
         <form className="auth-form" onSubmit={handleSubmit}>
           <label className="training-form-field">
