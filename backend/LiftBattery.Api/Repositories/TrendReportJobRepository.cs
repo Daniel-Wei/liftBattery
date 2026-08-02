@@ -153,12 +153,17 @@ public sealed class TrendReportJobRepository : ITrendReportJobRepository
         var jobs = new List<TrendReportJob>();
 
         await foreach (var jobEntity in _tableClient.QueryAsync<TrendReportJobEntity>(
-            entity => entity.Status == TrendReportJobStatuses.EnqueuePending
-                        && entity.StartedAtUtc == null
-                        && entity.CreatedAtUtc <= olderThanUtc,
+            CreateUnstartedEnqueueRecoveryFilter(olderThanUtc),
             maxPerPage: Math.Max(1, maxCount),
             cancellationToken: cancellationToken))
         {
+            // Azure Table omits null properties and rejects null values in OData
+            // filters. Apply the StartedAtUtc check after materializing each entity.
+            if (jobEntity.StartedAtUtc is not null)
+            {
+                continue;
+            }
+
             jobs.Add(await ToModelAsync(jobEntity, cancellationToken));
 
             if (jobs.Count >= maxCount)
@@ -170,6 +175,13 @@ public sealed class TrendReportJobRepository : ITrendReportJobRepository
         return jobs
             .OrderBy(job => job.CreatedAtUtc)
             .ToArray();
+    }
+
+    internal static string CreateUnstartedEnqueueRecoveryFilter(DateTimeOffset olderThanUtc)
+    {
+        return TableClient.CreateQueryFilter<TrendReportJobEntity>(
+            entity => entity.Status == TrendReportJobStatuses.EnqueuePending
+                && entity.CreatedAtUtc <= olderThanUtc);
     }
 
     public async Task<IReadOnlyList<TrendReportJob>> GetTimedOutActiveJobsAsync(
