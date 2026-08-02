@@ -20,7 +20,9 @@ public sealed class LiftBatteryDbContextFactory : IDesignTimeDbContextFactory<Li
         }
 
         var options = new DbContextOptionsBuilder<LiftBatteryDbContext>()
-            .UseSqlServer(connectionString)
+            .UseSqlServer(
+                connectionString,
+                sqlOptions => sqlOptions.EnableRetryOnFailure())
             .Options;
         return new LiftBatteryDbContext(options);
     }
