@@ -12,7 +12,7 @@ import { TrainingPage } from "./pages/TrainingPage";
 import { TrendsPage } from "./pages/TrendsPage";
 import { liftBatteryStore } from "./store/liftBatteryStore";
 import { useAppDispatch, useAppSelector } from "./store/hooks";
-import { fetchCurrentUser, logoutUser } from "./store/slices/authSlice";
+import { clearAuthError, fetchCurrentUser, logoutUser } from "./store/slices/authSlice";
 
 function AppContent() {
   const dispatch = useAppDispatch();
@@ -50,6 +50,13 @@ function AppContent() {
     setCurrentPage(returnPage);
   }
 
+  function navigateToAuthPage(page: PageKey.Login | PageKey.Register) {
+    // Login and registration share the auth state, but an error from one form
+    // must not be presented as though it came from the other form.
+    dispatch(clearAuthError());
+    setCurrentPage(page);
+  }
+
   async function handleLogout() {
     await dispatch(logoutUser());
     setCurrentPage(PageKey.Login);
@@ -65,14 +72,14 @@ function AppContent() {
         return (
           <LoginPage
             onAuthenticated={handleAuthenticated}
-            onRegister={() => setCurrentPage(PageKey.Register)}
+            onRegister={() => navigateToAuthPage(PageKey.Register)}
           />
         );
       case PageKey.Register:
         return (
           <RegisterPage
             onAuthenticated={handleAuthenticated}
-            onLogin={() => setCurrentPage(PageKey.Login)}
+            onLogin={() => navigateToAuthPage(PageKey.Login)}
           />
         );
       case PageKey.PreCheck:

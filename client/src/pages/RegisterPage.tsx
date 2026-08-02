@@ -33,12 +33,12 @@ export function RegisterPage({ onAuthenticated, onLogin }: RegisterPageProps) {
 
   return (
     <main className="auth-page">
-      <section className="auth-card auth-card--wide">
+      <section className="auth-card">
         <p className="landing-eyebrow">Closed Beta</p>
         <h1 className="page-title">注册 LiftBattery</h1>
         <p className="page-subtitle">暂时只开放给拿到邀请码的朋友。</p>
 
-        <form className="auth-form auth-form--grid" onSubmit={handleSubmit}>
+        <form className="auth-form" onSubmit={handleSubmit}>
           <label className="training-form-field">
             <span className="training-form-label">显示名称</span>
             <input className="training-input" value={displayName} onChange={(event) => setDisplayName(event.target.value)} required />
@@ -55,12 +55,12 @@ export function RegisterPage({ onAuthenticated, onLogin }: RegisterPageProps) {
             <span className="training-form-label">确认密码</span>
             <input className="training-input" type="password" minLength={8} value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} required />
           </label>
-          <label className="training-form-field auth-form-span">
+          <label className="training-form-field">
             <span className="training-form-label">Beta 邀请码</span>
             <input className="training-input" value={betaInviteCode} onChange={(event) => setBetaInviteCode(event.target.value)} required />
           </label>
-          {error ? <p className="form-error auth-form-span" role="alert">{error}</p> : null}
-          <button type="submit" className="button-primary auth-form-span" disabled={status === "submitting"}>
+          {error ? <p className="form-error" role="alert">{error}</p> : null}
+          <button type="submit" className="button-primary" disabled={status === "submitting"}>
             {status === "submitting" ? "注册中" : "注册并登录"}
           </button>
         </form>
