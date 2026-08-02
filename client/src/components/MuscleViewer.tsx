@@ -10,7 +10,7 @@ type MuscleViewerProps = {
   compact?: boolean;
 };
 
-export function MuscleViewer({ title, activations, tip, compact = false }: MuscleViewerProps) {
+export function MuscleViewer({ title, activations, tip, compact = true }: MuscleViewerProps) {
   const [selectedMuscleId, setSelectedMuscleId] = useState<MuscleMapKey | null>(null);
   const [viewerOpen, setViewerOpen] = useState(false);
 
