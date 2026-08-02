@@ -41,7 +41,7 @@ export function RegisterPage({ onAuthenticated, onLogin }: RegisterPageProps) {
 
         <form className="auth-form" onSubmit={handleSubmit}>
           <label className="training-form-field">
-            <span className="training-form-label">用户名称</span>
+            <span className="training-form-label">用户名</span>
             <input className="training-input" value={displayName} onChange={(event) => setDisplayName(event.target.value)} required />
           </label>
           <label className="training-form-field">
