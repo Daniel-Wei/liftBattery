@@ -274,14 +274,20 @@ export function TrendsPage() {
             </small>
           </label>
 
-          <button
-            type="button"
-            className="button-primary trend-report-generate-button"
-            disabled={!canUseReportAction}
-            onClick={handleReportAction}
-          >
-            {reportActionButtonText}
-          </button>
+          <div className="trend-report-field trend-report-action-field">
+            <span className="trend-report-label trend-report-action-label" aria-hidden="true">
+              报告操作
+            </span>
+            <button
+              type="button"
+              className="button-primary trend-report-generate-button"
+              disabled={!canUseReportAction}
+              onClick={handleReportAction}
+            >
+              {reportActionButtonText}
+            </button>
+            <small className="trend-report-period-meta" aria-hidden="true">&nbsp;</small>
+          </div>
         </div>
       </section>
 
