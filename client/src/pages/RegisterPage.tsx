@@ -1,4 +1,5 @@
 import { useState, type FormEvent } from "react";
+import { PasswordField } from "../components/PasswordField";
 import { registerUser } from "../store/slices/authSlice";
 import { useAppDispatch, useAppSelector } from "../store/hooks";
 
@@ -47,14 +48,22 @@ export function RegisterPage({ onAuthenticated, onLogin }: RegisterPageProps) {
             <span className="training-form-label">邮箱</span>
             <input className="training-input" type="email" value={email} onChange={(event) => setEmail(event.target.value)} required />
           </label>
-          <label className="training-form-field">
-            <span className="training-form-label">密码</span>
-            <input className="training-input" type="password" minLength={8} value={password} onChange={(event) => setPassword(event.target.value)} required />
-          </label>
-          <label className="training-form-field">
-            <span className="training-form-label">确认密码</span>
-            <input className="training-input" type="password" minLength={8} value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} required />
-          </label>
+          <PasswordField
+            id="register-password"
+            label="密码"
+            value={password}
+            onChange={setPassword}
+            autoComplete="new-password"
+            minLength={8}
+          />
+          <PasswordField
+            id="register-confirm-password"
+            label="确认密码"
+            value={confirmPassword}
+            onChange={setConfirmPassword}
+            autoComplete="new-password"
+            minLength={8}
+          />
           <label className="training-form-field">
             <span className="training-form-label">Beta 邀请码</span>
             <input className="training-input" value={betaInviteCode} onChange={(event) => setBetaInviteCode(event.target.value)} required />
