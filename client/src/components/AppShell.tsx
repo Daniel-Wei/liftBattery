@@ -2,7 +2,9 @@ import type { ReactNode } from "react";
 import {
   BarChart3,
   Bell,
+  BookOpen,
   CalendarCheck,
+  ClipboardList,
   Dumbbell,
   Home,
   LogOut,
@@ -27,6 +29,8 @@ const navIconByPage: Record<PageKey, ReactNode> = {
   [PageKey.Overview]: <Home size={17} />,
   [PageKey.PreCheck]: <CalendarCheck size={17} />,
   [PageKey.Training]: <Dumbbell size={17} />,
+  [PageKey.ExerciseGuide]: <BookOpen size={17} />,
+  [PageKey.DailyReport]: <ClipboardList size={17} />,
   [PageKey.Trends]: <BarChart3 size={17} />,
   [PageKey.Profile]: <Settings size={17} />,
 };

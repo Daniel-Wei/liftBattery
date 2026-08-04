@@ -27,6 +27,7 @@ export function toSaveTrainingSessionDto(input: TrainingSessionDraft): SaveTrain
       exerciseOrder: exerciseIndex + 1,
       muscleGroup: exercise.muscleGroup,
       exerciseName: exercise.exerciseName,
+      benchAngleDegrees: exercise.benchAngleDegrees,
       sets: exercise.sets.map((set, index) => ({
         setOrder: index + 1,
         reps: set.reps,
@@ -59,6 +60,7 @@ function fromExerciseDto(dto: TrainingExerciseDto): TrainingExercise {
     exerciseOrder: dto.exerciseOrder,
     muscleGroup: dto.muscleGroup,
     exerciseName: dto.exerciseName,
+    benchAngleDegrees: dto.benchAngleDegrees,
     sets: [...dto.sets].sort((left, right) => left.setOrder - right.setOrder).map(fromSetDto),
     createdAtUtc: dto.createdAtUtc ?? nowFallback,
     updatedAtUtc: dto.updatedAtUtc ?? nowFallback,

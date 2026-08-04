@@ -165,6 +165,7 @@ public sealed class TrainingRepository : ITrainingRepository
             entity.TrainingSessionId,
             entity.MuscleGroup,
             entity.ExerciseName,
+            entity.BenchAngleDegrees,
             entity.ExerciseOrder,
             entity.Sets
                 .OrderBy(set => set.SetOrder)
@@ -222,6 +223,7 @@ public sealed class TrainingRepository : ITrainingRepository
             ExerciseOrder = model.ExerciseOrder,
             MuscleGroup = model.MuscleGroup,
             ExerciseName = model.ExerciseName,
+            BenchAngleDegrees = model.BenchAngleDegrees,
             CreatedAtUtc = model.CreatedAtUtc,
             UpdatedAtUtc = model.UpdatedAtUtc,
         };

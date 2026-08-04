@@ -64,6 +64,7 @@ public static class TrainingMapping
             exercise.ExerciseOrder,
             exercise.MuscleGroup,
             exercise.ExerciseName,
+            exercise.BenchAngleDegrees,
             exercise.Sets.OrderBy(set => set.SetOrder).Select(ToDto).ToList(),
             exercise.CreatedAtUtc.ToString("O"),
             exercise.UpdatedAtUtc.ToString("O"));
@@ -96,6 +97,7 @@ public static class TrainingMapping
             trainingSessionId,
             dto.MuscleGroup,
             dto.ExerciseName,
+            dto.BenchAngleDegrees,
             dto.ExerciseOrder,
             dto.Sets
                 .Select(set => ToModel(set, exerciseId, now))

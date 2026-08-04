@@ -10,6 +10,8 @@ import { ProfilePage } from "./pages/ProfilePage";
 import { RegisterPage } from "./pages/RegisterPage";
 import { TrainingPage } from "./pages/TrainingPage";
 import { TrendsPage } from "./pages/TrendsPage";
+import { ExerciseGuidePage } from "./pages/ExerciseGuidePage";
+import { DailyReportPage } from "./pages/DailyReportPage";
 import { liftBatteryStore } from "./store/liftBatteryStore";
 import { useAppDispatch, useAppSelector } from "./store/hooks";
 import { clearAuthError, fetchCurrentUser, logoutUser } from "./store/slices/authSlice";
@@ -85,7 +87,11 @@ function AppContent() {
       case PageKey.PreCheck:
         return <PreCheckPage />;
       case PageKey.Training:
-        return <TrainingPage />;
+        return <TrainingPage onSaved={() => navigate(PageKey.DailyReport)} />;
+      case PageKey.ExerciseGuide:
+        return <ExerciseGuidePage />;
+      case PageKey.DailyReport:
+        return <DailyReportPage />;
       case PageKey.Trends:
         return <TrendsPage />;
       case PageKey.Profile:

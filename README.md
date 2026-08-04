@@ -255,7 +255,7 @@ Important settings:
 | `TrendReportTableName` | Defaults to `TrendReportJobs` |
 | `TrendReportPayloadBlobContainerName` | Defaults to `trend-report-payloads`; stores immutable snapshot and result JSON |
 | `TrendReportDemoDelayMilliseconds` | Optional artificial delay so local progress UI is visible |
-| `TrendReportEnqueueRecoveryTimer` | Timer schedule for re-enqueueing unstarted trend report jobs; example `0 */5 * * * *` |
+| `TrendReportEnqueueRecoveryTimer` | Daily timer for re-enqueueing unstarted trend report jobs; example `0 10 2 * * *` |
 
 Do not commit real connection strings or passwords.
 

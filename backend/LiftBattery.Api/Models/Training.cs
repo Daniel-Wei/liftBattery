@@ -17,6 +17,7 @@ public sealed record TrainingExerciseModel(
     int TrainingSessionId,
     string MuscleGroup,
     string ExerciseName,
+    int? BenchAngleDegrees,
     int ExerciseOrder,
     IReadOnlyList<TrainingSetModel> Sets,
     DateTimeOffset CreatedAtUtc,

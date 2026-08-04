@@ -109,7 +109,7 @@ Function App 至少需要以下设置：
 - `TrendReportPayloadBlobContainerName`：`trend-report-payloads`。
 - `WeeklyReportQueueName`：`weekly-report-jobs`。
 - `WeeklyReportBlobContainerName`：`weekly-reports`。
-- `WeeklyReportScheduleTimer`：`0 */5 * * * *`，每五分钟只扫描 SQL 中带索引的到期 schedule。
+- `WeeklyReportScheduleTimer`：`0 0 2 * * *`，每天 UTC 02:00 扫描一次 SQL 中带索引的到期 schedule。
 - `WeeklyReportDispatchBatchSize`：默认 `100`。
 - `WeeklyReportDispatchLeaseMinutes`：默认 `10`，防止 Timer 多实例重复领取。
 - `WeeklyReportProcessingLeaseMinutes`：默认 `30`，防止同一 period 的重复消息并发处理。

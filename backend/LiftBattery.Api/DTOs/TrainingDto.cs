@@ -18,6 +18,7 @@ public sealed record TrainingExerciseDto(
     int ExerciseOrder,
     string MuscleGroup,
     string ExerciseName,
+    int? BenchAngleDegrees,
     IReadOnlyList<TrainingSetDto> Sets,
     string? CreatedAtUtc,
     string? UpdatedAtUtc);

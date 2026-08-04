@@ -4,6 +4,8 @@ export enum PageKey {
   Overview = "overview",
   PreCheck = "preCheck",
   Training = "training",
+  ExerciseGuide = "exerciseGuide",
+  DailyReport = "dailyReport",
   Trends = "trends",
   Profile = "profile",
 }
@@ -100,6 +102,7 @@ export type TrainingExercise = {
   exerciseOrder: number;
   muscleGroup: MuscleGroup;
   exerciseName: string;
+  benchAngleDegrees?: number;
   sets: TrainingSet[];
   createdAtUtc: string;
   updatedAtUtc: string;
@@ -137,6 +140,7 @@ export type TrainingExerciseDraft = {
   id: number;
   muscleGroup: Exclude<MuscleGroup, "All">;
   exerciseName: string;
+  benchAngleDegrees?: number;
   sets: TrainingSetDraft[];
 };
 

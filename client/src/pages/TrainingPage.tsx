@@ -1,15 +1,14 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { SectionCard } from "../components/SectionCard";
-import { MuscleViewer } from "../components/MuscleViewer";
-import { getExerciseMuscleContribution } from "../domain/exerciseMuscleMap";
 import { getOptionalNumber } from "../helpers/GenericHelpers";
 import {
+  formatBenchAngle,
+  getBenchAngleOptions,
   getExerciseDisplayLabel,
   getExerciseOptionsForMuscleGroup,
   getMuscleGroupDisplayLabel,
   muscleGroupOptions,
 } from "../data/programValues";
-import type { MuscleGroup } from "../types/appTypes";
 import { useAppDispatch, useAppSelector } from "../store/hooks";
 import {
   addTrainingExercise,
@@ -36,7 +35,11 @@ function getNumberInputChangeValue(value: string) {
   return value === "" ? "" : Number(value);
 }
 
-export function TrainingPage() {
+type TrainingPageProps = {
+  onSaved?: () => void;
+};
+
+export function TrainingPage({ onSaved }: TrainingPageProps) {
   const dispatch = useAppDispatch();
   const trainingDays = useAppSelector(selectTrainingDays);
   const {
@@ -48,6 +51,10 @@ export function TrainingPage() {
   } = useAppSelector(getTrainingData);
   const [formError, setFormError] = useState("");
 
+  const [expandedExerciseId, setExpandedExerciseId] = useState<number | null>(
+    trainingSessionDraft.exercises[0]?.id ?? null,
+  );
+  const previousExerciseCount = useRef(trainingSessionDraft.exercises.length);
   useEffect(() => {
     void dispatch(fetchTrainingDays({
       from: trainingSessionDraft.date,
@@ -67,6 +74,15 @@ export function TrainingPage() {
     return () => window.clearTimeout(timeout);
   }, [dispatch, operationErrorMessage]);
 
+  useEffect(() => {
+    if (trainingSessionDraft.exercises.length > previousExerciseCount.current) {
+      setExpandedExerciseId(trainingSessionDraft.exercises[trainingSessionDraft.exercises.length - 1]?.id ?? null);
+    } else if (!trainingSessionDraft.exercises.some((exercise) => exercise.id === expandedExerciseId)) {
+      setExpandedExerciseId(trainingSessionDraft.exercises[0]?.id ?? null);
+    }
+    previousExerciseCount.current = trainingSessionDraft.exercises.length;
+  }, [expandedExerciseId, trainingSessionDraft.exercises]);
+
   const filteredDays = trainingDays
     .filter((day) => day.date === trainingSessionDraft.date)
     .filter((day) => day.sessions.length > 0)
@@ -77,10 +93,17 @@ export function TrainingPage() {
     dispatch(updateTrainingSessionDraft({ field: "date", value: date }));
   }
 
-  function handleSave() {
+  async function handleSave() {
     const validationError = getTrainingFormError(trainingSessionDraft);
     setFormError(validationError ?? "");
-    if (!validationError) void dispatch(saveTrainingSession());
+    if (validationError) return;
+
+    try {
+      await dispatch(saveTrainingSession()).unwrap();
+      onSaved?.();
+    } catch {
+      // The slice already exposes the localized request error.
+    }
   }
 
   return (
@@ -111,23 +134,24 @@ export function TrainingPage() {
         <div className="training-exercise-stack training-exercise-stack--friendly">
           {trainingSessionDraft.exercises.map((exercise, exerciseIndex) => {
             const exerciseOptions = getExerciseOptionsForMuscleGroup(exercise.muscleGroup);
-            const muscleContribution = getExerciseMuscleContribution(
-              exercise.exerciseName,
-              exercise.muscleGroup,
-            );
+            const angleOptions = getBenchAngleOptions(exercise.exerciseName);
+            const isExpanded = expandedExerciseId === exercise.id;
 
             return (
-              <article className="training-exercise-editor training-exercise-editor--with-preview" key={exercise.id}>
+              <article className={`training-exercise-editor${isExpanded ? "" : " training-exercise-editor--collapsed"}`} key={exercise.id}>
                 <div className="training-exercise-input-panel">
                   <div className="training-editor-heading">
-                    <div>
+                    <button type="button" className="training-editor-toggle" aria-expanded={isExpanded} onClick={() => setExpandedExerciseId(isExpanded ? null : exercise.id)}>
                       <p className="section-eyebrow">动作 {exerciseIndex + 1}</p>
                       <h3>{getExerciseDisplayLabel(exercise.exerciseName)}</h3>
-                    </div>
+                      <span>{isExpanded ? "收起" : "展开"}</span>
+                    </button>
                     <button type="button" className="text-button" disabled={trainingSessionDraft.exercises.length === 1} onClick={() => dispatch(removeTrainingExercise(exercise.id))}>
                       删除动作
                     </button>
                   </div>
+                  {isExpanded ? (
+                  <>
 
                   <div className="training-session-form training-session-form--exercise">
                     <label className="training-form-field">
@@ -142,6 +166,14 @@ export function TrainingPage() {
                         {exerciseOptions.map((exerciseName) => <option key={exerciseName} value={exerciseName}>{getExerciseDisplayLabel(exerciseName)}</option>)}
                       </select>
                     </label>
+                    {angleOptions.length > 0 ? (
+                      <label className="training-form-field">
+                        <span className="training-form-label">卧推角度</span>
+                        <select className="training-input" value={exercise.benchAngleDegrees ?? angleOptions[0]} onChange={(event) => dispatch(updateTrainingExercise({ exerciseId: exercise.id, field: "benchAngleDegrees", value: Number(event.target.value) }))}>
+                          {angleOptions.map((angle) => <option key={angle} value={angle}>{formatBenchAngle(angle)}</option>)}
+                        </select>
+                      </label>
+                    ) : null}
                   </div>
 
                   <div className="training-set-table-wrap">
@@ -153,7 +185,7 @@ export function TrainingPage() {
                             <td className="training-set-number">{setIndex + 1}</td>
                             <td><input aria-label={`动作 ${exerciseIndex + 1} 第 ${setIndex + 1} 组次数`} type="number" min="1" value={getNumberInputValue(set.reps)} onChange={(event) => dispatch(updateTrainingSet({ exerciseId: exercise.id, setId: set.id, field: "reps", value: getNumberInputChangeValue(event.target.value) }))} /></td>
                             <td><input aria-label={`动作 ${exerciseIndex + 1} 第 ${setIndex + 1} 组重量`} type="number" min="0" step="0.5" value={getNumberInputValue(set.weightKg)} onChange={(event) => dispatch(updateTrainingSet({ exerciseId: exercise.id, setId: set.id, field: "weightKg", value: getNumberInputChangeValue(event.target.value) }))} /></td>
-                            <td><input aria-label={`动作 ${exerciseIndex + 1} 第 ${setIndex + 1} 组剩余次数`} type="number" min="0" step="1" value={set.rir ?? ""} onChange={(event) => dispatch(updateTrainingSet({ exerciseId: exercise.id, setId: set.id, field: "rir", value: getOptionalNumber(event.target.value) }))} /></td>
+                            <td><input aria-label={`动作 ${exerciseIndex + 1} 第 ${setIndex + 1} 组剩余次数`} type="number" min="0" max="10" step="0.5" inputMode="decimal" value={set.rir ?? ""} onChange={(event) => dispatch(updateTrainingSet({ exerciseId: exercise.id, setId: set.id, field: "rir", value: getOptionalNumber(event.target.value) }))} /></td>
                             <td>
                               <select aria-label={`动作 ${exerciseIndex + 1} 第 ${setIndex + 1} 组类型`} value={set.isWarmup ? "warmup" : "working"} onChange={(event) => dispatch(updateTrainingSet({ exerciseId: exercise.id, setId: set.id, field: "isWarmup", value: event.target.value === "warmup" }))}>
                                 <option value="working">正式组</option><option value="warmup">热身组</option>
@@ -166,12 +198,9 @@ export function TrainingPage() {
                     </table>
                   </div>
                   <button type="button" className="button-dark training-inline-action" onClick={() => dispatch(addTrainingSet(exercise.id))}>+ 添加一组</button>
+                  </>
+                  ) : null}
                 </div>
-                <MuscleViewer
-                  title={`动作肌群预览：${getExerciseDisplayLabel(exercise.exerciseName)}`}
-                  activations={muscleContribution?.muscles ?? []}
-                  tip={muscleContribution?.tip}
-                />
               </article>
             );
           })}
@@ -209,6 +238,7 @@ export function TrainingPage() {
                     <div className="saved-training-exercise" key={exercise.id}>
                       <div className="saved-training-exercise-heading">
                         <strong>{getExerciseDisplayLabel(exercise.exerciseName)}</strong>
+                        {exercise.benchAngleDegrees !== undefined ? <span>{formatBenchAngle(exercise.benchAngleDegrees)}</span> : null}
                         <span>{getMuscleGroupDisplayLabel(exercise.muscleGroup)}</span>
                       </div>
                       <div className="saved-set-chips">

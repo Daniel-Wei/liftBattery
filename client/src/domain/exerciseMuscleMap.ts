@@ -170,6 +170,22 @@ const baseMuscleMap: Record<string, ExerciseMuscleContribution> = {
     ["tricepsMedialHead", 36],
     ["frontDeltoid", 34],
   ]),
+  "Decline Bench Press": defineExercise("Decline Bench Press", "Decline pressing emphasizes the lower chest with less front-delt demand than incline pressing.", [
+    ["pecAbdominal", 82],
+    ["pecSternocostal", 62],
+    ["tricepsLateralHead", 44],
+    ["tricepsMedialHead", 40],
+    ["frontDeltoid", 28],
+    ["serratusAnterior", 22],
+  ]),
+  "Dumbbell Decline Press": defineExercise("Dumbbell Decline Press", "The dumbbell variation emphasizes lower chest while requiring more shoulder-blade stability.", [
+    ["pecAbdominal", 80],
+    ["pecSternocostal", 58],
+    ["tricepsLateralHead", 38],
+    ["tricepsMedialHead", 36],
+    ["frontDeltoid", 26],
+    ["serratusAnterior", 28],
+  ]),
   "Cable Fly": defineExercise("Cable Fly", "夹胸减少伸肘需求，更集中在胸大肌水平内收；角度会影响上中下胸比例。", [
     ["pecSternocostal", 74],
     ["pecClavicular", 54],

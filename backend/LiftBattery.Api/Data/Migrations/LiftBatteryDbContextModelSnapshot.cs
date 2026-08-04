@@ -151,6 +151,9 @@ namespace LiftBattery.Api.Data.Migrations
 
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
 
+                    b.Property<int?>("BenchAngleDegrees")
+                        .HasColumnType("int");
+
                     b.Property<DateTimeOffset>("CreatedAtUtc")
                         .HasPrecision(7)
                         .HasColumnType("datetimeoffset(7)");

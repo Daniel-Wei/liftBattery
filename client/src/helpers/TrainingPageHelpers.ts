@@ -25,6 +25,9 @@ export function getTrainingFormError(form: TrainingSessionDraft) {
       if (!Number.isFinite(set.reps) || set.reps <= 0) return "每组次数必须大于 0。";
       if (!Number.isFinite(set.weightKg) || set.weightKg < 0) return "重量不能小于 0 kg。";
       if (set.rir !== undefined && set.rir < 0) return "RIR 不能小于 0。";
+      if (set.rir !== undefined && (!Number.isFinite(set.rir) || set.rir > 10)) {
+        return "\u5269\u4f59\u6b21\u6570\uff08RIR\uff09\u5fc5\u987b\u5728 0 \u5230 10 \u4e4b\u95f4\u3002";
+      }
     }
   }
 

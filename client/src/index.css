@@ -2904,3 +2904,134 @@ input.range-input--modern:focus {
   width: 100%;
   min-height: 44px;
 }
+
+.training-editor-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.training-editor-toggle {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  padding: 0;
+  text-align: left;
+  cursor: pointer;
+}
+
+.training-editor-toggle span {
+  color: var(--accent-cyan);
+  font-size: 12px;
+  font-weight: 760;
+}
+
+.training-exercise-editor--collapsed {
+  padding-block: 13px;
+}
+
+.training-exercise-editor--collapsed .training-editor-heading h3 {
+  font-size: 15px;
+}
+
+.exercise-guide-controls {
+  margin-block: 18px;
+}
+
+.exercise-guide-controls + .muscle-viewer {
+  margin-top: 16px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-card);
+  background: var(--card-bg-subtle);
+}
+
+.daily-report-session-picker {
+  max-width: 760px;
+  margin-bottom: 18px;
+}
+
+.daily-report-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.daily-report-metric,
+.daily-report-exercise {
+  border: 1px solid var(--border-subtle);
+  border-radius: 14px;
+  background: var(--card-bg-subtle);
+  padding: 14px;
+}
+
+.daily-report-metric {
+  display: grid;
+  gap: 6px;
+}
+
+.daily-report-metric span,
+.daily-report-metric small,
+.daily-report-exercise span,
+.daily-report-exercise small,
+.daily-report-exercise dt {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.daily-report-metric strong {
+  color: var(--text-primary);
+  font-size: 22px;
+}
+
+.daily-report-comparison-note {
+  margin-block: 16px 10px;
+}
+
+.daily-report-exercise-list {
+  display: grid;
+  gap: 12px;
+}
+
+.daily-report-exercise > div:first-child {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.daily-report-exercise h3 {
+  margin: 0;
+  color: var(--text-primary);
+}
+
+.daily-report-exercise dl {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin: 14px 0 0;
+}
+
+.daily-report-exercise dl > div {
+  display: grid;
+  gap: 4px;
+}
+
+.daily-report-exercise dd {
+  margin: 0;
+  color: var(--text-primary);
+  font-weight: 740;
+}
+
+@media (max-width: 900px) {
+  .daily-report-summary-grid,
+  .daily-report-exercise dl {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}

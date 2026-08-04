@@ -7,6 +7,7 @@ public sealed class TrainingExercise
     public required int ExerciseOrder {get; set;}
     public required string MuscleGroup { get; set; }
     public required string ExerciseName { get; set; }
+    public int? BenchAngleDegrees { get; set; }
     public DateTimeOffset CreatedAtUtc { get; set; }
     public DateTimeOffset UpdatedAtUtc { get; set; }
     public required TrainingSession TrainingSession;

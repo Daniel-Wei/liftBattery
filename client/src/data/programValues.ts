@@ -98,6 +98,8 @@ export const exerciseOptionsByMuscleGroup: Record<Exclude<MuscleGroup, "All">, s
     "Incline Bench Press",
     "Dumbbell Bench Press",
     "Dumbbell Incline Press",
+    "Decline Bench Press",
+    "Dumbbell Decline Press",
     "Chest Press",
     "Cable Fly",
     "Pec Deck",
@@ -191,6 +193,8 @@ const exerciseDisplayLabels: Record<string, string> = {
   "Incline Bench Press": "上斜杠铃卧推",
   "Dumbbell Bench Press": "哑铃卧推",
   "Dumbbell Incline Press": "上斜哑铃卧推",
+  "Decline Bench Press": "下斜杠铃卧推",
+  "Dumbbell Decline Press": "下斜哑铃卧推",
   "Chest Press": "器械推胸",
   "Cable Fly": "绳索夹胸",
   "Pec Deck": "蝴蝶机夹胸",
@@ -292,4 +296,23 @@ export function getExerciseOptionsForMuscleGroup(muscleGroup: MuscleGroup) {
 
 export function getDefaultExerciseForMuscleGroup(muscleGroup: MuscleGroup) {
   return getExerciseOptionsForMuscleGroup(muscleGroup)[0] ?? "";
+}
+
+const benchAngleOptions: Record<string, number[]> = {
+  "Incline Bench Press": [15, 30, 45],
+  "Dumbbell Incline Press": [15, 30, 45],
+  "Decline Bench Press": [-15, -30],
+  "Dumbbell Decline Press": [-15, -30],
+};
+
+export function getBenchAngleOptions(exerciseName: string) {
+  return benchAngleOptions[exerciseName] ?? [];
+}
+
+export function getDefaultBenchAngle(exerciseName: string) {
+  return getBenchAngleOptions(exerciseName)[0];
+}
+
+export function formatBenchAngle(angle: number) {
+  return angle < 0 ? `下斜 ${Math.abs(angle)}°` : `上斜 ${angle}°`;
 }

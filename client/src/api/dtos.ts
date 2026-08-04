@@ -36,6 +36,7 @@ export type TrainingExerciseDto = {
   exerciseOrder: number;
   muscleGroup: MuscleGroup;
   exerciseName: string;
+  benchAngleDegrees?: number;
   sets: TrainingSetDto[];
   createdAtUtc?: string;
   updatedAtUtc?: string;

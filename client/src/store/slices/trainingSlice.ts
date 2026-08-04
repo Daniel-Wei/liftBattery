@@ -6,7 +6,7 @@ import type {
   TrainingSessionDraft,
   TrainingSetDraft,
 } from "../../types/appTypes";
-import { getDefaultExerciseForMuscleGroup } from "../../data/programValues";
+import { getDefaultBenchAngle, getDefaultExerciseForMuscleGroup } from "../../data/programValues";
 import { initialTrainingSessionDetailsInput } from "../../data/defaultValues";
 import { createId } from "../../helpers/GenericHelpers";
 import { fromTrainingDayDto, toSaveTrainingSessionDto } from "../../api/trainingSessionDtoMapping";
@@ -100,6 +100,7 @@ const trainingSlice = createSlice({
         id: createId("draft-exercise"),
         muscleGroup,
         exerciseName: getDefaultExerciseForMuscleGroup(muscleGroup),
+        benchAngleDegrees: getDefaultBenchAngle(getDefaultExerciseForMuscleGroup(muscleGroup)),
         sets: [{
           id: createId("draft-set"),
           reps: 8,
@@ -118,8 +119,8 @@ const trainingSlice = createSlice({
       state,
       action: PayloadAction<{
         exerciseId: number;
-        field: "muscleGroup" | "exerciseName";
-        value: string;
+        field: "muscleGroup" | "exerciseName" | "benchAngleDegrees";
+        value: string | number;
       }>,
     ) => {
       const exercise = state.trainingSessionDraft.exercises
@@ -131,8 +132,12 @@ const trainingSlice = createSlice({
         const muscleGroup = action.payload.value as TrainingExerciseDraft["muscleGroup"];
         exercise.muscleGroup = muscleGroup;
         exercise.exerciseName = getDefaultExerciseForMuscleGroup(muscleGroup);
+        exercise.benchAngleDegrees = getDefaultBenchAngle(exercise.exerciseName);
+      } else if (action.payload.field === "exerciseName") {
+        exercise.exerciseName = String(action.payload.value);
+        exercise.benchAngleDegrees = getDefaultBenchAngle(exercise.exerciseName);
       } else {
-        exercise.exerciseName = action.payload.value;
+        exercise.benchAngleDegrees = Number(action.payload.value);
       }
     },
     addTrainingSet: (state, action: PayloadAction<number>) => {
@@ -180,7 +185,8 @@ const trainingSlice = createSlice({
       if (field === "isWarmup") {
         set.isWarmup = Boolean(value);
       } else if (field === "rir") {
-        set[field] = value === undefined || value === "" ? undefined : Number(value);
+        const parsedValue = value === undefined || value === "" ? undefined : Number(value);
+        set[field] = parsedValue === undefined || Number.isFinite(parsedValue) ? parsedValue : undefined;
       } else {
         set[field] = value === "" ? Number.NaN : Number(value);
       }

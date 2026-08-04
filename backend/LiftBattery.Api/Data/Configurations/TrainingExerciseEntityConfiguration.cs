@@ -28,6 +28,8 @@ public sealed class TrainingExerciseEntityConfiguration
         builder.Property(entity => entity.ExerciseName)
             .IsRequired();
 
+        builder.Property(entity => entity.BenchAngleDegrees);
+
         builder.Property(entity => entity.CreatedAtUtc)
             .HasPrecision(7)
             .IsRequired();

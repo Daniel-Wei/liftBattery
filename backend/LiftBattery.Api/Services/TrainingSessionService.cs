@@ -116,6 +116,11 @@ public sealed class TrainingSessionService : ITrainingSessionService
                 throw new ArgumentException("Each exercise requires at least one set.");
             }
 
+            if (exercise.BenchAngleDegrees is < -45 or > 60)
+            {
+                throw new ArgumentException("Bench angle must be between -45 and 60 degrees.");
+            }
+
             foreach (var set in exercise.Sets)
             {
                 if (set.SetOrder <= 0 || set.Reps <= 0 || set.WeightKg < 0)
