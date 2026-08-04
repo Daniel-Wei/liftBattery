@@ -157,13 +157,19 @@ const trainingSlice = createSlice({
     },
     removeTrainingSet: (
       state,
-      action: PayloadAction<{ exerciseId: number; setId: number }>,
+      action: PayloadAction<{ exerciseId: number; setId: number; setIndex?: number }>,
     ) => {
       const exercise = state.trainingSessionDraft.exercises
         .find((candidate) => candidate.id === action.payload.exerciseId);
 
       if (exercise && exercise.sets.length > 1) {
-        exercise.sets = exercise.sets.filter((set) => set.id !== action.payload.setId);
+        const { setIndex } = action.payload;
+
+        if (setIndex !== undefined && exercise.sets[setIndex]) {
+          exercise.sets.splice(setIndex, 1);
+        } else {
+          exercise.sets = exercise.sets.filter((set) => set.id !== action.payload.setId);
+        }
       }
     },
     updateTrainingSet: (
@@ -171,13 +177,16 @@ const trainingSlice = createSlice({
       action: PayloadAction<{
         exerciseId: number;
         setId: number;
+        setIndex?: number;
         field: keyof Omit<TrainingSetDraft, "id">;
         value: number | boolean | string | undefined;
       }>,
     ) => {
-      const set = state.trainingSessionDraft.exercises
-        .find((exercise) => exercise.id === action.payload.exerciseId)
-        ?.sets.find((candidate) => candidate.id === action.payload.setId);
+      const exercise = state.trainingSessionDraft.exercises
+        .find((candidate) => candidate.id === action.payload.exerciseId);
+      const set = action.payload.setIndex === undefined
+        ? exercise?.sets.find((candidate) => candidate.id === action.payload.setId)
+        : exercise?.sets[action.payload.setIndex];
 
       if (!set) return;
       const { field, value } = action.payload;

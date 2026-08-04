@@ -181,17 +181,17 @@ export function TrainingPage({ onSaved }: TrainingPageProps) {
                       <thead><tr><th>组</th><th>次数</th><th>重量（公斤）</th><th>剩余次数</th><th>类型</th><th /></tr></thead>
                       <tbody>
                         {exercise.sets.map((set, setIndex) => (
-                          <tr key={set.id}>
+                          <tr key={`${set.id}-${setIndex}`}>
                             <td className="training-set-number">{setIndex + 1}</td>
-                            <td><input aria-label={`动作 ${exerciseIndex + 1} 第 ${setIndex + 1} 组次数`} type="number" min="1" value={getNumberInputValue(set.reps)} onChange={(event) => dispatch(updateTrainingSet({ exerciseId: exercise.id, setId: set.id, field: "reps", value: getNumberInputChangeValue(event.target.value) }))} /></td>
-                            <td><input aria-label={`动作 ${exerciseIndex + 1} 第 ${setIndex + 1} 组重量`} type="number" min="0" step="0.5" value={getNumberInputValue(set.weightKg)} onChange={(event) => dispatch(updateTrainingSet({ exerciseId: exercise.id, setId: set.id, field: "weightKg", value: getNumberInputChangeValue(event.target.value) }))} /></td>
-                            <td><input aria-label={`动作 ${exerciseIndex + 1} 第 ${setIndex + 1} 组剩余次数`} type="number" min="0" max="10" step="0.5" inputMode="decimal" value={set.rir ?? ""} onChange={(event) => dispatch(updateTrainingSet({ exerciseId: exercise.id, setId: set.id, field: "rir", value: getOptionalNumber(event.target.value) }))} /></td>
+                            <td><input aria-label={`动作 ${exerciseIndex + 1} 第 ${setIndex + 1} 组次数`} type="number" min="1" value={getNumberInputValue(set.reps)} onChange={(event) => dispatch(updateTrainingSet({ exerciseId: exercise.id, setId: set.id, setIndex, field: "reps", value: getNumberInputChangeValue(event.target.value) }))} /></td>
+                            <td><input aria-label={`动作 ${exerciseIndex + 1} 第 ${setIndex + 1} 组重量`} type="number" min="0" step="0.5" value={getNumberInputValue(set.weightKg)} onChange={(event) => dispatch(updateTrainingSet({ exerciseId: exercise.id, setId: set.id, setIndex, field: "weightKg", value: getNumberInputChangeValue(event.target.value) }))} /></td>
+                            <td><input aria-label={`动作 ${exerciseIndex + 1} 第 ${setIndex + 1} 组剩余次数`} type="number" min="0" max="10" step="0.5" inputMode="decimal" value={set.rir ?? ""} onChange={(event) => dispatch(updateTrainingSet({ exerciseId: exercise.id, setId: set.id, setIndex, field: "rir", value: getOptionalNumber(event.target.value) }))} /></td>
                             <td>
-                              <select aria-label={`动作 ${exerciseIndex + 1} 第 ${setIndex + 1} 组类型`} value={set.isWarmup ? "warmup" : "working"} onChange={(event) => dispatch(updateTrainingSet({ exerciseId: exercise.id, setId: set.id, field: "isWarmup", value: event.target.value === "warmup" }))}>
+                              <select aria-label={`动作 ${exerciseIndex + 1} 第 ${setIndex + 1} 组类型`} value={set.isWarmup ? "warmup" : "working"} onChange={(event) => dispatch(updateTrainingSet({ exerciseId: exercise.id, setId: set.id, setIndex, field: "isWarmup", value: event.target.value === "warmup" }))}>
                                 <option value="working">正式组</option><option value="warmup">热身组</option>
                               </select>
                             </td>
-                            <td><button type="button" className="text-button" disabled={exercise.sets.length === 1} onClick={() => dispatch(removeTrainingSet({ exerciseId: exercise.id, setId: set.id }))}>删除</button></td>
+                            <td><button type="button" className="text-button" disabled={exercise.sets.length === 1} onClick={() => dispatch(removeTrainingSet({ exerciseId: exercise.id, setId: set.id, setIndex }))}>删除</button></td>
                           </tr>
                         ))}
                       </tbody>
