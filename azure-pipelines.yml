@@ -44,3 +44,23 @@ steps:
   - script: npm run build
     displayName: Build frontend
     workingDirectory: $(Build.SourcesDirectory)/client
+
+  - bash: |
+      set -euo pipefail
+      if [[ -z "${MIRROR_DISPATCH_TOKEN:-}" || "$MIRROR_DISPATCH_TOKEN" == '$('* ]]; then
+        echo "GitHubMainMirrorDispatchToken must be configured as a secret pipeline variable."
+        exit 1
+      fi
+      payload="$(jq -cn --arg build_id "$BUILD_BUILDID" --arg sha "$BUILD_SOURCEVERSION" \
+        '{event_type: "liftbattery-azure-main-validated", client_payload: {build_id: $build_id, sha: $sha}}')"
+      status="$(curl --silent --show-error --fail --max-time 30 --output /dev/null \
+        --write-out '%{http_code}' --header @- --header 'Accept: application/vnd.github+json' \
+        --header 'Content-Type: application/json' --data-binary "$payload" \
+        'https://api.github.com/repos/Daniel-Wei/liftBattery/dispatches' \
+        <<< "Authorization: Bearer $MIRROR_DISPATCH_TOKEN")"
+      [[ "$status" == "204" ]] || { echo "GitHub did not accept the mirror request (HTTP $status)."; exit 1; }
+    displayName: Request GitHub main sync (no deployment)
+    # Opt in only after the GitHub mirror workflow and both dedicated credentials are configured.
+    condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'), ne(variables['Build.Reason'], 'PullRequest'), eq(variables['EnableGitHubMainMirror'], 'true'))
+    env:
+      MIRROR_DISPATCH_TOKEN: $(GitHubMainMirrorDispatchToken)

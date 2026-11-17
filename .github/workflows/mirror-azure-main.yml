@@ -1,0 +1,119 @@
+name: Mirror validated Azure main
+
+on:
+  repository_dispatch:
+    types: [liftbattery-azure-main-validated]
+  workflow_dispatch:
+    inputs:
+      build_id:
+        description: Successful LiftBattery CI build ID to verify
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: liftbattery-mirror-azure-main
+  cancel-in-progress: false
+
+jobs:
+  mirror:
+    if: github.repository == 'Daniel-Wei/liftBattery' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - name: Verify Azure CI and fast-forward GitHub main
+        shell: bash
+        env:
+          AZURE_MIRROR_READ_TOKEN: ${{ secrets.AZURE_MIRROR_READ_TOKEN }}
+          GITHUB_MIRROR_PUSH_TOKEN: ${{ github.token }}
+          GIT_TERMINAL_PROMPT: '0'
+        run: |
+          set -euo pipefail
+          die() { echo "::error::$*"; exit 1; }
+
+          project='https://dev.azure.com/LiftBattery/7119ff9a-94ef-4087-adb3-36e4958ca5fa'
+          repository_id='7e5b51d7-9325-40e9-a3e8-9b6f42dd6b4e'
+          azure_repository='https://dev.azure.com/LiftBattery/Lift%20Battery/_git/Lift%20Battery'
+          github_repository='https://github.com/Daniel-Wei/liftBattery.git'
+          main='refs/heads/main'
+
+          if [[ "$GITHUB_EVENT_NAME" == repository_dispatch ]]; then
+            build_id="$(jq -er '.client_payload.build_id' "$GITHUB_EVENT_PATH")"
+            requested_sha="$(jq -er '.client_payload.sha' "$GITHUB_EVENT_PATH")"
+            [[ "$requested_sha" =~ ^[0-9a-f]{40}$ ]] || die "The event must specify a full commit SHA."
+          elif [[ "$GITHUB_EVENT_NAME" == workflow_dispatch ]]; then
+            build_id="$(jq -er '.inputs.build_id' "$GITHUB_EVENT_PATH")"
+            requested_sha=''
+          else
+            die "Unsupported mirror event."
+          fi
+          [[ "$build_id" =~ ^[1-9][0-9]*$ ]] || die "Azure build ID must be a positive integer."
+          [[ -n "${AZURE_MIRROR_READ_TOKEN:-}" ]] || die "Configure the read-only AZURE_MIRROR_READ_TOKEN secret."
+          [[ -n "${GITHUB_MIRROR_PUSH_TOKEN:-}" ]] || die "GitHub job token is unavailable."
+
+          azure_basic="$(printf ':%s' "$AZURE_MIRROR_READ_TOKEN" | base64 -w0)"
+          github_basic="$(printf 'x-access-token:%s' "$GITHUB_MIRROR_PUSH_TOKEN" | base64 -w0)"
+          printf '::add-mask::%s\n' "$azure_basic" "$github_basic"
+          export AZURE_MIRROR_HEADER="Authorization: Basic $azure_basic"
+          export GITHUB_MIRROR_HEADER="Authorization: Basic $github_basic"
+
+          # A dispatched run can start just before Azure records the final build result.
+          build=''
+          for attempt in {1..18}; do
+            build="$(curl --silent --show-error --fail --max-time 10 --header @- \
+              --header 'Accept: application/json' "$project/_apis/build/builds/$build_id?api-version=7.1" \
+              <<< "$AZURE_MIRROR_HEADER")"
+            if [[ "$(jq -r '.status' <<< "$build")" == completed ]]; then
+              break
+            fi
+            sleep 5
+          done
+          jq -e --arg id "$build_id" --arg repo "$repository_id" --arg main "$main" \
+            '(.id | tostring) == $id and .definition.id == 1 and .repository.id == $repo
+            and .sourceBranch == $main and .status == "completed" and .result == "succeeded"' \
+            <<< "$build" > /dev/null || die "Build $build_id is not a successful LiftBattery CI run on Azure main."
+          candidate="$(jq -er '.sourceVersion' <<< "$build")"
+          [[ "$candidate" =~ ^[0-9a-f]{40}$ ]] || die "Azure CI did not identify a valid commit."
+          [[ -z "$requested_sha" || "$requested_sha" == "$candidate" ]] || die "The event does not match the validated commit."
+
+          repo_dir="$(mktemp -d "${RUNNER_TEMP:?}/liftbattery-mirror.XXXXXX")"
+          git init --bare --quiet "$repo_dir"
+          azure_git() {
+            git -C "$repo_dir" -c credential.helper= -c http.followRedirects=false \
+              --config-env=http.extraheader=AZURE_MIRROR_HEADER "$@"
+          }
+          github_git() {
+            # Use only the GitHub Actions job token so the push does not trigger deployment workflows.
+            git -C "$repo_dir" -c credential.helper= -c http.followRedirects=false \
+              --config-env=http.extraheader=GITHUB_MIRROR_HEADER "$@"
+          }
+          main_tip() {
+            "$1" ls-remote --exit-code "$2" "$main" | cut -f1
+          }
+
+          azure_git fetch --no-tags "$azure_repository" "$main:refs/remotes/azure/main"
+          azure_tip="$(git -C "$repo_dir" rev-parse refs/remotes/azure/main)"
+          if [[ "$azure_tip" != "$candidate" ]]; then
+            echo "::notice::Skipping build $build_id: Azure main has moved; wait for validation of its current head."
+            exit 0
+          fi
+          github_git fetch --no-tags "$github_repository" "$main:refs/remotes/github/main"
+          github_tip="$(git -C "$repo_dir" rev-parse refs/remotes/github/main)"
+          git -C "$repo_dir" merge-base --is-ancestor "$github_tip" "$candidate" \
+            || die "GitHub main has independent commits. Reconcile the histories; the mirror will not force-push."
+          git -C "$repo_dir" diff --quiet "$github_tip" "$candidate" -- .github/workflows/ \
+            || die "GitHub workflow changes need human review and a separate, approved sync."
+          if [[ "$(main_tip azure_git "$azure_repository")" != "$candidate" ]]; then
+            echo "::notice::Azure main moved during verification. No GitHub push was attempted."
+            exit 0
+          fi
+          if [[ "$github_tip" != "$candidate" ]]; then
+            github_git push --no-follow-tags --recurse-submodules=no "$github_repository" "$candidate:$main"
+          fi
+          [[ "$(main_tip github_git "$github_repository")" == "$candidate" ]] \
+            || die "GitHub main did not verify after syncing."
+          [[ "$(main_tip azure_git "$azure_repository")" == "$candidate" ]] \
+            || die "Azure main moved while syncing. Its next successful CI run must catch GitHub up."
+          printf 'Both main branches point to %s (Azure CI build %s).\n' "$candidate" "$build_id"

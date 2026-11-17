@@ -11,6 +11,14 @@
 
 这两个目录共享 Git 历史和分支，文件内容及本机配置各自独立。原 `origin` 仍指向原 GitHub 仓库。现有 GitHub Actions 构建并部署 Azure Functions 和 Static Web Apps，触发条件包含 `main` 及相应路径；SQL migration workflow 需手动确认。不要把本次练习推到 GitHub，以免与已有部署流程混淆。
 
+### Azure Repos → GitHub：同步代码，不部署
+
+Azure Repos 的 `main` 是开发主线，GitHub 的 `main` 只接收已经验证的同一 SHA。其他分支和标签不参与同步，不强推。GitHub 仓库是公开的，合入 Azure `main` 的提交历史将同步公开。同步不会改动现有部署工作流；需要部署时另外确认并运行对应的部署流程。
+
+自动同步默认关闭。启用前，在 GitHub Actions 保存 `AZURE_MIRROR_READ_TOKEN`（仅限 LiftBattery 组织，Azure DevOps **Code: Read** 和 **Build: Read**），在 Azure 的 **LiftBattery CI** 保存秘密变量 `GitHubMainMirrorDispatchToken`（仅限 `Daniel-Wei/liftBattery`，GitHub **Contents: Read and write**）。不要把令牌写进仓库或发送到聊天。首先在 GitHub 手动运行 **Mirror validated Azure main** 并指定一个已通过的 Azure CI build ID，核对不触发部署；确认后再将 Azure 管道变量 `EnableGitHubMainMirror` 设为 `true`。
+
+同步作业会核对 CI 结果、当前 Azure `main` 和 GitHub `main` 的祖先关系，只允许快进更新。实际推送使用 GitHub Actions 的临时作业令牌，因此不会再触发这里的 `push` 事件部署。两端 SHA 相同才报告成功。如果 GitHub 有独有提交或候选提交改动了 GitHub workflow，作业会停下让人检查，不覆盖任何提交。
+
 后端是 .NET 8、Azure Functions v4 isolated worker、EF Core 8 / SQL Server；没有 `.sln`。后端 xUnit 测试项目引用 API 项目，所以从测试 `.csproj` restore/build 会覆盖两者。前端为 React 18、TypeScript、Vite、npm 锁文件及 Vitest。
 
 ## 2. Windows 本地开发和启动
