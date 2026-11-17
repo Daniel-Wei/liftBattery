@@ -1,6 +1,10 @@
 # liftBattery
 
-liftBattery 是一个面向认真训练者的训练运营 Dashboard。它把 readiness、训练负荷、动作表现和恢复信号组织成可追踪的日常记录与趋势报告，但不提供医学诊断，也不替代教练。
+liftBattery 的目标定位是面向备赛私教的学员管理平台，以线下私教为主，统一管理学员档案、备赛进度、排课与课时、训练记录、每日三大营养素摄入和周复盘。
+
+产品方向与首版范围见 [产品定位](docs/product-positioning.md)。本轮实现教练端 UI：工作台嵌入日历，新增学员档案、备赛时间线、排课与课时、三大营养素／体重和教练复盘。现有视觉主题、个人训练、练前检查、报告与完整 3D 动作指引保留；暂不新增学员自助端。
+
+新增教练工作区按登录账号在当前浏览器保存，尚未接入 Azure 的多学员 API；原有个人功能继续使用原 API。登录页可进入独立的示例工作区，也可用本地地址 `http://127.0.0.1:5192/?workspace=demo` 预览。文件说明及验证记录见 [教练 UI 改造说明](docs/coach-ui-implementation.md)。
 
 Canonical repository:
 
@@ -16,6 +20,7 @@ C:\Users\dddww\Documents\Codex\liftBattery
 |---|---|---|---|
 | Landing / Overview | React 页面、训练运营指标与解释 | 前端状态 + API 数据 | 已实现 |
 | Authentication | Closed beta 注册、登录、登出、`/auth/me`、profile update、session cookie | SQL Server `Users` / `AuthSessions` | 已实现 |
+| Coach workspace | 工作台／日历、学员档案、备赛、课包、营养体重、教练复盘 | 按账号隔离的浏览器本机工作区；示例数据独立 | UI 与本机交互已实现，云端待接入 |
 | PreCheck | 前后端 API、按日期读取、日期范围读取、upsert、删除、loading/error UI | SQL Server | M1 已完成 |
 | Training | 前后端 API、Redux thunk、保存/读取/删除 | SQL Server `TrainingDays` / `TrainingSessions` / `TrainingExercises` / `TrainingSets` | M2 已完成 |
 | Trends | 创建/复用异步报告 Job、Service Bus Queue、后台 Consumer、状态轮询、图表结果 | Azure Table Storage + Service Bus + SQL snapshot | 已实现 |

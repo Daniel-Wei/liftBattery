@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { MuscleStimulationReport } from "../components/MuscleStimulationReport";
 import type { CreateTrendReportRequestDto, TrendReportSummaryCardDto } from "../api/dtos";
-import { TREND_REPORT_JOB_ID_STORAGE_KEY } from "../data/localStorageKeys";
+import { accountStorageKey, TREND_REPORT_JOB_ID_STORAGE_KEY } from "../data/localStorageKeys";
 import { getTrainingCycles } from "../domain/trainingTrendCharts";
 import { useAppDispatch, useAppSelector } from "../store/hooks";
 import {
@@ -96,6 +96,8 @@ function TrendSummaryCardView({ card }: { card: TrendReportSummaryCardDto }) {
 
 export function TrendsPage() {
   const dispatch = useAppDispatch();
+  const userId = useAppSelector((state) => state.auth.user?.id);
+  const jobStorageKey = userId === undefined ? null : accountStorageKey(TREND_REPORT_JOB_ID_STORAGE_KEY, userId);
   const { job, status, error, isErrorDialogOpen } = useAppSelector((state) => state.trendReport);
   const programSettings = useAppSelector(selectProgramSettings);
 
@@ -147,19 +149,21 @@ export function TrendsPage() {
 
   // execute any remaining jobs
   useEffect(() => {
-    const savedJobId = localStorage.getItem(TREND_REPORT_JOB_ID_STORAGE_KEY);
-
-    if (savedJobId) {
-      void dispatch(fetchTrendReportJob(savedJobId));
-    }
-  }, [dispatch]);
+    if (!jobStorageKey) return;
+    try {
+      const savedJobId = localStorage.getItem(jobStorageKey);
+      if (savedJobId) void dispatch(fetchTrendReportJob(savedJobId));
+    } catch { /* Continue without restoring a job when browser storage is unavailable. */ }
+  }, [dispatch, jobStorageKey]);
 
   useEffect(() => {
     if (!job) {
       return;
     }
 
-    localStorage.setItem(TREND_REPORT_JOB_ID_STORAGE_KEY, job.id);
+    if (jobStorageKey) {
+      try { localStorage.setItem(jobStorageKey, job.id); } catch { /* Polling does not require a cache. */ }
+    }
 
     if (
       job.status !== "EnqueuePending"
@@ -178,7 +182,7 @@ export function TrendsPage() {
     }, 1200);
 
     return () => window.clearTimeout(timeoutId);
-  }, [dispatch, job, status]);
+  }, [dispatch, job, jobStorageKey, status]);
 
   function handleReportAction() {
     if (!canUseReportAction) {
