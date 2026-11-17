@@ -1,6 +1,12 @@
 export enum PageKey {
   Login = "login",
   Register = "register",
+  CoachOverview = "coachOverview",
+  Clients = "clients",
+  Preparation = "preparation",
+  Schedule = "schedule",
+  Nutrition = "nutrition",
+  Reviews = "reviews",
   Overview = "overview",
   PreCheck = "preCheck",
   Training = "training",
@@ -14,6 +20,7 @@ export type NavItem = {
   key: PageKey;
   label: string;
   labelZh: string;
+  group?: "coach" | "personal" | "tools" | "workspace";
 };
 
 export enum UserLevel {

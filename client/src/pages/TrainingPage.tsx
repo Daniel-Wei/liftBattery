@@ -51,9 +51,9 @@ export function TrainingPage({ onSaved }: TrainingPageProps) {
   } = useAppSelector(getTrainingData);
   const [formError, setFormError] = useState("");
 
-  const [expandedExerciseId, setExpandedExerciseId] = useState<number | null>(
-    trainingSessionDraft.exercises[0]?.id ?? null,
-  );
+  const [expandedExerciseIds, setExpandedExerciseIds] = useState<Set<number>>(() => (
+    new Set(trainingSessionDraft.exercises[0] ? [trainingSessionDraft.exercises[0].id] : [])
+  ));
   const previousExerciseCount = useRef(trainingSessionDraft.exercises.length);
   useEffect(() => {
     void dispatch(fetchTrainingDays({
@@ -76,12 +76,31 @@ export function TrainingPage({ onSaved }: TrainingPageProps) {
 
   useEffect(() => {
     if (trainingSessionDraft.exercises.length > previousExerciseCount.current) {
-      setExpandedExerciseId(trainingSessionDraft.exercises[trainingSessionDraft.exercises.length - 1]?.id ?? null);
-    } else if (!trainingSessionDraft.exercises.some((exercise) => exercise.id === expandedExerciseId)) {
-      setExpandedExerciseId(trainingSessionDraft.exercises[0]?.id ?? null);
+      const addedExercise = trainingSessionDraft.exercises[trainingSessionDraft.exercises.length - 1];
+      setExpandedExerciseIds(new Set(addedExercise ? [addedExercise.id] : []));
+    } else {
+      const currentExerciseIds = new Set(trainingSessionDraft.exercises.map((exercise) => exercise.id));
+      setExpandedExerciseIds((current) => {
+        const existingExpandedIds = new Set(
+          [...current].filter((exerciseId) => currentExerciseIds.has(exerciseId)),
+        );
+
+        return existingExpandedIds.size === current.size ? current : existingExpandedIds;
+      });
     }
     previousExerciseCount.current = trainingSessionDraft.exercises.length;
-  }, [expandedExerciseId, trainingSessionDraft.exercises]);
+  }, [trainingSessionDraft.exercises]);
+
+  function toggleExercise(exerciseId: number) {
+    setExpandedExerciseIds((current) => {
+      const next = new Set(current);
+
+      if (next.has(exerciseId)) next.delete(exerciseId);
+      else next.add(exerciseId);
+
+      return next;
+    });
+  }
 
   const filteredDays = trainingDays
     .filter((day) => day.date === trainingSessionDraft.date)
@@ -135,13 +154,13 @@ export function TrainingPage({ onSaved }: TrainingPageProps) {
           {trainingSessionDraft.exercises.map((exercise, exerciseIndex) => {
             const exerciseOptions = getExerciseOptionsForMuscleGroup(exercise.muscleGroup);
             const angleOptions = getBenchAngleOptions(exercise.exerciseName);
-            const isExpanded = expandedExerciseId === exercise.id;
+            const isExpanded = expandedExerciseIds.has(exercise.id);
 
             return (
               <article className={`training-exercise-editor${isExpanded ? "" : " training-exercise-editor--collapsed"}`} key={exercise.id}>
                 <div className="training-exercise-input-panel">
                   <div className="training-editor-heading">
-                    <button type="button" className="training-editor-toggle" aria-expanded={isExpanded} onClick={() => setExpandedExerciseId(isExpanded ? null : exercise.id)}>
+                    <button type="button" className="training-editor-toggle" aria-expanded={isExpanded} onClick={() => toggleExercise(exercise.id)}>
                       <p className="section-eyebrow">动作 {exerciseIndex + 1}</p>
                       <h3>{getExerciseDisplayLabel(exercise.exerciseName)}</h3>
                       <span>{isExpanded ? "收起" : "展开"}</span>

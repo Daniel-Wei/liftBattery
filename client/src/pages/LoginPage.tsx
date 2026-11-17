@@ -6,9 +6,10 @@ import { useAppDispatch, useAppSelector } from "../store/hooks";
 type LoginPageProps = {
   onAuthenticated: () => void;
   onRegister: () => void;
+  onPreview?: () => void;
 };
 
-export function LoginPage({ onAuthenticated, onRegister }: LoginPageProps) {
+export function LoginPage({ onAuthenticated, onRegister, onPreview }: LoginPageProps) {
   const dispatch = useAppDispatch();
   const { status, error } = useAppSelector((state) => state.auth);
   const [email, setEmail] = useState("");
@@ -26,7 +27,7 @@ export function LoginPage({ onAuthenticated, onRegister }: LoginPageProps) {
   return (
     <main className="auth-page">
       <section className="auth-card">
-        <p className="landing-eyebrow">LiftBattery Beta</p>
+        <p className="landing-eyebrow">LiftBattery · 备赛私教平台</p>
         <h1 className="page-title">登录</h1>
 
         <form className="auth-form" onSubmit={handleSubmit}>
@@ -50,6 +51,7 @@ export function LoginPage({ onAuthenticated, onRegister }: LoginPageProps) {
         <div className="auth-switch">
           <button type="button" className="text-button" onClick={onRegister}>没有账号？注册 Beta</button>
         </div>
+        {onPreview && <button type="button" className="coach-preview-button" onClick={onPreview}>先看看教练工作台 <span>示例学员 · 无需登录</span></button>}
       </section>
     </main>
   );

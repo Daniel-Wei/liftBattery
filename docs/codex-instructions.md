@@ -4,6 +4,22 @@
 
 ---
 
+## 0. Current Product Direction / 当前产品方向
+
+As of 2026-10-20, the product direction is a client management platform for personal trainers focused on physique competition preparation, with in-person training first. Use [Product positioning](product-positioning.md) for the current scope. Reuse existing personal records and add daily protein, carbohydrate and fat intake. Coach-client authorization, appointments, session credits and preparation plans are new requirements, not existing features.
+
+自 2026-10-20 起，产品定位为面向备赛私教的学员管理平台，以线下私教为主。当前范围以 [产品定位](product-positioning.md) 为准，复用现有个人记录，新增每日蛋白质、碳水和脂肪摄入。教练 UI 及本机排课、课时、备赛记录已接入；教练与学员授权及这些记录的云端服务仍待实现。
+
+The current UI phase is coach-only: embed a calendar in both the dashboard and scheduling view, preserve the existing theme and every existing feature, especially the full 3D exercise guide. Student self-service records are deferred. New coach records currently use an explicitly labelled account-scoped local workspace; do not treat this as cloud authorization or call personal APIs for arbitrary clients.
+
+当前 UI 阶段只做教练端：工作台和排课界面嵌入日历，保留已有主题和全部功能，尤其完整 3D 动作指引；暂缓学员自助记录。新增教练记录使用明确标注、按账号隔离的本机工作区，不能当作云端授权，也不能把个人 API 用于任意学员。
+
+The Phase 1 task, original page list and restriction against a coach administration interface below are historical. They do not override the current direction or describe the current implementation. Keep the evidence rules and work in explicitly scoped phases; redefining the product does not itself mean implementing every new module at once.
+
+下方 Phase 1 任务、旧页面清单及“不做教练后台”的界面方向为历史说明，不覆盖新定位，也不代表当前实现状态。继续遵守证据规则并按明确范围分阶段推进；产品重新定位不等于一次实现全部新模块。
+
+---
+
 ## 1. Working Style / 工作方式
 
 ### English
