@@ -1,0 +1,46 @@
+trigger:
+  branches:
+    include:
+      - main
+      - master
+      - develop
+
+# Azure Repos queues PR validation through the target branch's Build validation policy.
+pool:
+  vmImage: ubuntu-latest
+
+steps:
+  - checkout: self
+
+  - task: UseDotNet@2
+    displayName: Use .NET 8 SDK
+    inputs:
+      packageType: sdk
+      version: '8.x'
+
+  # The test project references the API project, so restore and build cover both.
+  - script: dotnet restore backend/LiftBattery.Api.Tests/LiftBattery.Api.Tests.csproj
+    displayName: Restore .NET projects
+
+  - script: dotnet build backend/LiftBattery.Api.Tests/LiftBattery.Api.Tests.csproj --configuration Release --no-restore
+    displayName: Build .NET projects
+
+  - script: dotnet test backend/LiftBattery.Api.Tests/LiftBattery.Api.Tests.csproj --configuration Release --no-build --no-restore
+    displayName: Run backend tests
+
+  - task: UseNode@1
+    displayName: Use Node.js 24
+    inputs:
+      version: '24.x'
+
+  - script: npm ci
+    displayName: Install frontend dependencies
+    workingDirectory: $(Build.SourcesDirectory)/client
+
+  - script: npm test
+    displayName: Run frontend tests
+    workingDirectory: $(Build.SourcesDirectory)/client
+
+  - script: npm run build
+    displayName: Build frontend
+    workingDirectory: $(Build.SourcesDirectory)/client
