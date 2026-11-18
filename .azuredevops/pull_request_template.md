@@ -1,13 +1,6 @@
-## What changed and why?
+## Description
 
-<!-- Summarize the change and its purpose. Link the Azure Boards work item. -->
+## Technical Ananlysis
 
-## How was it tested?
+## Replace with Sonar link ###
 
-<!-- List the checks you ran and their results. Call out anything not tested. -->
-
-## Review checklist
-
-- [ ] I reviewed security and data isolation risks.
-- [ ] I documented any breaking changes or confirmed there are none.
-- [ ] I documented any database migrations and rollout steps or confirmed none are needed.
