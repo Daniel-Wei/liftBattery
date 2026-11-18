@@ -17,10 +17,14 @@ steps:
       packageType: sdk
       version: '11.x'
 
-  # The test project references the API project, so restore and build cover both.
-  - script: dotnet restore backend/LiftBattery.Api.Tests/LiftBattery.Api.Tests.csproj
-    displayName: Restore .NET projects
+  # Restore the API directly so the Functions SDK also restores its generated extension project.
+  - script: dotnet restore backend/LiftBattery.Api/LiftBattery.Api.csproj
+    displayName: Restore Azure Functions project and extensions
 
+  - script: dotnet restore backend/LiftBattery.Api.Tests/LiftBattery.Api.Tests.csproj
+    displayName: Restore .NET test project
+
+  # The test project references the API, so this build still covers both projects.
   - script: dotnet build backend/LiftBattery.Api.Tests/LiftBattery.Api.Tests.csproj --configuration Release --no-restore
     displayName: Build .NET projects
 
@@ -44,22 +48,323 @@ steps:
     displayName: Build frontend
     workingDirectory: $(Build.SourcesDirectory)/client
 
-  - bash: |
-      set -euo pipefail
-      if [[ -z "${MIRROR_DISPATCH_TOKEN:-}" || "$MIRROR_DISPATCH_TOKEN" == '$('* ]]; then
-        echo "GitHubMainMirrorDispatchToken must be configured as a secret pipeline variable."
-        exit 1
-      fi
-      payload="$(jq -cn --arg build_id "$BUILD_BUILDID" --arg sha "$BUILD_SOURCEVERSION" \
-        '{event_type: "liftbattery-azure-main-validated", client_payload: {build_id: $build_id, sha: $sha}}')"
-      status="$(curl --silent --show-error --fail --max-time 30 --output /dev/null \
-        --write-out '%{http_code}' --header @- --header 'Accept: application/vnd.github+json' \
-        --header 'Content-Type: application/json' --data-binary "$payload" \
+
+- bash: |
+    # ============================================
+    # 1. Enable strict Bash error handling
+    # ============================================
+
+    # -e: Exit immediately when a command fails.
+    # -u: Treat undefined variables as errors.
+    # -o pipefail: Fail if any command in a pipeline fails.
+    set -euo pipefail
+
+
+    # ============================================
+    # 2. Validate the GitHub authentication token
+    # ============================================
+
+    # Check whether the token is empty or unresolved.
+    # Azure may leave an undefined variable as $(VariableName).
+    if [[ -z "${MIRROR_DISPATCH_TOKEN:-}" || "$MIRROR_DISPATCH_TOKEN" == '$('* ]]; then
+
+      # Print an error message if the token is missing.
+      echo "GitHubMainMirrorDispatchToken must be configured as a secret pipeline variable."
+
+      # Stop execution with a failure exit code.
+      exit 1
+    fi
+
+
+    # ============================================
+    # 3. Create the GitHub dispatch event payload
+    # ============================================
+
+    # jq generates a JSON object without reading input.
+    # -c: Produce compact, single-line JSON.
+    # -n: Create JSON without reading standard input.
+    #
+    # BUILD_BUILDID: The current Azure Pipeline build ID.
+    # BUILD_SOURCEVERSION: The Git commit SHA being built.
+    #
+    # event_type: Identifies the GitHub event.
+    # client_payload: Contains additional event data.
+
+    payload="$(
+      jq -cn \
+        --arg build_id "$BUILD_BUILDID" \
+        --arg sha "$BUILD_SOURCEVERSION" \
+        '{
+          event_type: "liftbattery-azure-main-validated",
+          client_payload: {
+            build_id: $build_id,
+            sha: $sha
+          }
+        }'
+    )"
+
+
+    # ============================================
+    # 4. Send the dispatch event to GitHub
+    # ============================================
+
+    # curl sends an authenticated HTTP POST request.
+    #
+    # --silent:
+    #   Disable the progress meter.
+    #
+    # --show-error:
+    #   Show errors even when silent mode is enabled.
+    #
+    # --fail:
+    #   Return a failure exit code for HTTP errors.
+    #
+    # --max-time 30:
+    #   Set a maximum request duration of 30 seconds.
+    #
+    # --output /dev/null:
+    #   Discard the HTTP response body.
+    #
+    # --write-out '%{http_code}':
+    #   Capture the HTTP response status code.
+    #
+    # --header @-:
+    #   Read the Authorization header from stdin.
+    #
+    # --data-binary:
+    #   Send the generated JSON payload.
+    #
+    # GitHub dispatch API:
+    #   Request a repository_dispatch event.
+    #
+    # <<<:
+    #   Pass the Bearer token through standard input.
+    #
+    # Store the HTTP status code in the status variable.
+
+    status="$(
+      curl \
+        --silent \
+        --show-error \
+        --fail \
+        --max-time 30 \
+        --output /dev/null \
+        --write-out '%{http_code}' \
+        --header @- \
+        --header 'Accept: application/vnd.github+json' \
+        --header 'Content-Type: application/json' \
+        --data-binary "$payload" \
         'https://api.github.com/repos/Daniel-Wei/liftBattery/dispatches' \
-        <<< "Authorization: Bearer $MIRROR_DISPATCH_TOKEN")"
-      [[ "$status" == "204" ]] || { echo "GitHub did not accept the mirror request (HTTP $status)."; exit 1; }
-    displayName: Request GitHub main sync (no deployment)
-    # Opt in only after the GitHub mirror workflow and both dedicated credentials are configured.
-    condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'), ne(variables['Build.Reason'], 'PullRequest'), eq(variables['EnableGitHubMainMirror'], 'true'))
-    env:
-      MIRROR_DISPATCH_TOKEN: $(GitHubMainMirrorDispatchToken)
+        <<< "Authorization: Bearer $MIRROR_DISPATCH_TOKEN"
+    )"
+
+
+    # ============================================
+    # 5. Validate the GitHub API response
+    # ============================================
+
+    # HTTP 204 means GitHub accepted the dispatch event.
+    # It does NOT mean the repository sync is complete.
+    #
+    # If the status is not 204, fail the pipeline step.
+
+    [[ "$status" == "204" ]] || {
+      echo "GitHub did not accept the mirror request (HTTP $status)."
+      exit 1
+    }
+
+
+  # ==============================================
+  # 6. Azure Pipeline step configuration
+  # ==============================================
+
+  # Display this name in the Azure Pipeline logs.
+  displayName: Request GitHub main sync (no deployment)
+
+
+  # ==============================================
+  # 7. Control when this step executes
+  # ==============================================
+
+  # Execute this step ONLY when all conditions are true:
+  #
+  # 1. Previous pipeline steps succeeded.
+  # 2. The source branch is main.
+  # 3. The build is not a Pull Request validation.
+  # 4. GitHub mirroring is explicitly enabled.
+  #
+  # Manual builds on main are not excluded.
+
+  condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'), ne(variables['Build.Reason'], 'PullRequest'), eq(variables['EnableGitHubMainMirror'], 'true'))
+
+
+  # ==============================================
+  # 8. Map the secret to an environment variable
+  # ==============================================
+
+  # Read the secret from Azure Pipeline variables.
+  # Expose it to this Bash step as an environment variable.
+  # Never hardcode the actual token in the YAML file.
+
+  env:
+    MIRROR_DISPATCH_TOKEN: $(GitHubMainMirrorDispatchToken)
+
+    # ============================================
+    # 1. Enable strict Bash error handling
+    # ============================================
+
+    # -e: Exit immediately when a command fails.
+    # -u: Treat undefined variables as errors.
+    # -o pipefail: Fail if any command in a pipeline fails.
+    set -euo pipefail
+
+
+    # ============================================
+    # 2. Validate the GitHub authentication token
+    # ============================================
+
+    # Check whether the token is empty or unresolved.
+    # Azure may leave an undefined variable as $(VariableName).
+    if [[ -z "${MIRROR_DISPATCH_TOKEN:-}" || "$MIRROR_DISPATCH_TOKEN" == '$('* ]]; then
+
+      # Print an error message if the token is missing.
+      echo "GitHubMainMirrorDispatchToken must be configured as a secret pipeline variable."
+
+      # Stop execution with a failure exit code.
+      exit 1
+    fi
+
+
+    # ============================================
+    # 3. Create the GitHub dispatch event payload
+    # ============================================
+
+    # jq generates a JSON object without reading input.
+    # -c: Produce compact, single-line JSON.
+    # -n: Create JSON without reading standard input.
+    #
+    # BUILD_BUILDID: The current Azure Pipeline build ID.
+    # BUILD_SOURCEVERSION: The Git commit SHA being built.
+    #
+    # event_type: Identifies the GitHub event.
+    # client_payload: Contains additional event data.
+
+    payload="$(
+      jq -cn \
+        --arg build_id "$BUILD_BUILDID" \
+        --arg sha "$BUILD_SOURCEVERSION" \
+        '{
+          event_type: "liftbattery-azure-main-validated",
+          client_payload: {
+            build_id: $build_id,
+            sha: $sha
+          }
+        }'
+    )"
+
+
+    # ============================================
+    # 4. Send the dispatch event to GitHub
+    # ============================================
+
+    # curl sends an authenticated HTTP POST request.
+    #
+    # --silent:
+    #   Disable the progress meter.
+    #
+    # --show-error:
+    #   Show errors even when silent mode is enabled.
+    #
+    # --fail:
+    #   Return a failure exit code for HTTP errors.
+    #
+    # --max-time 30:
+    #   Set a maximum request duration of 30 seconds.
+    #
+    # --output /dev/null:
+    #   Discard the HTTP response body.
+    #
+    # --write-out '%{http_code}':
+    #   Capture the HTTP response status code.
+    #
+    # --header @-:
+    #   Read the Authorization header from stdin.
+    #
+    # --data-binary:
+    #   Send the generated JSON payload.
+    #
+    # GitHub dispatch API:
+    #   Request a repository_dispatch event.
+    #
+    # <<<:
+    #   Pass the Bearer token through standard input.
+    #
+    # Store the HTTP status code in the status variable.
+
+    status="$(
+      curl \
+        --silent \
+        --show-error \
+        --fail \
+        --max-time 30 \
+        --output /dev/null \
+        --write-out '%{http_code}' \
+        --header @- \
+        --header 'Accept: application/vnd.github+json' \
+        --header 'Content-Type: application/json' \
+        --data-binary "$payload" \
+        'https://api.github.com/repos/Daniel-Wei/liftBattery/dispatches' \
+        <<< "Authorization: Bearer $MIRROR_DISPATCH_TOKEN"
+    )"
+
+
+    # ============================================
+    # 5. Validate the GitHub API response
+    # ============================================
+
+    # HTTP 204 means GitHub accepted the dispatch event.
+    # It does NOT mean the repository sync is complete.
+    #
+    # If the status is not 204, fail the pipeline step.
+
+    [[ "$status" == "204" ]] || {
+      echo "GitHub did not accept the mirror request (HTTP $status)."
+      exit 1
+    }
+
+
+  # ==============================================
+  # 6. Azure Pipeline step configuration
+  # ==============================================
+
+  # Display this name in the Azure Pipeline logs.
+  displayName: Request GitHub main sync (no deployment)
+
+
+  # ==============================================
+  # 7. Control when this step executes
+  # ==============================================
+
+  # Execute this step ONLY when all conditions are true:
+  #
+  # 1. Previous pipeline steps succeeded.
+  # 2. The source branch is main.
+  # 3. The build is not a Pull Request validation.
+  # 4. GitHub mirroring is explicitly enabled.
+  #
+  # Manual builds on main are not excluded.
+
+  condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'), ne(variables['Build.Reason'], 'PullRequest'), eq(variables['EnableGitHubMainMirror'], 'true'))
+
+
+  # ==============================================
+  # 8. Map the secret to an environment variable
+  # ==============================================
+
+  # Read the secret from Azure Pipeline variables.
+  # Expose it to this Bash step as an environment variable.
+  # Never hardcode the actual token in the YAML file.
+
+  env:
+    MIRROR_DISPATCH_TOKEN: $(GitHubMainMirrorDispatchToken)
+
