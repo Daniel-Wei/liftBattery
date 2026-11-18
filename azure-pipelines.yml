@@ -2,7 +2,6 @@ trigger:
   branches:
     include:
       - main
-      - master
       - develop
 
 # Azure Repos queues PR validation through the target branch's Build validation policy.
@@ -13,10 +12,10 @@ steps:
   - checkout: self
 
   - task: UseDotNet@2
-    displayName: Use .NET 8 SDK
+    displayName: Use .NET 11 SDK
     inputs:
       packageType: sdk
-      version: '8.x'
+      version: '11.x'
 
   # The test project references the API project, so restore and build cover both.
   - script: dotnet restore backend/LiftBattery.Api.Tests/LiftBattery.Api.Tests.csproj
