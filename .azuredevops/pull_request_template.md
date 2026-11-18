@@ -1,6 +1,8 @@
-## Description
+#### $ <!-- replace with meaningful description -->
 
-## Technical Ananlysis
+#### $ Implementation
 
-## Replace with Sonar link ###
+- [x] 
+
+#### $ Sonar link: <!-- replace with Sonar link -->
 
