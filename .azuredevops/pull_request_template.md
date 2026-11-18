@@ -1,13 +1,8 @@
-## What changed and why?
+#### $ <!-- replace with meaningful description -->
 
-<!-- Summarize the change and its purpose. Link the Azure Boards work item. -->
+#### $ Implementation
 
-## How was it tested?
+- [x] 
 
-<!-- List the checks you ran and their results. Call out anything not tested. -->
+#### $ Sonar link: <!-- replace with Sonar link -->
 
-## Review checklist
-
-- [ ] I reviewed security and data isolation risks.
-- [ ] I documented any breaking changes or confirmed there are none.
-- [ ] I documented any database migrations and rollout steps or confirmed none are needed.
